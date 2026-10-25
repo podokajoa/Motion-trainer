@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>미소 트레이너</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1a1015">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#1a1015; --fg:#fbf3f6; --muted:#b8a5ad; --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --pink:#f472b6; --card:#26191f; --line:#3a2a31; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 14px; line-height:1.5; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  button, select { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:16px; }
+  button.primary { background:var(--pink); color:#2a0b19; border:none; font-weight:800; font-size:18px; padding:14px 22px; }
+  #status { color:var(--muted); font-size:13px; margin:6px 0; }
+  .stage { position:relative; width:100%; aspect-ratio:3/4; max-height:70vh; background:#000; border-radius:16px; overflow:hidden; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .flash { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 0 1.6vmin var(--state, transparent); transition:box-shadow .25s; }
+  .hud { position:absolute; top:2vmin; left:2vmin; right:2vmin; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; pointer-events:none; }
+  .pill { background:rgba(0,0,0,.6); border-radius:2vmin; padding:1.4vmin 2.4vmin; text-align:center; }
+  .label { font-size:max(12px,2.6vmin); color:var(--muted); }
+  .big { font-size:max(40px,15vmin); font-weight:800; line-height:1; }
+  .mid { font-size:max(22px,7vmin); font-weight:800; line-height:1.1; }
+  /* 좌우 입꼬리 막대: 거울 화면 기준이라 화면 왼쪽 = 내 왼쪽 */
+  .side { position:absolute; top:28%; bottom:28%; width:max(26px,6vmin); background:rgba(0,0,0,.5); border-radius:3vmin; overflow:hidden; pointer-events:none; }
+  .side.l { left:2vmin; } .side.r { right:2vmin; }
+  .side i { position:absolute; left:0; right:0; bottom:0; height:0; background:var(--muted); transition:height .12s, background .2s; }
+  .side b { position:absolute; left:0; right:0; height:3px; background:#fff; opacity:.8; }
+  .side span { position:absolute; left:0; right:0; top:4px; text-align:center; font-size:max(11px,2.4vmin); font-weight:700; z-index:1; }
+  .cue { position:absolute; left:3vmin; right:3vmin; bottom:3vmin; background:rgba(0,0,0,.72); border-radius:3vmin; padding:2.4vmin 3vmin; font-size:max(22px,7.5vmin); font-weight:800; text-align:center; line-height:1.2; pointer-events:none; }
+  .cue small { display:block; font-size:max(14px,3.8vmin); font-weight:500; color:var(--muted); margin-top:1vmin; }
+  #exit { display:none; position:absolute; right:3vmin; bottom:calc(3vmin + 28vmin); font-size:max(14px,3.6vmin); padding:1.4vmin 3vmin; opacity:.85; }
+  /* 연습 모드: 전체화면, 큰 글씨 */
+  body.practice main > :not(.stage) { display:none; }
+  body.practice main { padding:0; max-width:none; }
+  body.practice .stage { position:fixed; inset:0; width:100vw; height:100vh; max-height:none; aspect-ratio:auto; border-radius:0; }
+  body.practice #exit { display:block; }
+  #reps { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .rep { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:13px; }
+  .rep.ok { border-color:var(--good); } .rep.bad { border-color:var(--warn); }
+  #summary { margin-top:12px; font-size:15px; line-height:1.6; }
+  .tips { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:14px; line-height:1.6; color:var(--muted); margin:10px 0; }
+  .tips b { color:var(--fg); }
+  #history { margin-top:24px; border-top:1px solid var(--line); padding-top:14px; }
+  #history h2 { font-size:18px; margin:0 0 10px; }
+  .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; min-width:96px; }
+  .stat b { display:block; font-size:22px; } .stat span { font-size:12px; color:var(--muted); }
+  .hist-item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; }
+  .hist-item small { color:var(--muted); display:block; }
+  a { color:var(--pink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>미소 트레이너 😊</h1>
+  <p class="sub">카메라로 입꼬리를 보고 <b>좌우 대칭</b>, <b>입꼬리 높이</b>, <b>유지 시간</b>을 음성으로 코칭해요.</p>
+  <div class="controls">
+    <select id="mode">
+      <option value="soft">은은한 미소 (입 다물고)</option>
+      <option value="big">활짝 미소 (치아 보이게)</option>
+    </select>
+    <select id="hold">
+      <option value="5">5초 유지</option>
+      <option value="10" selected>10초 유지</option>
+      <option value="15">15초 유지</option>
+      <option value="20">20초 유지</option>
+    </select>
+    <select id="sets">
+      <option value="3">3회</option>
+      <option value="5" selected>5회</option>
+      <option value="8">8회</option>
+      <option value="10">10회</option>
+    </select>
+  </div>
+  <div class="controls">
+    <button id="start" class="primary">연습 시작</button>
+    <button id="voice">음성: 켜짐</button>
+  </div>
+  <div class="tips">
+    <b>이렇게 해요</b><br>
+    1. 폰을 얼굴 정면, 팔 길이 정도 거리에 세워 두세요.<br>
+    2. 처음 2초는 얼굴에 힘을 빼요. 평소 입꼬리 위치를 기억해요.<br>
+    3. "웃으세요" 소리가 나면 웃고, 초록 테두리가 유지되는 동안 시간이 줄어요.<br>
+    4. 화면 양옆 막대는 왼쪽·오른쪽 입꼬리 높이예요. 두 막대 높이를 맞춰 보세요.
+  </div>
+  <div id="status">영상은 기기 밖으로 전송되지 않아요. · <a href="../">모션 트레이너(운동)로 가기</a></div>
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="flash" id="flash"></div>
+    <div class="side l"><span>좌</span><b id="tgtL"></b><i id="barL"></i></div>
+    <div class="side r"><span>우</span><b id="tgtR"></b><i id="barR"></i></div>
+    <button id="exit">■ 그만하기</button>
+    <div class="hud">
+      <div class="pill"><div class="label" id="repLabel">회차</div><div class="mid" id="rep">-</div></div>
+      <div class="pill"><div class="label" id="timeLabel">남은 시간</div><div class="big" id="time">-</div></div>
+      <div class="pill"><div class="label">대칭</div><div class="mid" id="sym">-</div></div>
+    </div>
+    <div class="cue" id="cue">연습 시작을 눌러주세요<small>얼굴이 화면 가운데 오게 해주세요</small></div>
+  </div>
+  <div id="reps"></div>
+  <div id="summary"></div>
+  <section id="history">
+    <h2>연습 기록</h2>
+    <div class="stats" id="histStats"></div>
+    <div id="histList"></div>
+    <button id="histClear" style="font-size:13px;color:var(--muted)">기록 전체 삭제</button>
+  </section>
+</main>
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+let landmarker, stream, running = false, voiceOn = store.get("voice") !== "off";
+let W = 640, H = 480;
+
+// ---------- 모드별 목표 ----------
+// score: 미소 강도 0~1 (MediaPipe 미소 수치 + 입꼬리가 평소보다 올라간 정도를 반반 섞음)
+// tilt: 두 입꼬리를 잇는 선이 눈 선 대비 기울어진 각도(도). 작을수록 대칭.
+const MODES = {
+  soft: { name: "은은한 미소", target: 0.38, tiltOk: 3.5, jawMax: 0.22 },
+  big:  { name: "활짝 미소",   target: 0.62, tiltOk: 4,   jawMax: 1 },
+};
+const LIFT_FULL = 0.07;
+const TIPS = { low: "입꼬리를 더 높이 올리기", tiltL: "왼쪽 입꼬리를 더 올리기", tiltR: "오른쪽 입꼬리를 더 올리기",
+               jaw: "입을 다물고 웃기", yaw: "정면 보기", far: "폰을 가까이 두기" };
+const MSGS = {}; // 눈 사이 거리 대비 이만큼 올라가면 막대가 가득 참
+
+// 얼굴 랜드마크 번호 (MediaPipe Face Mesh). 원본 영상 기준 x가 큰 쪽이 본인의 왼쪽.
+const EYE_R = 33, EYE_L = 263, CORNER_R = 61, CORNER_L = 291, NOSE_BASE = 2, NOSE_TIP = 1;
+const LIPS_OUT = [61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146];
+const LIPS_IN = [78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95];
+
+// ---------- 상태 ----------
+let S;
+function reset() {
+  S = { phase: "idle", phaseAt: 0, rep: 0, good: 0, base: null, calibRaw: [], lastT: 0,
+        ema: null, issueFrames: {}, reps: [], cur: null, said: {}, sid: Date.now(), lastNoFace: 0 };
+  $("reps").innerHTML = ""; $("summary").textContent = "";
+}
+reset();
+const cfg = () => ({ mode: MODES[$("mode").value], hold: +$("hold").value, sets: +$("sets").value });
+
+// ---------- 음성 ----------
+// 우선순위: 3 진행 안내(웃으세요/쉬세요) > 2 자세 교정 > 1 칭찬·코칭
+let lastSpeakAt = 0, lastPrio = 0; const lastCueAt = {};
+function speak(text, prio, key, gap = 4500) {
+  if (!voiceOn || !("speechSynthesis" in window)) return false;
+  const now = performance.now();
+  if (key && now - (lastCueAt[key] || 0) < gap) return false;
+  const busy = speechSynthesis.speaking || speechSynthesis.pending;
+  if (prio < 3 && busy && lastPrio >= prio) return false;
+  if (prio <= 1 && now - lastSpeakAt < 2000) return false;
+  if (prio >= 2 && busy) speechSynthesis.cancel();
+  if (key) lastCueAt[key] = now;
+  lastSpeakAt = now; lastPrio = prio;
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.05;
+  speechSynthesis.speak(u);
+  return true;
+}
+let audioCtx;
+function ding() {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
+    o.frequency.setValueAtTime(880, t); o.frequency.setValueAtTime(1320, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + 0.32);
+  } catch {}
+}
+
+function setCue(main, sub, color) {
+  $("cue").innerHTML = `${main}${sub ? `<small>${sub}</small>` : ""}`;
+  $("cue").style.color = color || "var(--fg)";
+}
+const setState = c => $("flash").style.setProperty("--state", c || "transparent");
+
+// ---------- 얼굴 측정 ----------
+function measure(lm, blend) {
+  const P = i => ({ x: lm[i].x * W, y: lm[i].y * H });
+  const eR = P(EYE_R), eL = P(EYE_L);
+  const ang = Math.atan2(eL.y - eR.y, eL.x - eR.x), cos = Math.cos(-ang), sin = Math.sin(-ang);
+  const eye = Math.hypot(eL.x - eR.x, eL.y - eR.y);
+  // 눈 선을 수평으로 돌린 좌표계 (고개가 기울어도 대칭 판단이 흔들리지 않게)
+  const R = p => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos });
+  const cL = R(P(CORNER_L)), cR = R(P(CORNER_R)), nb = R(P(NOSE_BASE)), nt = R(P(NOSE_TIP));
+  const eMid = R({ x: (eL.x + eR.x) / 2, y: (eL.y + eR.y) / 2 });
+  const b = Object.fromEntries((blend?.categories || []).map(c => [c.categoryName, c.score]));
+  return {
+    eye, roll: ang * 180 / Math.PI,
+    // 양수 = 오른쪽 입꼬리가 더 높음, 음수 = 왼쪽 입꼬리가 더 높음 (y는 아래로 증가)
+    tilt: Math.atan2(cL.y - cR.y, cL.x - cR.x) * 180 / Math.PI,
+    hL: (cL.y - nb.y) / eye, hR: (cR.y - nb.y) / eye, // 코 밑에서 입꼬리까지 높이 (작을수록 올라감)
+    yaw: (nt.x - eMid.x) / eye, // 고개를 좌우로 돌린 정도
+    smile: ((b.mouthSmileLeft ?? 0) + (b.mouthSmileRight ?? 0)) / 2,
+    eyeSmile: ((b.cheekSquintLeft ?? 0) + (b.cheekSquintRight ?? 0) + (b.eyeSquintLeft ?? 0) + (b.eyeSquintRight ?? 0)) / 4,
+    jaw: b.jawOpen ?? 0,
+    frown: ((b.mouthFrownLeft ?? 0) + (b.mouthFrownRight ?? 0)) / 2,
+    size: eye / Math.min(W, H),
+  };
+}
+function smooth(m) {
+  if (!S.ema) return (S.ema = { ...m });
+  for (const k in m) S.ema[k] += (m[k] - S.ema[k]) * 0.35;
+  return S.ema;
+}
+const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? 0; };
+
+// 연습 중 체크: 중요한 것(대칭·입꼬리 높이)이 먼저, 부가 안내는 나중
+function checks(m, mode) {
+  const liftL = S.base.hL - m.hL, liftR = S.base.hR - m.hR;
+  const score = 0.5 * m.smile + 0.5 * Math.min(1, Math.max(0, (liftL + liftR) / 2 / LIFT_FULL));
+  const issues = [];
+  if (Math.abs(m.yaw) > 0.14) issues.push({ k: "yaw", m: "얼굴을 정면으로 봐주세요", gate: true });
+  if (m.size < 0.1) issues.push({ k: "far", m: "폰을 얼굴 가까이 가져오세요", gate: true });
+  if (!issues.length) {
+    if (score < mode.target) issues.push({ k: "low", m: score < mode.target * 0.5 ? "입꼬리를 위로 올려 웃어요" : "조금만 더 입꼬리를 올려요" });
+    if (m.tilt > mode.tiltOk) issues.push({ k: "tiltL", m: "왼쪽 입꼬리를 조금 더 올려요" });
+    else if (m.tilt < -mode.tiltOk) issues.push({ k: "tiltR", m: "오른쪽 입꼬리를 조금 더 올려요" });
+    if (m.jaw > mode.jawMax) issues.push({ k: "jaw", m: "입은 살짝 다물고 입꼬리만 올려요" });
+  }
+  return { liftL, liftR, score, issues };
+}
+
+// ---------- 화면 그리기 ----------
+function draw(lm, color, m) {
+  ctx.clearRect(0, 0, W, H);
+  if (!lm) return;
+  const P = i => [lm[i].x * W, lm[i].y * H];
+  const lw = Math.max(2, W / 260);
+  for (const ring of [LIPS_OUT, LIPS_IN]) {
+    ctx.beginPath(); ring.forEach((i, n) => { const [x, y] = P(i); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath();
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+  }
+  // 입꼬리 연결선 (기울어지면 노랑)
+  const [ax, ay] = P(CORNER_R), [bx, by] = P(CORNER_L);
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+  ctx.strokeStyle = m && Math.abs(m.tilt) > cfg().mode.tiltOk ? "#fbbf24" : "rgba(255,255,255,.75)"; ctx.lineWidth = lw; ctx.setLineDash([lw * 3, lw * 2]); ctx.stroke(); ctx.setLineDash([]);
+  for (const [x, y] of [[ax, ay], [bx, by]]) { ctx.beginPath(); ctx.arc(x, y, lw * 3, 0, 7); ctx.fillStyle = color; ctx.fill(); }
+}
+// 막대 높이 = 평소보다 입꼬리가 올라간 정도, 노랑 = 기울어서 더 올려야 하는 쪽
+function bars(liftL, liftR, mode, on, tilt = 0) {
+  const pct = v => Math.max(0, Math.min(100, v / LIFT_FULL * 100));
+  const tgt = Math.min(95, mode.target * 100);
+  $("tgtL").style.bottom = $("tgtR").style.bottom = on ? tgt + "%" : "-10px";
+  for (const [id, v, lower] of [["barL", liftL, tilt > mode.tiltOk], ["barR", liftR, tilt < -mode.tiltOk]]) {
+    $(id).style.height = on ? pct(v) + "%" : "0";
+    $(id).style.background = !on ? "var(--muted)" : lower ? "var(--warn)" : pct(v) >= tgt ? "var(--good)" : "var(--pink)";
+  }
+}
+
+// ---------- 연습 진행 ----------
+function go(phase, t) { S.phase = phase; S.phaseAt = t; }
+function startRep(t) {
+  S.rep++; S.good = 0; S.issueFrames = {};
+  S.cur = { good: 0, tilts: [], scores: [], issues: {}, eye: false, done: false };
+  go("smile", t);
+  $("rep").textContent = `${S.rep}/${cfg().sets}`;
+  speak(S.rep === 1 ? "웃으세요!" : `${S.rep}회차, 다시 웃어요`, 3);
+}
+function endRep(t, done) {
+  const c = S.cur; c.done = done;
+  const top = Object.entries(c.issues).sort((a, b) => b[1] - a[1])[0];
+  const avgTilt = c.tilts.length ? c.tilts.reduce((a, b) => a + Math.abs(b), 0) / c.tilts.length : 0;
+  S.reps.push({ done, good: Math.round(c.good), tilt: avgTilt, score: c.scores.length ? Math.max(...c.scores) : 0, eye: c.eye, top: top?.[0] });
+  const el = document.createElement("div"); el.className = "rep " + (done && avgTilt <= cfg().mode.tiltOk ? "ok" : "bad");
+  el.textContent = `${S.rep}회: ${done ? "완료" : "시간 초과"} · 대칭 ${symPct(avgTilt)}점${top ? " · " + MSGS[top[0]] : ""}`;
+  $("reps").appendChild(el);
+  saveSession();
+  if (S.rep >= cfg().sets) return finish();
+  ding(); go("rest", t);
+  speak(done ? "좋아요! 힘 빼고 쉬세요" : "괜찮아요, 힘 빼고 쉬세요", 3);
+}
+function finish() {
+  go("done", performance.now());
+  const done = S.reps.filter(r => r.done).length;
+  const avg = S.reps.reduce((a, r) => a + r.tilt, 0) / (S.reps.length || 1);
+  const tally = {}; S.reps.forEach(r => r.top && (tally[r.top] = (tally[r.top] || 0) + 1));
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+  const line = `오늘 연습 끝! ${S.reps.length}회 중 ${done}회 완료, 평균 대칭 ${symPct(avg)}점이에요.`;
+  setCue("연습 끝! 🎉", `${done}/${S.reps.length}회 완료 · 대칭 ${symPct(avg)}점 · 화면을 누르면 다시 시작`, "var(--good)");
+  setState("var(--good)");
+  $("summary").textContent = line + (top ? ` 가장 자주 나온 안내: "${MSGS[top[0]]}"` : "");
+  speak(line + (top ? ` 다음엔 ${TIPS[top[0]]}에 신경 써 봐요.` : ""), 3);
+  saveSession();
+}
+const symPct = deg => Math.max(0, Math.round(100 - Math.abs(deg) * 8));
+
+function step(lm, blend, t) {
+  const dt = S.lastT ? Math.min(0.2, (t - S.lastT) / 1000) : 0; S.lastT = t;
+  const { mode, hold } = cfg();
+  if (!lm) {
+    draw(null); bars(0, 0, mode, false); setState("var(--bad)");
+    if (S.phase !== "done") setCue("얼굴이 안 보여요", "얼굴을 화면 가운데로 가져오세요", "var(--bad)");
+    if (S.phase !== "done" && S.phase !== "idle" && t - S.lastNoFace > 2500) { S.lastNoFace = t; speak("얼굴이 안 보여요. 화면 가운데로 와 주세요", 2, "noface", 6000); }
+    return;
+  }
+  const m = smooth(measure(lm, blend));
+  const el = (t - S.phaseAt) / 1000;
+
+  if (S.phase === "calib") {
+    draw(lm, "rgba(255,255,255,.8)", null); bars(0, 0, mode, false); setState(null);
+    $("timeLabel").textContent = "준비"; $("time").textContent = Math.max(0, Math.ceil(2.5 - el));
+    setCue("얼굴에 힘을 빼세요", "평소 입꼬리 위치를 재고 있어요", "var(--fg)");
+    if (el > 0.4) S.calibRaw.push([m.hL, m.hR]);
+    if (el >= 2.5 && S.calibRaw.length >= 10) {
+      S.base = { hL: median(S.calibRaw.map(a => a[0])), hR: median(S.calibRaw.map(a => a[1])) };
+      startRep(t);
+    }
+    return;
+  }
+  if (S.phase === "rest") {
+    const left = 5 - el;
+    draw(lm, "rgba(255,255,255,.6)", null); bars(0, 0, mode, false); setState(null);
+    $("timeLabel").textContent = "쉬기"; $("time").textContent = Math.max(0, Math.ceil(left));
+    setCue("쉬는 시간", "얼굴 근육에 힘을 빼고 풀어 주세요", "var(--muted)");
+    if (left <= 0) startRep(t);
+    return;
+  }
+  if (S.phase !== "smile") { draw(lm, "rgba(255,255,255,.6)", null); return; }
+
+  const r = checks(m, mode);
+  // 잠깐 스치는 오인식은 무시: 같은 문제가 8프레임 이상 이어질 때만 안내
+  const active = new Set(r.issues.map(i => i.k));
+  for (const k in S.issueFrames) if (!active.has(k)) S.issueFrames[k] = 0;
+  r.issues.forEach(i => S.issueFrames[i.k] = (S.issueFrames[i.k] || 0) + 1);
+  // 웃기 시작하고 1.5초는 표정을 만드는 시간이라 안내하지 않음
+  const shown = el < 1.5 ? [] : r.issues.filter(i => S.issueFrames[i.k] >= 8);
+  const ok = !r.issues.length;
+  const c = S.cur;
+  if (r.score > mode.target * 0.5) { c.tilts.push(m.tilt); c.scores.push(r.score); }
+  if (m.eyeSmile > 0.3 && ok) c.eye = true;
+
+  if (ok) {
+    S.good += dt; c.good = S.good;
+    if (!c.praised) { c.praised = true; speak("좋아요, 그대로 유지해요", 1); }
+    else if (hold - S.good <= 3.2 && hold - S.good > 2.8) speak("3초!", 1, "three");
+    else if (!c.eye && S.good > 2.5 && !c.eyeHint) { if (speak("눈도 같이 웃어 보세요", 1)) c.eyeHint = true; }
+  } else {
+    shown.forEach(i => { MSGS[i.k] = i.m; c.issues[i.k] = (c.issues[i.k] || 0) + dt; });
+    if (shown.length) speak(shown[0].m, 2, shown[0].k);
+  }
+  const color = ok ? "#4ade80" : shown.some(i => i.gate) ? "#f87171" : "#fbbf24";
+  draw(lm, color, m); bars(r.liftL, r.liftR, mode, true, m.tilt);
+  setState(ok ? "var(--good)" : shown.length ? "var(--warn)" : null);
+  $("timeLabel").textContent = "남은 시간";
+  $("time").textContent = Math.max(0, Math.ceil(hold - S.good));
+  $("sym").textContent = r.score > mode.target * 0.5 ? symPct(m.tilt) : "-";
+  if (ok) setCue("좋아요! 그대로 😊", c.eye ? "눈웃음까지 완벽해요" : "입꼬리 높이와 대칭 모두 좋아요", "var(--good)");
+  else if (shown.length) setCue(shown[0].m, shown[1]?.m || mode.name, shown[0].gate ? "var(--bad)" : "var(--warn)");
+  else setCue("웃으세요!", mode.name, "var(--fg)");
+
+  if (S.good >= hold) endRep(t, true);
+  else if (el > hold + 20) endRep(t, false);
+}
+
+function loop() {
+  if (!running) return;
+  if (video.readyState >= 2) {
+    const t = performance.now();
+    const res = landmarker.detectForVideo(video, t);
+    step(res.faceLandmarks?.[0], res.faceBlendshapes?.[0], t);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------- 카메라 / 모델 ----------
+async function init() {
+  $("status").textContent = "얼굴 인식 모델을 불러오는 중...";
+  const files = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  landmarker = await FaceLandmarker.createFromOptions(files, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true,
+  });
+}
+async function start() {
+  try {
+    if (!landmarker) await init();
+    if (!stream) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      video.srcObject = stream; await video.play();
+      W = canvas.width = video.videoWidth; H = canvas.height = video.videoHeight;
+    }
+    reset(); go("calib", performance.now());
+    $("rep").textContent = `0/${cfg().sets}`; $("sym").textContent = "-";
+    $("status").textContent = "인식 중이에요.";
+    document.body.classList.add("practice");
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    speak("얼굴에 힘을 빼고 화면을 봐 주세요", 3);
+    if (!running) { running = true; loop(); }
+  } catch (e) {
+    $("status").textContent = "시작 실패: " + e.message + " (카메라 권한과 인터넷 연결을 확인해주세요)";
+  }
+}
+function stop() {
+  if (S.phase === "smile" && S.cur?.good > 1) endRep(performance.now(), false);
+  running = false; speechSynthesis?.cancel();
+  stream?.getTracks().forEach(t => t.stop()); stream = null;
+  document.body.classList.remove("practice");
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  saveSession();
+}
+
+// ---------- 연습 기록 (이 기기 브라우저에 저장) ----------
+const loadHist = () => { try { return JSON.parse(store.get("smileHistory") || "[]"); } catch { return []; } };
+function saveSession() {
+  if (!S.reps.length) return;
+  const avg = S.reps.reduce((a, r) => a + r.tilt, 0) / S.reps.length;
+  const rec = { id: S.sid, t: S.sid, mode: $("mode").value, reps: S.reps.length, done: S.reps.filter(r => r.done).length,
+                sym: symPct(avg), sec: S.reps.reduce((a, r) => a + r.good, 0) };
+  const h = loadHist(), i = h.findIndex(r => r.id === rec.id);
+  if (i >= 0) h[i] = rec; else h.push(rec);
+  store.set("smileHistory", JSON.stringify(h.slice(-500)));
+  renderHist();
+}
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+function renderHist() {
+  const h = loadHist();
+  const days = new Set(h.map(r => dayKey(r.t)));
+  let streak = 0; for (let d = new Date(); days.has(dayKey(d)); d.setDate(d.getDate() - 1)) streak++;
+  const recent = h.slice(-7);
+  const avgSym = recent.length ? Math.round(recent.reduce((a, r) => a + r.sym, 0) / recent.length) : 0;
+  $("histStats").innerHTML = `<div class="stat"><b>${streak}일</b><span>연속 연습</span></div>
+    <div class="stat"><b>${h.length}번</b><span>전체 연습</span></div>
+    <div class="stat"><b>${recent.length ? avgSym + "점" : "-"}</b><span>최근 대칭 평균</span></div>`;
+  $("histList").innerHTML = h.slice(-10).reverse().map(r => {
+    const d = new Date(r.t);
+    return `<div class="hist-item">${MODES[r.mode]?.name || "미소"} · ${r.done}/${r.reps}회 완료 · 대칭 ${r.sym}점
+      <small>${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")} · 미소 유지 ${r.sec}초</small></div>`;
+  }).join("") || `<div class="label">아직 기록이 없어요.</div>`;
+}
+renderHist();
+
+// ---------- 버튼 ----------
+for (const id of ["mode", "hold", "sets"]) { const v = store.get("smile_" + id); if (v) $(id).value = v; $(id).onchange = () => store.set("smile_" + id, $(id).value); }
+$("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐");
+$("voice").onclick = () => { voiceOn = !voiceOn; store.set("voice", voiceOn ? "on" : "off"); $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
+$("start").onclick = () => { ding(); keepAwake(); start(); };
+$("exit").onclick = e => { e.stopPropagation(); stop(); };
+$("canvas").parentElement.onclick = () => { if (running && S.phase === "done") start(); };
+$("histClear").onclick = () => { if (confirm("연습 기록을 모두 지울까요? 되돌릴 수 없어요.")) { store.set("smileHistory", "[]"); renderHist(); } };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSession(); else if (running) keepAwake(); });
+let wakeLock;
+async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+window.__S = () => S; // 테스트용
+</script>
+</body>
+</html>
