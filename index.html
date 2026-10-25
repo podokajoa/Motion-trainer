@@ -36,6 +36,24 @@
   .rep.bad { border-color:var(--warn); }
   #summary { margin-top:12px; font-size:14px; line-height:1.6; color:var(--muted); }
   #status { color:var(--muted); font-size:13px; margin:4px 0; }
+  #zoomWrap { display:none; align-items:center; gap:8px; color:var(--muted); font-size:14px; }
+  #exit { display:none; }
+  .flash { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 0 0 transparent; transition:box-shadow .25s; }
+  /* 운동 모드: 멀리서도 보이게 전체화면 + 큰 글씨 + 테두리 색으로 상태 표시 */
+  body.workout main > :not(.stage) { display:none; }
+  body.workout main { padding:0; max-width:none; }
+  body.workout .stage { position:fixed; inset:0; width:100vw; height:100vh; max-height:none; aspect-ratio:auto; border-radius:0; }
+  body.workout .flash { box-shadow:inset 0 0 0 2.5vmin var(--state, transparent); }
+  body.workout .pill { padding:1.5vmin 2.5vmin; border-radius:2vmin; }
+  body.workout .label { font-size:3vmin; }
+  body.workout .count { font-size:22vmin; }
+  body.workout #breath { font-size:10vmin; min-width:30vmin; }
+  body.workout #breathBar { height:1.5vmin; }
+  body.workout #view { font-size:4vmin; }
+  body.workout .cue { font-size:8vmin; line-height:1.2; padding:2.5vmin 3vmin; bottom:4vmin; left:4vmin; right:4vmin; border-radius:3vmin; }
+  body.workout .cue small { font-size:4vmin; }
+  body.workout #exit { display:block; position:absolute; right:3vmin; bottom:calc(4vmin + 30vmin); font-size:4vmin; padding:1.5vmin 3vmin; opacity:.85; }
+  body.workout .hud { top:3vmin; left:3vmin; right:3vmin; }
 </style>
 </head>
 <body>
@@ -50,16 +68,20 @@
       <option value="curl">덤벨 컬</option>
     </select>
     <button id="start" class="primary">카메라 시작</button>
-    <button id="flip">카메라 전환</button>
+    <select id="cam"><option value="">카메라: 전면</option></select>
     <button id="reset">초기화</button>
     <button id="voice">음성: 켜짐</button>
-    <button id="breathVoice">호흡 음성: 켜짐</button>
+    <button id="breathVoice">호흡: 신호음</button>
+    <label id="zoomWrap">줌 <input type="range" id="zoom" step="0.1"> <span id="zoomVal"></span></label>
   </div>
   <div id="guide"></div>
+  <div id="camHint" style="color:var(--muted);font-size:13px;margin-bottom:6px">0.6배 광각은 보통 후면 카메라 중 하나예요. 카메라 목록에서 바꿔가며 가장 넓게 보이는 걸 고르세요. 고른 카메라는 기억해 둬요.</div>
   <div id="status">버튼을 누르면 카메라 권한을 요청합니다. 영상은 기기 밖으로 전송되지 않아요.</div>
   <div class="stage">
     <video id="video" playsinline muted></video>
     <canvas id="canvas"></canvas>
+    <div class="flash" id="flash"></div>
+    <button id="exit">■ 그만하기</button>
     <div class="hud">
       <div class="pill"><div class="label" id="countLabel">횟수</div><div class="count" id="count">0</div></div>
       <div class="pill" id="breathBox" style="color:var(--muted)"><div class="label">호흡</div><div id="breath">-</div><div id="breathBar"><div id="breathFill"></div></div></div>
@@ -75,8 +97,10 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdel
 
 const $ = id => document.getElementById(id);
 const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
-let landmarker, stream, running = false, facing = "user";
-let voiceOn = true, breathVoiceOn = true;
+let landmarker, stream, running = false;
+let voiceOn = true, breathMode = "tone"; // tone | voice | off
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+breathMode = store.get("breathMode") || "tone";
 
 // ---------- 기하 계산 (픽셀 좌표 기준, y는 아래로 증가) ----------
 let W = 640, H = 480;
@@ -124,18 +148,20 @@ const EX = {
     keys: ["hip", "kn", "an"],
     metric: (lm, sd) => angle(P(lm, sd.s.hip), P(lm, sd.s.kn), P(lm, sd.s.an)),
     coach: "발은 어깨너비, 무릎을 바깥쪽으로 벌리며 앉으세요",
+    cues: { down: ["무릎을 바깥쪽으로 계속 밀어주세요", "엉덩이를 뒤로 빼면서 앉으세요", "가슴을 펴고 등을 곧게"], up: ["뒤꿈치로 바닥을 밀며 일어나세요", "일어나면서 엉덩이를 조이세요", "무릎이 안으로 모이지 않게"] },
     checks(lm, sd, view, ang) {
       const out = [];
       const s = sd.s, hip = P(lm, s.hip), kn = P(lm, s.kn), an = P(lm, s.an), sh = P(lm, s.sh);
       const leg = dist(hip, kn) + dist(kn, an);
-      if (view === "front") {
+      if (view === "front" || view === "diag") {
         const kL = P(lm, 25), kR = P(lm, 26), aL = P(lm, 27), aR = P(lm, 28), sL = P(lm, 11), sR = P(lm, 12);
         const kneeW = Math.abs(kL.x - kR.x), ankleW = Math.abs(aL.x - aR.x), shW = Math.abs(sL.x - sR.x);
         if (ang < 150 && kneeW < ankleW * 0.9) out.push({ k: "valgus", m: "무릎이 안으로 모여요! 바깥쪽으로 벌리세요", sev: 3 });
         if (ang > 150 && ankleW < shW * 0.75) out.push({ k: "stance", m: "발을 어깨너비로 벌려주세요", sev: 1 });
         const hipTilt = Math.abs(P(lm, 23).y - P(lm, 24).y) / shW;
         if (ang < 140 && hipTilt > 0.18) out.push({ k: "shift", m: "체중을 양발에 고르게 실으세요", sev: 2 });
-      } else if (view === "side") {
+      }
+      if (view === "side" || view === "diag") {
         const lean = leanFromVertical(hip, sh);
         if (lean > 50) out.push({ k: "lean", m: "가슴을 펴고 등을 곧게 세우세요", sev: 3 });
         const toe = P(lm, s.toe), heel = P(lm, s.heel);
@@ -155,6 +181,7 @@ const EX = {
     // 더 많이 굽혀진 무릎을 앞다리로 봄
     metric: (lm) => Math.min(angle(P(lm, 23), P(lm, 25), P(lm, 27)), angle(P(lm, 24), P(lm, 26), P(lm, 28))),
     coach: "상체는 세우고, 앞무릎과 뒷무릎 모두 90도까지",
+    cues: { down: ["상체를 세운 채 수직으로 내려가세요", "앞무릎은 발끝 방향으로"], up: ["앞발 뒤꿈치로 밀어 올라오세요", "복부에 힘을 유지하세요"] },
     checks(lm, sd, view, ang) {
       const out = [];
       const L = angle(P(lm, 23), P(lm, 25), P(lm, 27)), R = angle(P(lm, 24), P(lm, 26), P(lm, 28));
@@ -177,6 +204,7 @@ const EX = {
     keys: ["sh", "el", "wr", "hip", "an"],
     metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
     coach: "머리부터 발끝까지 일직선, 복부에 힘",
+    cues: { down: ["팔꿈치는 몸에서 45도로", "가슴을 바닥 가까이"], up: ["복부에 힘 주고 밀어 올리세요", "엉덩이가 처지지 않게"] },
     checks(lm, sd, view) {
       const out = [];
       if (view === "front") return [{ k: "view", m: "옆에서 찍어야 정확해요", sev: 1 }];
@@ -193,6 +221,7 @@ const EX = {
   plank: {
     name: "플랭크", view: "측면", hold: true, keys: ["sh", "hip", "an"],
     coach: "팔꿈치는 어깨 아래, 몸은 일직선, 호흡은 멈추지 마세요",
+    holdCues: ["배꼽을 당기고 엉덩이를 조이세요", "어깨로 바닥을 밀어내세요", "호흡은 멈추지 마세요", "목은 일직선, 시선은 바닥"],
     checks(lm, sd, view) {
       if (view === "front") return [{ k: "view", m: "옆에서 찍어야 정확해요", sev: 1 }];
       const s = sd.s, sh = P(lm, s.sh), hip = P(lm, s.hip), an = P(lm, s.an), el = P(lm, s.el), ear = P(lm, s.ear);
@@ -210,6 +239,7 @@ const EX = {
     keys: ["sh", "el", "wr"],
     metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
     coach: "팔꿈치는 옆구리에 고정, 천천히 내리세요",
+    cues: { down: ["팔꿈치를 옆구리에 붙이고 올리세요"], up: ["천천히 내리세요", "팔을 끝까지 펴세요"] },
     checks(lm, sd) {
       const s = sd.s, sh = P(lm, s.sh), el = P(lm, s.el), hip = P(lm, s.hip), out = [];
       if (angle(hip, sh, el) > 30) out.push({ k: "elbow", m: "팔꿈치가 앞으로 나와요, 옆구리에 고정", sev: 3 });
@@ -226,7 +256,7 @@ const EX = {
 const S = {};
 function resetState() {
   Object.assign(S, { count: 0, phase: "up", minAng: 180, maxAng: 0, repIssues: new Map(), reps: [], ang: null, prevAng: null,
-    breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {} });
+    breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {}, dir: null, issueFrames: {}, cueIdx: 0, lastCoachAt: 0, lastHoldCue: 0 });
   $("count").textContent = "0"; $("reps").innerHTML = ""; $("summary").textContent = "";
   const ex = EX[$("exercise").value];
   $("countLabel").textContent = ex.hold ? "유지 시간" : "횟수";
@@ -234,26 +264,45 @@ function resetState() {
   setCue("준비되면 시작하세요", ex.coach, "var(--fg)");
 }
 
-// ---------- 음성 (우선순위: 횟수 > 자세 > 호흡) ----------
-let lastSpeakAt = 0; const lastCueAt = {};
+// ---------- 음성 ----------
+// 우선순위: 3 횟수 > 2 자세 교정 > 1 코칭 멘트 > 0 호흡. 호흡은 기본적으로 말 대신 짧은 신호음.
+let lastSpeakAt = 0, lastPrio = 0; const lastCueAt = {};
 function speak(text, prio, key) {
-  if (!voiceOn || !("speechSynthesis" in window)) return;
+  if (!voiceOn || !("speechSynthesis" in window)) return false;
   const now = performance.now();
-  if (key && now - (lastCueAt[key] || 0) < 5000) return;
-  if (prio < 3 && now - lastSpeakAt < (prio === 1 ? 1200 : 2500)) return;
-  if (prio < 3 && speechSynthesis.speaking && prio === 1) return;
+  if (key && now - (lastCueAt[key] || 0) < 5000) return false;
+  const busy = speechSynthesis.speaking || speechSynthesis.pending;
+  if (prio < 3 && busy && lastPrio >= prio) return false;
+  if (prio <= 1 && now - lastSpeakAt < 1500) return false;
+  if (prio === 2 && busy) speechSynthesis.cancel();
   if (key) lastCueAt[key] = now;
-  lastSpeakAt = now;
-  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.15;
-  if (prio >= 2) speechSynthesis.cancel();
+  lastSpeakAt = now; lastPrio = prio;
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.1;
   speechSynthesis.speak(u);
+  return true;
 }
+
+let audioCtx;
+function tone(rising) {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime;
+    o.type = "sine";
+    o.frequency.setValueAtTime(rising ? 330 : 560, t);
+    o.frequency.linearRampToValueAtTime(rising ? 520 : 340, t + 0.35);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + 0.45);
+  } catch {}
+}
+
+function setState(color) { $("flash").style.setProperty("--state", color); }
 
 function setCue(main, sub, color) {
   const c = $("cue");
   c.innerHTML = ""; c.append(main);
   if (sub) { const sm = document.createElement("small"); sm.textContent = sub; c.append(sm); }
   c.style.color = color;
+  setState(color);
 }
 
 function setBreath(kind) {
@@ -262,7 +311,9 @@ function setBreath(kind) {
   S.breath = kind; S.breathSince = performance.now();
   $("breath").textContent = kind === "in" ? "들숨" : kind === "out" ? "날숨" : "-";
   box.style.color = kind === "in" ? "var(--in)" : kind === "out" ? "var(--out)" : "var(--muted)";
-  if (breathVoiceOn && kind) speak(kind === "in" ? "들숨" : "날숨", 1);
+  if (!kind || breathMode === "off") return;
+  if (breathMode === "tone") tone(kind === "in");
+  else speak(kind === "in" ? "들숨" : "날숨", 0);
 }
 
 // ---------- 매 프레임 처리 ----------
@@ -274,7 +325,12 @@ function process(lm, t) {
   if (sd.vis < 0.5) { setCue("몸 전체가 보이게 서주세요", "카메라에서 2~3m 떨어지면 좋아요", "var(--muted)"); return; }
   const dt = S.lastT ? Math.min(t - S.lastT, 100) : 0; S.lastT = t;
 
-  const issues = ex.checks(lm, sd, view, S.ang ?? 180).sort((a, b) => b.sev - a.sev);
+  const found = ex.checks(lm, sd, view, S.ang ?? 180).sort((a, b) => b.sev - a.sev);
+  // 순간적인 인식 흔들림은 무시: 같은 문제가 6프레임 이상 이어질 때만 교정
+  const seen = new Set(found.map(i => i.k));
+  for (const k of Object.keys(S.issueFrames)) if (!seen.has(k)) delete S.issueFrames[k];
+  for (const k of seen) S.issueFrames[k] = (S.issueFrames[k] || 0) + 1;
+  const issues = found.filter(i => S.issueFrames[i.k] >= 6);
 
   if (ex.hold) return processHold(ex, issues, dt);
 
@@ -291,6 +347,8 @@ function process(lm, t) {
     if (Math.abs(v) > 25) {
       const lowering = v < 0;
       setBreath(lowering === ex.lowerIsInhale ? "in" : "out");
+      const dir = lowering ? "down" : "up";
+      if (dir !== S.dir) { S.dir = dir; if (!issues.length) coach(ex, dir, t); }
     }
   }
   const lo = ex.down, hi = ex.up;
@@ -316,6 +374,14 @@ function process(lm, t) {
   }
 }
 
+// 문제가 없을 때도 동작 단계에 맞는 코칭 멘트를 돌아가며 들려줌
+function coach(ex, dir, t) {
+  const list = ex.cues?.[dir];
+  if (!list || t - S.lastCoachAt < 3500) return;
+  const line = list[S.cueIdx % list.length];
+  if (speak(line, 1)) { S.lastCoachAt = t; if (dir === "up") S.cueIdx++; }
+}
+
 function completeRep(ex) {
   S.phase = "up"; S.count++;
   for (const i of ex.repEnd(S.minAng, S.maxAng)) S.repIssues.set(i.k, i.m);
@@ -324,6 +390,7 @@ function completeRep(ex) {
   S.reps.push(iss);
   $("count").textContent = S.count;
   speak(String(S.count), 3);
+  if (!iss.length) { setState("var(--good)"); }
   const el = document.createElement("div");
   el.className = "rep " + (iss.length ? "bad" : "ok");
   el.textContent = `${S.count}회 ${iss.length ? "· " + iss.join(", ") : "· 완벽"}`;
@@ -343,6 +410,10 @@ function processHold(ex, issues, dt) {
     S.issueTally[issues[0].k] = (S.issueTally[issues[0].k] || 0) + dt / 1000; S.msgs[issues[0].k] = issues[0].m;
   } else {
     S.holdMs += dt;
+    if (!issues.length && S.holdMs - S.lastHoldCue > 10000) {
+      S.lastHoldCue = S.holdMs;
+      speak(ex.holdCues[S.cueIdx++ % ex.holdCues.length], 1);
+    }
     setCue(issues[0]?.m || "좋아요, 그대로 유지!", ex.coach, issues.length ? "var(--warn)" : "var(--good)");
   }
   const sec = Math.floor(S.holdMs / 1000);
@@ -368,20 +439,67 @@ async function init() {
   });
 }
 
+async function listCams() {
+  const sel = $("cam"), cur = sel.value;
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  sel.innerHTML = "";
+  let back = 0;
+  cams.forEach((c, i) => {
+    const isFront = /front|user|전면/i.test(c.label);
+    const name = isFront ? "전면 카메라" : `후면 카메라 ${++back}`;
+    sel.add(new Option(`${name}${c.label ? " (" + c.label + ")" : ""}`, c.deviceId));
+  });
+  sel.value = cur || store.get("camId") || "";
+  if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+}
+
+function setupZoom(track) {
+  const cap = track.getCapabilities?.() || {};
+  const z = $("zoom"), wrap = $("zoomWrap");
+  if (!cap.zoom) { wrap.style.display = "none"; return; }
+  wrap.style.display = "flex";
+  z.min = cap.zoom.min; z.max = Math.min(cap.zoom.max, 3); z.step = cap.zoom.step || 0.1;
+  const saved = parseFloat(store.get("zoom"));
+  z.value = Number.isFinite(saved) ? saved : cap.zoom.min; // 기본은 가장 넓게
+  const apply = () => { track.applyConstraints({ advanced: [{ zoom: +z.value }] }).catch(() => {}); $("zoomVal").textContent = (+z.value).toFixed(1) + "배"; };
+  z.oninput = () => { store.set("zoom", z.value); apply(); };
+  apply();
+}
+
 async function start() {
   try {
     if (!landmarker) await init();
     stream?.getTracks().forEach(t => t.stop());
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+    const id = $("cam").value || store.get("camId");
+    const video_c = { width: { ideal: 1280 }, height: { ideal: 720 } };
+    if (id) video_c.deviceId = { exact: id }; else video_c.facingMode = "user";
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: video_c, audio: false }); }
+    catch { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false }); }
+    const track = stream.getVideoTracks()[0];
+    await listCams();
+    const curId = track.getSettings().deviceId; if (curId) $("cam").value = curId;
+    setupZoom(track);
     video.srcObject = stream; await video.play();
     W = canvas.width = video.videoWidth; H = canvas.height = video.videoHeight;
-    const mirror = facing === "user" ? "scaleX(-1)" : "none";
+    const facingNow = track.getSettings().facingMode || (/front|user/i.test(track.label) ? "user" : "environment");
+    const mirror = facingNow === "user" ? "scaleX(-1)" : "none";
     video.style.transform = canvas.style.transform = mirror;
     $("status").textContent = "인식 중입니다. 운동을 시작하세요!";
+    enterWorkout();
     if (!running) { running = true; loop(); }
   } catch (e) {
     $("status").textContent = "시작 실패: " + e.message + " (카메라 권한과 인터넷 연결을 확인해주세요)";
   }
+}
+
+function enterWorkout() {
+  document.body.classList.add("workout");
+  document.documentElement.requestFullscreen?.().catch(() => {});
+}
+function exitWorkout() {
+  document.body.classList.remove("workout");
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  running = false; stream?.getTracks().forEach(t => t.stop()); speechSynthesis.cancel();
 }
 
 const draw = new DrawingUtils(ctx);
@@ -404,11 +522,15 @@ function loop() {
 }
 
 $("start").onclick = start;
-$("flip").onclick = () => { facing = facing === "user" ? "environment" : "user"; if (running) start(); };
+$("cam").onchange = () => { store.set("camId", $("cam").value); store.set("zoom", ""); if (running) start(); };
+$("exit").onclick = exitWorkout;
 $("reset").onclick = resetState;
 $("exercise").onchange = resetState;
 $("voice").onclick = () => { voiceOn = !voiceOn; $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
-$("breathVoice").onclick = () => { breathVoiceOn = !breathVoiceOn; $("breathVoice").textContent = "호흡 음성: " + (breathVoiceOn ? "켜짐" : "꺼짐"); };
+const BREATH_KO = { tone: "신호음", voice: "말로", off: "끔" };
+const showBreath = () => $("breathVoice").textContent = "호흡: " + BREATH_KO[breathMode];
+$("breathVoice").onclick = () => { breathMode = { tone: "voice", voice: "off", off: "tone" }[breathMode]; store.set("breathMode", breathMode); showBreath(); if (breathMode === "tone") tone(true); };
+showBreath();
 resetState();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
 // 운동 중 화면 꺼짐 방지
