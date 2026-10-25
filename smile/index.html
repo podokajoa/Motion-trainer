@@ -55,6 +55,12 @@
   .hist-item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; }
   .hist-item small { color:var(--muted); display:block; }
   a { color:var(--pink); }
+  .best { display:flex; gap:12px; align-items:center; background:var(--card); border:1px solid var(--pink); border-radius:12px; padding:10px; margin:12px 0; font-size:14px; line-height:1.5; }
+  .best img { width:120px; border-radius:10px; }
+  .best b { font-size:18px; }
+  .btnlike { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:16px; cursor:pointer; }
+  .pair { display:flex; gap:10px; margin:8px 0; } .pair figure { margin:0; text-align:center; font-size:13px; color:var(--muted); }
+  .pair img { width:130px; border-radius:10px; display:block; margin-bottom:4px; }
 </style>
 </head>
 <body>
@@ -83,12 +89,30 @@
     <button id="start" class="primary">연습 시작</button>
     <button id="voice">음성: 켜짐</button>
   </div>
+  <div class="tips" id="refBox">
+    <b>참고 미소 사진 (선택)</b><br>
+    마음에 드는 미소 사진을 넣으면 그 입꼬리 각도와 입 벌림 정도를 목표로 써요. 단, 내가 실제로 낸 최고 미소보다 조금씩만 목표를 올려요. 안 어울리면 끄면 돼요. 사진은 폰 안에서만 분석해요.
+    <div class="controls" style="margin:8px 0 0">
+      <label class="btnlike"><input type="file" id="refFile" accept="image/*" hidden>사진 고르기</label>
+      <button id="refToggle">참고 사진: 꺼짐</button>
+      <button id="refDel">사진 지우기</button>
+    </div>
+    <div id="refInfo"></div>
+  </div>
   <div class="tips">
     <b>이렇게 해요</b><br>
     1. 폰을 얼굴 정면, 팔 길이 정도 거리에 세워 두세요.<br>
     2. 처음 2초는 얼굴에 힘을 빼요. 평소 입꼬리 위치를 기억해요.<br>
     3. "웃으세요" 소리가 나면 웃고, 초록 테두리가 유지되는 동안 시간이 줄어요.<br>
     4. 화면 양옆 막대는 왼쪽·오른쪽 입꼬리 높이예요. 두 막대 높이를 맞춰 보세요.
+  </div>
+  <div class="tips">
+    <b>예쁜 입가 미소, 이걸 봐요</b><br>
+    ① <b>입꼬리 끝이 위로</b>: 입꼬리가 입술 가운데보다 올라가 U자가 돼요.<br>
+    ② <b>좌우 대칭</b>: 두 입꼬리 높이가 같아요.<br>
+    ③ <b>옆이 아니라 위로</b>: 입을 옆으로 당기면 어색해 보여요.<br>
+    ④ <b>윗니는 보이고 잇몸은 살짝만</b> (활짝 미소일 때).<br>
+    ⑤ <b>눈도 같이</b>: 눈가가 살짝 접히면 더 자연스러워요.
   </div>
   <div id="status">영상은 기기 밖으로 전송되지 않아요. · <a href="../">모션 트레이너(운동)로 가기</a></div>
   <div class="stage">
@@ -101,13 +125,15 @@
     <div class="hud">
       <div class="pill"><div class="label" id="repLabel">회차</div><div class="mid" id="rep">-</div></div>
       <div class="pill"><div class="label" id="timeLabel">남은 시간</div><div class="big" id="time">-</div></div>
-      <div class="pill"><div class="label">대칭</div><div class="mid" id="sym">-</div></div>
+      <div class="pill"><div class="label">미소 점수</div><div class="mid" id="sym">-</div></div>
     </div>
     <div class="cue" id="cue">연습 시작을 눌러주세요<small>얼굴이 화면 가운데 오게 해주세요</small></div>
   </div>
   <div id="reps"></div>
   <div id="summary"></div>
+  <div id="bestNow"></div>
   <section id="history">
+    <div id="bestEver"></div>
     <h2>연습 기록</h2>
     <div class="stats" id="histStats"></div>
     <div id="histList"></div>
@@ -126,17 +152,19 @@ let W = 640, H = 480;
 // ---------- 모드별 목표 ----------
 // score: 미소 강도 0~1 (MediaPipe 미소 수치 + 입꼬리가 평소보다 올라간 정도를 반반 섞음)
 // tilt: 두 입꼬리를 잇는 선이 눈 선 대비 기울어진 각도(도). 작을수록 대칭.
+// cornerUp: 입꼬리가 입 가운데보다 위로 올라간 각도(도) 목표. openMin: 활짝 미소일 때 윗니가 보일 만큼 벌어진 정도
 const MODES = {
-  soft: { name: "은은한 미소", target: 0.38, tiltOk: 3.5, jawMax: 0.22 },
-  big:  { name: "활짝 미소",   target: 0.62, tiltOk: 4,   jawMax: 1 },
+  soft: { name: "은은한 미소", target: 0.38, tiltOk: 3.5, jawMax: 0.22, cornerUp: 5, openMin: 0 },
+  big:  { name: "활짝 미소",   target: 0.62, tiltOk: 4,   jawMax: 1,    cornerUp: 8, openMin: 0.08 },
 };
-const LIFT_FULL = 0.07;
+const LIFT_FULL = 0.07; // 눈 사이 거리 대비 이만큼 올라가면 막대가 가득 참
 const TIPS = { low: "입꼬리를 더 높이 올리기", tiltL: "왼쪽 입꼬리를 더 올리기", tiltR: "오른쪽 입꼬리를 더 올리기",
-               jaw: "입을 다물고 웃기", yaw: "정면 보기", far: "폰을 가까이 두기" };
-const MSGS = {}; // 눈 사이 거리 대비 이만큼 올라가면 막대가 가득 참
+               jaw: "입을 다물고 웃기", yaw: "정면 보기", far: "폰을 가까이 두기",
+               corner: "입꼬리 끝을 위로 말아 올리기", stretch: "옆이 아니라 위로 웃기", gum: "윗입술을 살짝 내리기", teeth: "윗니가 보이게 웃기" };
+const MSGS = {};
 
 // 얼굴 랜드마크 번호 (MediaPipe Face Mesh). 원본 영상 기준 x가 큰 쪽이 본인의 왼쪽.
-const EYE_R = 33, EYE_L = 263, CORNER_R = 61, CORNER_L = 291, NOSE_BASE = 2, NOSE_TIP = 1;
+const EYE_R = 33, EYE_L = 263, CORNER_R = 61, CORNER_L = 291, NOSE_BASE = 2, NOSE_TIP = 1, LIP_IN_TOP = 13, LIP_IN_BOT = 14;
 const LIPS_OUT = [61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146];
 const LIPS_IN = [78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95];
 
@@ -145,10 +173,24 @@ let S;
 function reset() {
   S = { phase: "idle", phaseAt: 0, rep: 0, good: 0, base: null, calibRaw: [], lastT: 0,
         ema: null, issueFrames: {}, reps: [], cur: null, said: {}, sid: Date.now(), lastNoFace: 0 };
-  $("reps").innerHTML = ""; $("summary").textContent = "";
+  $("reps").innerHTML = ""; $("summary").textContent = ""; $("bestNow").innerHTML = "";
 }
 reset();
-const cfg = () => ({ mode: MODES[$("mode").value], hold: +$("hold").value, sets: +$("sets").value });
+const cfg = () => ({ mode: refMode() || MODES[$("mode").value], hold: +$("hold").value, sets: +$("sets").value });
+
+// ---------- 참고 미소 사진 ----------
+// 사진의 입꼬리 각도를 그대로 강요하지 않고, 내 최고 기록 +2도까지만 목표를 올림 (얼굴마다 구조가 달라서)
+const loadJSON = k => { try { return JSON.parse(store.get(k) || "null"); } catch { return null; } };
+let REF = loadJSON("refSmile"), refOn = store.get("refOn") === "on";
+function refMode(next = false) {
+  if (!refOn || !REF) return null;
+  const base = MODES[REF.open >= 0.08 ? "big" : "soft"];
+  // 연습 도중에는 목표가 바뀌지 않게 시작할 때의 기록을 씀
+  const myMax = !next && S?.myMaxStart != null ? S.myMaxStart : +(store.get("myMaxUp") || 0);
+  const cornerUp = Math.max(3, Math.min(20, REF.up, Math.max(base.cornerUp, myMax + 2)));
+  return { ...base, name: "참고 사진 미소", cornerUp, openMin: REF.open >= 0.08 ? Math.min(0.15, REF.open * 0.6) : 0,
+           target: Math.max(0.38, Math.min(0.62, REF.smile * 0.75)) };
+}
 
 // ---------- 음성 ----------
 // 우선순위: 3 진행 안내(웃으세요/쉬세요) > 2 자세 교정 > 1 칭찬·코칭
@@ -194,6 +236,10 @@ function measure(lm, blend) {
   const R = p => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos });
   const cL = R(P(CORNER_L)), cR = R(P(CORNER_R)), nb = R(P(NOSE_BASE)), nt = R(P(NOSE_TIP));
   const eMid = R({ x: (eL.x + eR.x) / 2, y: (eL.y + eR.y) / 2 });
+  const lt = R(P(LIP_IN_TOP)), lb = R(P(LIP_IN_BOT)), mc = { x: (lt.x + lb.x) / 2, y: (lt.y + lb.y) / 2 };
+  const mouthW = Math.hypot(cL.x - cR.x, cL.y - cR.y);
+  // 입꼬리가 입 가운데보다 얼마나 위에 있나 (도). 양수 = U자로 올라간 입꼬리
+  const up = c => Math.atan2(mc.y - c.y, Math.abs(c.x - mc.x)) * 180 / Math.PI;
   const b = Object.fromEntries((blend?.categories || []).map(c => [c.categoryName, c.score]));
   return {
     eye, roll: ang * 180 / Math.PI,
@@ -204,6 +250,10 @@ function measure(lm, blend) {
     smile: ((b.mouthSmileLeft ?? 0) + (b.mouthSmileRight ?? 0)) / 2,
     eyeSmile: ((b.cheekSquintLeft ?? 0) + (b.cheekSquintRight ?? 0) + (b.eyeSquintLeft ?? 0) + (b.eyeSquintRight ?? 0)) / 4,
     jaw: b.jawOpen ?? 0,
+    upL: up(cL), upR: up(cR),
+    open: (lb.y - lt.y) / mouthW, // 윗입술과 아랫입술 사이가 벌어진 정도
+    stretch: ((b.mouthStretchLeft ?? 0) + (b.mouthStretchRight ?? 0)) / 2, // 입을 옆으로 당김
+    upperUp: ((b.mouthUpperUpLeft ?? 0) + (b.mouthUpperUpRight ?? 0)) / 2, // 윗입술이 들림 (잇몸 노출)
     frown: ((b.mouthFrownLeft ?? 0) + (b.mouthFrownRight ?? 0)) / 2,
     size: eye / Math.min(W, H),
   };
@@ -226,9 +276,27 @@ function checks(m, mode) {
     if (score < mode.target) issues.push({ k: "low", m: score < mode.target * 0.5 ? "입꼬리를 위로 올려 웃어요" : "조금만 더 입꼬리를 올려요" });
     if (m.tilt > mode.tiltOk) issues.push({ k: "tiltL", m: "왼쪽 입꼬리를 조금 더 올려요" });
     else if (m.tilt < -mode.tiltOk) issues.push({ k: "tiltR", m: "오른쪽 입꼬리를 조금 더 올려요" });
+    const upMin = Math.min(m.upL, m.upR);
+    if (score >= mode.target * 0.6 && upMin < mode.cornerUp) {
+      if (m.stretch > 0.3) issues.push({ k: "stretch", m: "옆으로 당기지 말고 위로 올려요" });
+      else issues.push({ k: "corner", m: "입꼬리 끝을 위로 말아 올려요" });
+    }
     if (m.jaw > mode.jawMax) issues.push({ k: "jaw", m: "입은 살짝 다물고 입꼬리만 올려요" });
+    if (mode.openMin && score >= mode.target * 0.6 && m.open < mode.openMin) issues.push({ k: "teeth", m: "윗니가 보이게 입술을 살짝 벌려요" });
+    if (m.upperUp > 0.8) issues.push({ k: "gum", m: "윗입술을 살짝 내려요. 잇몸이 많이 보여요" });
   }
-  return { liftL, liftR, score, issues };
+  return { liftL, liftR, score, issues, pretty: prettyScore(m, mode, score) };
+}
+// 예쁜 미소 점수 0~100: 입꼬리 U자 35, 대칭 30, 강도 15, 옆으로 당기지 않기 10, 눈웃음 10
+function prettyScore(m, mode, score) {
+  const cl = v => Math.max(0, Math.min(1, v));
+  const upAvg = (m.upL + m.upR) / 2;
+  return Math.round(
+    35 * cl(upAvg / mode.cornerUp) * cl(1 - Math.abs(m.upL - m.upR) / 10) +
+    30 * cl(1 - Math.abs(m.tilt) / 10) * cl(score / mode.target) +
+    15 * cl(score / mode.target) +
+    10 * cl(1 - Math.max(0, m.stretch - 0.3) * 2) * cl(score / mode.target) +
+    10 * cl(m.eyeSmile / 0.3) - (m.upperUp > 0.8 ? 8 : 0));
 }
 
 // ---------- 화면 그리기 ----------
@@ -246,6 +314,13 @@ function draw(lm, color, m) {
   ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
   ctx.strokeStyle = m && Math.abs(m.tilt) > cfg().mode.tiltOk ? "#fbbf24" : "rgba(255,255,255,.75)"; ctx.lineWidth = lw; ctx.setLineDash([lw * 3, lw * 2]); ctx.stroke(); ctx.setLineDash([]);
   for (const [x, y] of [[ax, ay], [bx, by]]) { ctx.beginPath(); ctx.arc(x, y, lw * 3, 0, 7); ctx.fillStyle = color; ctx.fill(); }
+  // 입꼬리를 올려야 할 쪽에 위쪽 화살표 (본인 왼쪽 = CORNER_L)
+  if (m?.arrows) for (const [x, y, need] of [[bx, by, m.arrows.L], [ax, ay, m.arrows.R]]) {
+    if (!need) continue;
+    const s = lw * 6, top = y - s * 3.2;
+    ctx.beginPath(); ctx.moveTo(x, y - s * 0.8); ctx.lineTo(x, top); ctx.moveTo(x - s, top + s); ctx.lineTo(x, top); ctx.lineTo(x + s, top + s);
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = lw * 1.6; ctx.lineCap = "round"; ctx.stroke(); ctx.lineCap = "butt";
+  }
 }
 // 막대 높이 = 평소보다 입꼬리가 올라간 정도, 노랑 = 기울어서 더 올려야 하는 쪽
 function bars(liftL, liftR, mode, on, tilt = 0) {
@@ -262,7 +337,7 @@ function bars(liftL, liftR, mode, on, tilt = 0) {
 function go(phase, t) { S.phase = phase; S.phaseAt = t; }
 function startRep(t) {
   S.rep++; S.good = 0; S.issueFrames = {};
-  S.cur = { good: 0, tilts: [], scores: [], issues: {}, eye: false, done: false };
+  S.cur = { good: 0, tilts: [], scores: [], pretty: 0, issues: {}, eye: false, done: false };
   go("smile", t);
   $("rep").textContent = `${S.rep}/${cfg().sets}`;
   speak(S.rep === 1 ? "웃으세요!" : `${S.rep}회차, 다시 웃어요`, 3);
@@ -271,9 +346,9 @@ function endRep(t, done) {
   const c = S.cur; c.done = done;
   const top = Object.entries(c.issues).sort((a, b) => b[1] - a[1])[0];
   const avgTilt = c.tilts.length ? c.tilts.reduce((a, b) => a + Math.abs(b), 0) / c.tilts.length : 0;
-  S.reps.push({ done, good: Math.round(c.good), tilt: avgTilt, score: c.scores.length ? Math.max(...c.scores) : 0, eye: c.eye, top: top?.[0] });
+  S.reps.push({ done, good: Math.round(c.good), tilt: avgTilt, score: c.scores.length ? Math.max(...c.scores) : 0, pretty: c.pretty, eye: c.eye, top: top?.[0] });
   const el = document.createElement("div"); el.className = "rep " + (done && avgTilt <= cfg().mode.tiltOk ? "ok" : "bad");
-  el.textContent = `${S.rep}회: ${done ? "완료" : "시간 초과"} · 대칭 ${symPct(avgTilt)}점${top ? " · " + MSGS[top[0]] : ""}`;
+  el.textContent = `${S.rep}회: ${done ? "완료" : "시간 초과"} · 미소 ${c.pretty}점 · 대칭 ${symPct(avgTilt)}점${top ? " · " + MSGS[top[0]] : ""}`;
   $("reps").appendChild(el);
   saveSession();
   if (S.rep >= cfg().sets) return finish();
@@ -286,8 +361,10 @@ function finish() {
   const avg = S.reps.reduce((a, r) => a + r.tilt, 0) / (S.reps.length || 1);
   const tally = {}; S.reps.forEach(r => r.top && (tally[r.top] = (tally[r.top] || 0) + 1));
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-  const line = `오늘 연습 끝! ${S.reps.length}회 중 ${done}회 완료, 평균 대칭 ${symPct(avg)}점이에요.`;
-  setCue("연습 끝! 🎉", `${done}/${S.reps.length}회 완료 · 대칭 ${symPct(avg)}점 · 화면을 누르면 다시 시작`, "var(--good)");
+  const best = Math.max(0, ...S.reps.map(r => r.pretty));
+  const line = `오늘 연습 끝! ${S.reps.length}회 중 ${done}회 완료, 가장 예쁜 미소는 ${best}점, 평균 대칭은 ${symPct(avg)}점이에요.`;
+  setCue(`최고 미소 ${best}점 🎉`, `${done}/${S.reps.length}회 완료 · 대칭 ${symPct(avg)}점 · 화면을 누르면 다시 시작`, "var(--good)");
+  showBest();
   setState("var(--good)");
   $("summary").textContent = line + (top ? ` 가장 자주 나온 안내: "${MSGS[top[0]]}"` : "");
   speak(line + (top ? ` 다음엔 ${TIPS[top[0]]}에 신경 써 봐요.` : ""), 3);
@@ -339,6 +416,11 @@ function step(lm, blend, t) {
   const c = S.cur;
   if (r.score > mode.target * 0.5) { c.tilts.push(m.tilt); c.scores.push(r.score); }
   if (m.eyeSmile > 0.3 && ok) c.eye = true;
+  if (ok && r.pretty > c.pretty) c.pretty = r.pretty;
+  if (r.score >= mode.target * 0.6 && !r.issues.some(i => i.gate)) S.maxUp = Math.max(S.maxUp || 0, (m.upL + m.upR) / 2);
+  if (ok && r.pretty > (S.bestShot?.score ?? -1) && t - (S.lastShotAt || 0) > 400) { S.lastShotAt = t; S.bestShot = { score: r.pretty, img: snapshot(lm), up: Math.round((m.upL + m.upR) / 2) }; }
+  m.arrows = { L: shown.some(i => i.k === "tiltL" || i.k === "corner" && m.upL <= m.upR || i.k === "stretch" && m.upL <= m.upR),
+               R: shown.some(i => i.k === "tiltR" || i.k === "corner" && m.upR < m.upL || i.k === "stretch" && m.upR < m.upL) };
 
   if (ok) {
     S.good += dt; c.good = S.good;
@@ -354,8 +436,8 @@ function step(lm, blend, t) {
   setState(ok ? "var(--good)" : shown.length ? "var(--warn)" : null);
   $("timeLabel").textContent = "남은 시간";
   $("time").textContent = Math.max(0, Math.ceil(hold - S.good));
-  $("sym").textContent = r.score > mode.target * 0.5 ? symPct(m.tilt) : "-";
-  if (ok) setCue("좋아요! 그대로 😊", c.eye ? "눈웃음까지 완벽해요" : "입꼬리 높이와 대칭 모두 좋아요", "var(--good)");
+  $("sym").textContent = r.score > mode.target * 0.5 ? r.pretty : "-";
+  if (ok) setCue("예뻐요! 그대로 😊", c.eye ? "눈웃음까지 완벽해요" : "입꼬리 모양과 대칭 모두 좋아요", "var(--good)");
   else if (shown.length) setCue(shown[0].m, shown[1]?.m || mode.name, shown[0].gate ? "var(--bad)" : "var(--warn)");
   else setCue("웃으세요!", mode.name, "var(--fg)");
 
@@ -374,16 +456,68 @@ function loop() {
 }
 
 // ---------- 카메라 / 모델 ----------
+const MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+let files, photoLandmarker;
+const getFiles = async () => files ??= await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
 async function init() {
   $("status").textContent = "얼굴 인식 모델을 불러오는 중...";
-  const files = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-  landmarker = await FaceLandmarker.createFromOptions(files, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-      delegate: "GPU",
-    },
+  landmarker = await FaceLandmarker.createFromOptions(await getFiles(), {
+    baseOptions: { modelAssetPath: MODEL, delegate: "GPU" },
     runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true,
   });
+}
+async function analyzeRef(file) {
+  $("refInfo").textContent = "사진 분석 중...";
+  try {
+    photoLandmarker ??= await FaceLandmarker.createFromOptions(await getFiles(), {
+      baseOptions: { modelAssetPath: MODEL }, runningMode: "IMAGE", numFaces: 3, outputFaceBlendshapes: true,
+    });
+    // 움짤(GIF)은 여러 장면 중 가장 활짝 웃은 장면을 고름
+    const frames = [];
+    if (file.type === "image/gif" && "ImageDecoder" in window) {
+      const dec = new ImageDecoder({ data: await file.arrayBuffer(), type: "image/gif" });
+      await dec.tracks.ready; const n = dec.tracks.selectedTrack?.frameCount || 1, stepN = Math.max(1, Math.floor(n / 40));
+      for (let k = 0; k < n; k += stepN) {
+        const { image } = await dec.decode({ frameIndex: k });
+        const c = document.createElement("canvas"); c.width = image.displayWidth; c.height = image.displayHeight;
+        c.getContext("2d").drawImage(image, 0, 0); image.close(); frames.push(c);
+      }
+    } else {
+      const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext("2d").drawImage(img, 0, 0); URL.revokeObjectURL(img.src); frames.push(c);
+    }
+    let best = null, turned = false;
+    for (const src of frames) {
+      const r = photoLandmarker.detect(src);
+      const w = src.width, h = src.height, eyeOf = lm => Math.hypot((lm[263].x - lm[33].x) * w, (lm[263].y - lm[33].y) * h);
+      // 얼굴이 여러 개면 가장 크게 찍힌 얼굴
+      const i = r.faceLandmarks.map((lm, i) => [eyeOf(lm), i]).sort((a, b) => b[0] - a[0])[0]?.[1];
+      if (i == null) continue;
+      const [sw, sh] = [W, H]; W = w; H = h; // measure()는 W/H 기준이라 잠시 사진 크기로
+      const m = measure(r.faceLandmarks[i], r.faceBlendshapes[i]); W = sw; H = sh;
+      if (Math.abs(m.yaw) > 0.25) { turned = true; continue; }
+      const sc = m.smile + (m.upL + m.upR) / 40;
+      if (!best || sc > best.sc) best = { sc, m, lm: r.faceLandmarks[i], src, w, h, small: eyeOf(r.faceLandmarks[i]) < 50 };
+    }
+    if (!best) { $("refInfo").textContent = turned ? "얼굴이 옆으로 많이 돌아간 사진이에요. 정면에 가까운 사진으로 골라 주세요." : "사진에서 얼굴을 찾지 못했어요. 얼굴이 크게 나온 사진으로 골라 주세요."; return; }
+    if (best.m.smile < 0.3) { $("refInfo").textContent = "사진 속 얼굴이 웃고 있지 않은 것 같아요. 웃는 사진으로 골라 주세요."; return; }
+    const m = best.m;
+    REF = { up: Math.round((m.upL + m.upR) / 2), open: +m.open.toFixed(3), smile: +m.smile.toFixed(2), small: best.small,
+            img: snapshot(best.lm, best.src, best.w, best.h, false) };
+    store.set("refSmile", JSON.stringify(REF)); refOn = true; store.set("refOn", "on");
+  } catch (e) { $("refInfo").textContent = "사진 분석 실패: " + e.message; return; }
+  renderRef();
+}
+function renderRef() {
+  $("refToggle").textContent = "참고 사진: " + (refOn && REF ? "켜짐" : "꺼짐");
+  $("refToggle").disabled = $("refDel").disabled = !REF;
+  if (!REF) { $("refInfo").textContent = ""; return; }
+  const m = refMode(true);
+  $("refInfo").innerHTML = `<div class="pair"><figure><img src="${REF.img}" alt="참고 미소">참고 사진</figure>
+    <div style="font-size:14px;line-height:1.6">입꼬리 각도 <b>${REF.up}도</b><br>${REF.open >= 0.08 ? "윗니가 보이는 미소" : "입을 다문 미소"}<br>
+    ${m ? `다음 연습 목표: 입꼬리 <b>${Math.round(m.cornerUp)}도</b>${m.cornerUp < REF.up ? "<br><small>연습할수록 사진에 가까워져요</small>" : ""}` : "꺼져 있어요"}
+    ${REF.small ? "<br><small>얼굴이 작게 나온 사진이라 수치가 덜 정확할 수 있어요</small>" : ""}</div></div>`;
 }
 async function start() {
   try {
@@ -393,7 +527,7 @@ async function start() {
       video.srcObject = stream; await video.play();
       W = canvas.width = video.videoWidth; H = canvas.height = video.videoHeight;
     }
-    reset(); go("calib", performance.now());
+    reset(); S.myMaxStart = +(store.get("myMaxUp") || 0); go("calib", performance.now());
     $("rep").textContent = `0/${cfg().sets}`; $("sym").textContent = "-";
     $("status").textContent = "인식 중이에요.";
     document.body.classList.add("practice");
@@ -407,23 +541,51 @@ async function start() {
 function stop() {
   if (S.phase === "smile" && S.cur?.good > 1) endRep(performance.now(), false);
   running = false; speechSynthesis?.cancel();
+  if (S.phase !== "done") showBest();
   stream?.getTracks().forEach(t => t.stop()); stream = null;
   document.body.classList.remove("practice");
   if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   saveSession();
 }
 
+// ---------- 가장 예쁜 미소 사진 (이 기기에만 저장) ----------
+function snapshot(lm, src = video, w = W, h = H, mirror = true) {
+  // 얼굴 부분만 잘라 거울처럼 뒤집어 작게 저장
+  const xs = lm.map(p => p.x * w), ys = lm.map(p => p.y * h);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const size = Math.max(x1 - x0, y1 - y0) * 1.25, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const c = document.createElement("canvas"); c.width = c.height = 240;
+  const g = c.getContext("2d"); if (mirror) { g.translate(240, 0); g.scale(-1, 1); }
+  try { g.drawImage(src, cx - size / 2, cy - size / 2, size, size, 0, 0, 240, 240); return c.toDataURL("image/jpeg", 0.8); } catch { return ""; }
+}
+function bestCard(title, b, extra) {
+  return b?.img ? `<div class="best"><img src="${b.img}" alt="가장 예쁜 미소"><div><b>${title} ${b.score}점</b><br>${extra}</div></div>` : "";
+}
+function showBest() {
+  const b = S.bestShot; if (!b) return;
+  let ever = null; try { ever = JSON.parse(store.get("bestSmile") || "null"); } catch {}
+  const isRecord = !ever || b.score > ever.score;
+  if (isRecord) store.set("bestSmile", JSON.stringify({ ...b, t: Date.now() }));
+  $("bestNow").innerHTML = bestCard("오늘 가장 예쁜 미소", b, isRecord ? "새 최고 기록이에요! 이 느낌을 기억해 두세요." : `최고 기록은 ${ever.score}점이에요.`) +
+    (REF && b.img ? `<div class="tips"><b>참고 사진과 나란히 보기</b><div class="pair">
+      <figure><img src="${b.img}" alt="내 미소">내 미소 · 입꼬리 ${b.up ?? "-"}도</figure>
+      <figure><img src="${REF.img}" alt="참고 미소">참고 사진 · 입꼬리 ${REF.up}도</figure></div>
+      나에게 어울리는지 직접 비교해 보세요. 안 어울리면 참고 사진을 끄면 내 최고 미소 기준으로 돌아가요.</div>` : "");
+  renderHist();
+}
+
 // ---------- 연습 기록 (이 기기 브라우저에 저장) ----------
 const loadHist = () => { try { return JSON.parse(store.get("smileHistory") || "[]"); } catch { return []; } };
 function saveSession() {
+  if (S.maxUp && S.maxUp > +(store.get("myMaxUp") || 0)) store.set("myMaxUp", S.maxUp.toFixed(1));
   if (!S.reps.length) return;
   const avg = S.reps.reduce((a, r) => a + r.tilt, 0) / S.reps.length;
   const rec = { id: S.sid, t: S.sid, mode: $("mode").value, reps: S.reps.length, done: S.reps.filter(r => r.done).length,
-                sym: symPct(avg), sec: S.reps.reduce((a, r) => a + r.good, 0) };
+                sym: symPct(avg), sec: S.reps.reduce((a, r) => a + r.good, 0), pretty: Math.max(0, ...S.reps.map(r => r.pretty || 0)) };
   const h = loadHist(), i = h.findIndex(r => r.id === rec.id);
   if (i >= 0) h[i] = rec; else h.push(rec);
   store.set("smileHistory", JSON.stringify(h.slice(-500)));
-  renderHist();
+  renderHist(); renderRef();
 }
 const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 function renderHist() {
@@ -435,9 +597,11 @@ function renderHist() {
   $("histStats").innerHTML = `<div class="stat"><b>${streak}일</b><span>연속 연습</span></div>
     <div class="stat"><b>${h.length}번</b><span>전체 연습</span></div>
     <div class="stat"><b>${recent.length ? avgSym + "점" : "-"}</b><span>최근 대칭 평균</span></div>`;
+  let ever = null; try { ever = JSON.parse(store.get("bestSmile") || "null"); } catch {}
+  $("bestEver").innerHTML = bestCard("내 최고 미소", ever, ever?.t ? `${new Date(ever.t).getMonth() + 1}월 ${new Date(ever.t).getDate()}일` : "");
   $("histList").innerHTML = h.slice(-10).reverse().map(r => {
     const d = new Date(r.t);
-    return `<div class="hist-item">${MODES[r.mode]?.name || "미소"} · ${r.done}/${r.reps}회 완료 · 대칭 ${r.sym}점
+    return `<div class="hist-item">${MODES[r.mode]?.name || "미소"} · ${r.done}/${r.reps}회 완료${r.pretty != null ? ` · 최고 미소 ${r.pretty}점` : ""} · 대칭 ${r.sym}점
       <small>${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")} · 미소 유지 ${r.sec}초</small></div>`;
   }).join("") || `<div class="label">아직 기록이 없어요.</div>`;
 }
@@ -447,10 +611,14 @@ renderHist();
 for (const id of ["mode", "hold", "sets"]) { const v = store.get("smile_" + id); if (v) $(id).value = v; $(id).onchange = () => store.set("smile_" + id, $(id).value); }
 $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐");
 $("voice").onclick = () => { voiceOn = !voiceOn; store.set("voice", voiceOn ? "on" : "off"); $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
+$("refFile").onchange = e => { const f = e.target.files[0]; if (f) analyzeRef(f); e.target.value = ""; };
+$("refToggle").onclick = () => { refOn = !refOn; store.set("refOn", refOn ? "on" : "off"); renderRef(); };
+$("refDel").onclick = () => { REF = null; store.set("refSmile", "null"); renderRef(); };
+renderRef();
 $("start").onclick = () => { ding(); keepAwake(); start(); };
 $("exit").onclick = e => { e.stopPropagation(); stop(); };
 $("canvas").parentElement.onclick = () => { if (running && S.phase === "done") start(); };
-$("histClear").onclick = () => { if (confirm("연습 기록을 모두 지울까요? 되돌릴 수 없어요.")) { store.set("smileHistory", "[]"); renderHist(); } };
+$("histClear").onclick = () => { if (confirm("연습 기록과 최고 미소 사진을 모두 지울까요? 되돌릴 수 없어요.")) { store.set("smileHistory", "[]"); store.set("bestSmile", "null"); renderHist(); } };
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSession(); else if (running) keepAwake(); });
 let wakeLock;
 async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
