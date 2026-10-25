@@ -159,7 +159,21 @@ function detectView(lm) {
   return r > 0.55 ? "front" : r < 0.35 ? "side" : "diag";
 }
 // 몸 전체가 서 있는지(upright) 엎드려 있는지(horizontal): 어깨 중심→발목 중심 선의 기울기로 판단
-function bodyPosture(lm) {
+// 3D 좌표(worldLandmarks, 미터 단위)가 있으면 그걸 우선 사용: 폰이 정면에 있으면
+// 엎드린 몸도 화면상으로는 세로로 보이기 때문. 카메라는 세워져 있다고 가정(y축 ≈ 중력 방향).
+function verticalRatio(wl, top, bottom) {
+  const a = { x: (wl[top[0]].x + wl[top[1]].x) / 2, y: (wl[top[0]].y + wl[top[1]].y) / 2, z: (wl[top[0]].z + wl[top[1]].z) / 2 };
+  const b = { x: (wl[bottom[0]].x + wl[bottom[1]].x) / 2, y: (wl[bottom[0]].y + wl[bottom[1]].y) / 2, z: (wl[bottom[0]].z + wl[bottom[1]].z) / 2 };
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+  return Math.abs(dy) / (Math.hypot(dx, dy, dz) || 1);
+}
+function bodyPosture(lm, wl) {
+  if (wl) {
+    const legs = verticalRatio(wl, [11, 12], [27, 28]), torso = verticalRatio(wl, [11, 12], [23, 24]);
+    if (legs < 0.5 || torso < 0.4) return "horizontal";
+    if (legs > 0.7 && torso > 0.55) return "upright";
+    return "mid";
+  }
   const sh = mid(P(lm, 11), P(lm, 12)), an = mid(P(lm, 27), P(lm, 28));
   const a = Math.atan2(Math.abs(an.y - sh.y), Math.abs(an.x - sh.x)) * 180 / Math.PI;
   return a > 55 ? "upright" : a < 35 ? "horizontal" : "mid";
@@ -344,7 +358,7 @@ function setBreath(kind) {
 }
 
 // ---------- 매 프레임 처리 ----------
-function process(lm, t) {
+function process(lm, t, wl) {
   const exKey = $("exercise").value, ex = EX[exKey];
   const sd = pickSide(lm, ex.keys);
   const view = detectView(lm);
@@ -353,7 +367,7 @@ function process(lm, t) {
   const dt = S.lastT ? Math.min(t - S.lastT, 100) : 0; S.lastT = t;
 
   // 운동에 맞지 않는 몸 자세(예: 스쿼트 중 엎드림)면 세지 않고 진행 중인 1회도 취소
-  const pst = bodyPosture(lm);
+  const pst = bodyPosture(lm, wl);
   S.wrongPosture = pst !== ex.posture && pst !== "mid" ? (S.wrongPosture || 0) + 1 : 0;
   if (S.wrongPosture >= 5) {
     S.phase = "up"; S.repIssues.clear(); S.dir = null; S.lastT = 0; S.standFrames = 0; S.ready = false;
@@ -645,7 +659,7 @@ function loop() {
     if (lm) {
       draw.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#4ade80", lineWidth: 4 });
       draw.drawLandmarks(lm, { color: "#fff", radius: 3 });
-      process(lm, now);
+      process(lm, now, res.worldLandmarks?.[0]);
     } else setCue("사람이 보이지 않아요", "몸 전체가 화면에 들어오게 해주세요", "var(--muted)");
   }
   requestAnimationFrame(loop);
