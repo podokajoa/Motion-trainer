@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모션 트레이너</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#0f1115; --fg:#f2f4f8; --muted:#9aa3b2; --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --in:#60a5fa; --out:#fb923c; --card:#1a1d24; --line:#2a303b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:0 0 12px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  button, select { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:15px; }
+  button.primary { background:var(--good); color:#0b1a10; border:none; font-weight:700; }
+  #guide { color:var(--muted); font-size:14px; margin:6px 0 10px; line-height:1.5; }
+  .stage { position:relative; width:100%; aspect-ratio:3/4; max-height:75vh; background:#000; border-radius:14px; overflow:hidden; }
+  @media (min-aspect-ratio:1/1) { .stage { aspect-ratio:4/3; } }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .hud { position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; pointer-events:none; }
+  .pill { background:rgba(0,0,0,.62); border-radius:12px; padding:8px 12px; }
+  .count { font-size:44px; font-weight:800; line-height:1; }
+  .label { font-size:12px; color:var(--muted); }
+  #breath { font-size:26px; font-weight:800; text-align:center; min-width:96px; transition:color .2s; }
+  #breathBar { height:6px; border-radius:3px; background:var(--line); margin-top:6px; overflow:hidden; }
+  #breathFill { height:100%; width:0; background:currentColor; transition:width .25s; }
+  .cue { position:absolute; left:10px; right:10px; bottom:10px; background:rgba(0,0,0,.72); border-radius:12px; padding:12px 14px; font-size:20px; font-weight:800; text-align:center; pointer-events:none; }
+  .cue small { display:block; font-size:13px; font-weight:500; color:var(--muted); margin-top:4px; }
+  #reps { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .rep { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:13px; }
+  .rep.ok { border-color:var(--good); }
+  .rep.bad { border-color:var(--warn); }
+  #summary { margin-top:12px; font-size:14px; line-height:1.6; color:var(--muted); }
+  #status { color:var(--muted); font-size:13px; margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>모션 트레이너</h1>
+  <div class="controls">
+    <select id="exercise">
+      <option value="squat">스쿼트</option>
+      <option value="lunge">런지</option>
+      <option value="pushup">푸시업</option>
+      <option value="plank">플랭크</option>
+      <option value="curl">덤벨 컬</option>
+    </select>
+    <button id="start" class="primary">카메라 시작</button>
+    <button id="flip">카메라 전환</button>
+    <button id="reset">초기화</button>
+    <button id="voice">음성: 켜짐</button>
+    <button id="breathVoice">호흡 음성: 켜짐</button>
+  </div>
+  <div id="guide"></div>
+  <div id="status">버튼을 누르면 카메라 권한을 요청합니다. 영상은 기기 밖으로 전송되지 않아요.</div>
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <div class="pill"><div class="label" id="countLabel">횟수</div><div class="count" id="count">0</div></div>
+      <div class="pill" id="breathBox" style="color:var(--muted)"><div class="label">호흡</div><div id="breath">-</div><div id="breathBar"><div id="breathFill"></div></div></div>
+      <div class="pill" style="text-align:right"><div class="label">카메라 방향</div><div id="view" style="font-weight:700">-</div><div class="label" id="angle"></div></div>
+    </div>
+    <div class="cue" id="cue">준비되면 시작하세요<small>몸 전체가 화면에 들어오게 서주세요</small></div>
+  </div>
+  <div id="reps"></div>
+  <div id="summary"></div>
+</main>
+<script type="module">
+import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+let landmarker, stream, running = false, facing = "user";
+let voiceOn = true, breathVoiceOn = true;
+
+// ---------- 기하 계산 (픽셀 좌표 기준, y는 아래로 증가) ----------
+let W = 640, H = 480;
+const P = (lm, i) => ({ x: lm[i].x * W, y: lm[i].y * H, v: lm[i].visibility ?? 0 });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+function angle(a, b, c) {
+  const r = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+  const d = Math.abs(r * 180 / Math.PI);
+  return d > 180 ? 360 - d : d;
+}
+// 선분 a→b가 수직선에서 기운 각도 (0 = 똑바로 섬)
+const leanFromVertical = (bottom, top) => Math.abs(Math.atan2(top.x - bottom.x, bottom.y - top.y) * 180 / Math.PI);
+// 점 p가 a-b 직선에서 아래(+)/위(-)로 벗어난 정도
+function offLine(p, a, b) {
+  if (Math.abs(b.x - a.x) < 1) return 0;
+  const t = (p.x - a.x) / (b.x - a.x);
+  return p.y - (a.y + t * (b.y - a.y));
+}
+
+const SIDES = {
+  L: { sh: 11, el: 13, wr: 15, hip: 23, kn: 25, an: 27, heel: 29, toe: 31, ear: 7 },
+  R: { sh: 12, el: 14, wr: 16, hip: 24, kn: 26, an: 28, heel: 30, toe: 32, ear: 8 },
+};
+function pickSide(lm, keys) {
+  const score = s => keys.reduce((t, k) => t + (lm[SIDES[s][k]].visibility ?? 0), 0) / keys.length;
+  const l = score("L"), r = score("R");
+  return l >= r ? { s: SIDES.L, o: SIDES.R, vis: l } : { s: SIDES.R, o: SIDES.L, vis: r };
+}
+function detectView(lm) {
+  const shW = dist(P(lm, 11), P(lm, 12));
+  const torso = dist(mid(P(lm, 11), P(lm, 12)), mid(P(lm, 23), P(lm, 24)));
+  if (torso < 1) return "unknown";
+  const r = shW / torso;
+  return r > 0.55 ? "front" : r < 0.35 ? "side" : "diag";
+}
+const VIEW_KO = { front: "정면", side: "측면", diag: "대각선", unknown: "-" };
+
+// ---------- 운동 정의 ----------
+// metric: 동작 진행을 나타내는 관절 각도. 각도가 down 아래로 내려갔다가 up 위로 올라오면 1회.
+// lowerIsInhale: 각도가 줄어드는 구간이 들숨이면 true (스쿼트/푸시업은 내려갈 때 들숨).
+const EX = {
+  squat: {
+    name: "스쿼트", view: "측면(등, 깊이) 또는 정면(무릎 방향)", down: 100, up: 160, depth: 95, lowerIsInhale: true,
+    keys: ["hip", "kn", "an"],
+    metric: (lm, sd) => angle(P(lm, sd.s.hip), P(lm, sd.s.kn), P(lm, sd.s.an)),
+    coach: "발은 어깨너비, 무릎을 바깥쪽으로 벌리며 앉으세요",
+    checks(lm, sd, view, ang) {
+      const out = [];
+      const s = sd.s, hip = P(lm, s.hip), kn = P(lm, s.kn), an = P(lm, s.an), sh = P(lm, s.sh);
+      const leg = dist(hip, kn) + dist(kn, an);
+      if (view === "front") {
+        const kL = P(lm, 25), kR = P(lm, 26), aL = P(lm, 27), aR = P(lm, 28), sL = P(lm, 11), sR = P(lm, 12);
+        const kneeW = Math.abs(kL.x - kR.x), ankleW = Math.abs(aL.x - aR.x), shW = Math.abs(sL.x - sR.x);
+        if (ang < 150 && kneeW < ankleW * 0.9) out.push({ k: "valgus", m: "무릎이 안으로 모여요! 바깥쪽으로 벌리세요", sev: 3 });
+        if (ang > 150 && ankleW < shW * 0.75) out.push({ k: "stance", m: "발을 어깨너비로 벌려주세요", sev: 1 });
+        const hipTilt = Math.abs(P(lm, 23).y - P(lm, 24).y) / shW;
+        if (ang < 140 && hipTilt > 0.18) out.push({ k: "shift", m: "체중을 양발에 고르게 실으세요", sev: 2 });
+      } else if (view === "side") {
+        const lean = leanFromVertical(hip, sh);
+        if (lean > 50) out.push({ k: "lean", m: "가슴을 펴고 등을 곧게 세우세요", sev: 3 });
+        const toe = P(lm, s.toe), heel = P(lm, s.heel);
+        const dir = Math.sign(toe.x - heel.x) || 1;
+        if (ang < 130 && (kn.x - toe.x) * dir > leg * 0.12) out.push({ k: "knee_fwd", m: "엉덩이를 뒤로 빼면서 앉으세요", sev: 2 });
+        if (ang < 130 && heel.y < toe.y - leg * 0.05) out.push({ k: "heel", m: "뒤꿈치를 바닥에 붙이세요", sev: 2 });
+        const ear = P(lm, s.ear);
+        if (leanFromVertical(sh, ear) - lean > 35) out.push({ k: "neck", m: "고개를 숙이지 말고 시선은 정면", sev: 1 });
+      }
+      return out;
+    },
+    repEnd: (minAng) => minAng > 105 ? [{ k: "depth", m: "조금 더 깊게 앉아보세요" }] : [],
+  },
+  lunge: {
+    name: "런지", view: "측면", down: 105, up: 155, depth: 100, lowerIsInhale: true,
+    keys: ["hip", "kn", "an"],
+    // 더 많이 굽혀진 무릎을 앞다리로 봄
+    metric: (lm) => Math.min(angle(P(lm, 23), P(lm, 25), P(lm, 27)), angle(P(lm, 24), P(lm, 26), P(lm, 28))),
+    coach: "상체는 세우고, 앞무릎과 뒷무릎 모두 90도까지",
+    checks(lm, sd, view, ang) {
+      const out = [];
+      const L = angle(P(lm, 23), P(lm, 25), P(lm, 27)), R = angle(P(lm, 24), P(lm, 26), P(lm, 28));
+      const f = L < R ? SIDES.L : SIDES.R;
+      const hip = P(lm, f.hip), kn = P(lm, f.kn), an = P(lm, f.an), sh = P(lm, f.sh), toe = P(lm, f.toe), heel = P(lm, f.heel);
+      const leg = dist(hip, kn) + dist(kn, an);
+      if (leanFromVertical(hip, sh) > 25) out.push({ k: "lean", m: "상체를 똑바로 세우세요", sev: 3 });
+      const dir = Math.sign(toe.x - heel.x) || 1;
+      if (ang < 130 && (kn.x - toe.x) * dir > leg * 0.08) out.push({ k: "knee_fwd", m: "앞무릎이 너무 나갔어요, 보폭을 넓히세요", sev: 2 });
+      if (view === "front") {
+        if (ang < 140 && Math.abs(kn.x - an.x) > leg * 0.12 && Math.abs(kn.x - mid(P(lm, 23), P(lm, 24)).x) < Math.abs(an.x - mid(P(lm, 23), P(lm, 24)).x))
+          out.push({ k: "valgus", m: "앞무릎이 안으로 꺾여요, 발끝 방향으로", sev: 3 });
+      }
+      return out;
+    },
+    repEnd: (minAng) => minAng > 110 ? [{ k: "depth", m: "더 깊게 내려가세요" }] : [],
+  },
+  pushup: {
+    name: "푸시업", view: "측면", down: 95, up: 150, depth: 90, lowerIsInhale: true,
+    keys: ["sh", "el", "wr", "hip", "an"],
+    metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
+    coach: "머리부터 발끝까지 일직선, 복부에 힘",
+    checks(lm, sd, view) {
+      const out = [];
+      if (view === "front") return [{ k: "view", m: "옆에서 찍어야 정확해요", sev: 1 }];
+      const s = sd.s, sh = P(lm, s.sh), hip = P(lm, s.hip), an = P(lm, s.an), ear = P(lm, s.ear);
+      const body = dist(sh, an);
+      const off = offLine(hip, sh, an) / body;
+      if (off > 0.07) out.push({ k: "sag", m: "허리가 처졌어요! 복부와 엉덩이에 힘", sev: 3 });
+      else if (off < -0.1) out.push({ k: "pike", m: "엉덩이를 내려 몸을 일직선으로", sev: 2 });
+      if (offLine(ear, sh, an) / body > 0.08) out.push({ k: "neck", m: "고개가 떨어졌어요, 목을 일직선으로", sev: 1 });
+      return out;
+    },
+    repEnd: (minAng) => minAng > 100 ? [{ k: "depth", m: "가슴이 바닥 가까이 가도록 더 내려가세요" }] : [],
+  },
+  plank: {
+    name: "플랭크", view: "측면", hold: true, keys: ["sh", "hip", "an"],
+    coach: "팔꿈치는 어깨 아래, 몸은 일직선, 호흡은 멈추지 마세요",
+    checks(lm, sd, view) {
+      if (view === "front") return [{ k: "view", m: "옆에서 찍어야 정확해요", sev: 1 }];
+      const s = sd.s, sh = P(lm, s.sh), hip = P(lm, s.hip), an = P(lm, s.an), el = P(lm, s.el), ear = P(lm, s.ear);
+      const body = dist(sh, an), out = [];
+      const off = offLine(hip, sh, an) / body;
+      if (off > 0.06) out.push({ k: "sag", m: "허리가 처졌어요! 엉덩이를 살짝 올리세요", sev: 3 });
+      else if (off < -0.09) out.push({ k: "pike", m: "엉덩이가 너무 높아요, 일직선으로", sev: 2 });
+      if (Math.abs(el.x - sh.x) > body * 0.12) out.push({ k: "elbow", m: "팔꿈치를 어깨 바로 아래에 두세요", sev: 1 });
+      if (offLine(ear, sh, an) / body > 0.08) out.push({ k: "neck", m: "고개를 들어 목을 일직선으로", sev: 1 });
+      return out;
+    },
+  },
+  curl: {
+    name: "덤벨 컬", view: "측면", down: 60, up: 145, depth: 55, lowerIsInhale: false,
+    keys: ["sh", "el", "wr"],
+    metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
+    coach: "팔꿈치는 옆구리에 고정, 천천히 내리세요",
+    checks(lm, sd) {
+      const s = sd.s, sh = P(lm, s.sh), el = P(lm, s.el), hip = P(lm, s.hip), out = [];
+      if (angle(hip, sh, el) > 30) out.push({ k: "elbow", m: "팔꿈치가 앞으로 나와요, 옆구리에 고정", sev: 3 });
+      const lean = leanFromVertical(hip, sh);
+      if (S.baseLean == null) S.baseLean = lean;
+      if (Math.abs(lean - S.baseLean) > 12) out.push({ k: "swing", m: "상체 반동을 쓰지 마세요", sev: 2 });
+      return out;
+    },
+    repEnd: (minAng, maxAng) => maxAng < 145 ? [{ k: "range", m: "팔을 끝까지 펴세요" }] : [],
+  },
+};
+
+// ---------- 상태 ----------
+const S = {};
+function resetState() {
+  Object.assign(S, { count: 0, phase: "up", minAng: 180, maxAng: 0, repIssues: new Map(), reps: [], ang: null, prevAng: null,
+    breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {} });
+  $("count").textContent = "0"; $("reps").innerHTML = ""; $("summary").textContent = "";
+  const ex = EX[$("exercise").value];
+  $("countLabel").textContent = ex.hold ? "유지 시간" : "횟수";
+  $("guide").innerHTML = `<b>${ex.name}</b> · 카메라: ${ex.view}<br>${ex.coach}`;
+  setCue("준비되면 시작하세요", ex.coach, "var(--fg)");
+}
+
+// ---------- 음성 (우선순위: 횟수 > 자세 > 호흡) ----------
+let lastSpeakAt = 0; const lastCueAt = {};
+function speak(text, prio, key) {
+  if (!voiceOn || !("speechSynthesis" in window)) return;
+  const now = performance.now();
+  if (key && now - (lastCueAt[key] || 0) < 5000) return;
+  if (prio < 3 && now - lastSpeakAt < (prio === 1 ? 1200 : 2500)) return;
+  if (prio < 3 && speechSynthesis.speaking && prio === 1) return;
+  if (key) lastCueAt[key] = now;
+  lastSpeakAt = now;
+  const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; u.rate = 1.15;
+  if (prio >= 2) speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function setCue(main, sub, color) {
+  const c = $("cue");
+  c.innerHTML = ""; c.append(main);
+  if (sub) { const sm = document.createElement("small"); sm.textContent = sub; c.append(sm); }
+  c.style.color = color;
+}
+
+function setBreath(kind) {
+  const box = $("breathBox");
+  if (kind === S.breath) return;
+  S.breath = kind; S.breathSince = performance.now();
+  $("breath").textContent = kind === "in" ? "들숨" : kind === "out" ? "날숨" : "-";
+  box.style.color = kind === "in" ? "var(--in)" : kind === "out" ? "var(--out)" : "var(--muted)";
+  if (breathVoiceOn && kind) speak(kind === "in" ? "들숨" : "날숨", 1);
+}
+
+// ---------- 매 프레임 처리 ----------
+function process(lm, t) {
+  const exKey = $("exercise").value, ex = EX[exKey];
+  const sd = pickSide(lm, ex.keys);
+  const view = detectView(lm);
+  $("view").textContent = VIEW_KO[view];
+  if (sd.vis < 0.5) { setCue("몸 전체가 보이게 서주세요", "카메라에서 2~3m 떨어지면 좋아요", "var(--muted)"); return; }
+  const dt = S.lastT ? Math.min(t - S.lastT, 100) : 0; S.lastT = t;
+
+  const issues = ex.checks(lm, sd, view, S.ang ?? 180).sort((a, b) => b.sev - a.sev);
+
+  if (ex.hold) return processHold(ex, issues, dt);
+
+  // 각도 평활화(EMA)로 떨림 줄이기
+  const raw = ex.metric(lm, sd);
+  S.prevAng = S.ang;
+  S.ang = S.ang == null ? raw : S.ang * 0.6 + raw * 0.4;
+  const ang = S.ang;
+  $("angle").textContent = `관절 각도 ${Math.round(ang)}°`;
+
+  // 호흡: 각도 변화 방향으로 판단
+  if (S.prevAng != null) {
+    const v = (ang - S.prevAng) / Math.max(dt, 1) * 1000; // 초당 각도 변화
+    if (Math.abs(v) > 25) {
+      const lowering = v < 0;
+      setBreath(lowering === ex.lowerIsInhale ? "in" : "out");
+    }
+  }
+  const lo = ex.down, hi = ex.up;
+  $("breathFill").style.width = `${Math.max(0, Math.min(100, (hi - ang) / (hi - lo) * 100))}%`;
+
+  // 동작 단계
+  if (S.phase === "up" && ang < hi - 15) { S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.repIssues.clear(); }
+  if (S.phase !== "up") { S.minAng = Math.min(S.minAng, ang); S.maxAng = Math.max(S.maxAng, ang); }
+  if (S.phase === "moving" && ang < ex.down) S.phase = "bottom";
+  if (S.phase !== "up") for (const i of issues) S.repIssues.set(i.k, i.m);
+
+  if (S.phase === "bottom" && ang > hi) completeRep(ex);
+  else if (S.phase === "moving" && ang > hi) S.phase = "up"; // 덜 내려가고 돌아온 경우
+  if (S.phase === "up") S.maxAng = Math.max(S.maxAng, ang);
+
+  if (issues.length) {
+    setCue(issues[0].m, issues[1]?.m, issues[0].sev >= 3 ? "var(--bad)" : "var(--warn)");
+    speak(issues[0].m, 2, issues[0].k);
+  } else if (S.phase === "moving" && S.breath === (ex.lowerIsInhale ? "in" : "out")) {
+    setCue(exKey === "curl" ? "끝까지 올리세요" : "좋아요, 계속 내려가세요", ex.coach, "var(--good)");
+  } else {
+    setCue("좋은 자세예요", ex.coach, "var(--good)");
+  }
+}
+
+function completeRep(ex) {
+  S.phase = "up"; S.count++;
+  for (const i of ex.repEnd(S.minAng, S.maxAng)) S.repIssues.set(i.k, i.m);
+  const iss = [...S.repIssues.values()];
+  for (const [k, m] of S.repIssues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = m; }
+  S.reps.push(iss);
+  $("count").textContent = S.count;
+  speak(String(S.count), 3);
+  const el = document.createElement("div");
+  el.className = "rep " + (iss.length ? "bad" : "ok");
+  el.textContent = `${S.count}회 ${iss.length ? "· " + iss.join(", ") : "· 완벽"}`;
+  $("reps").prepend(el);
+  updateSummary();
+}
+
+function processHold(ex, issues, dt) {
+  // 플랭크: 4초 들숨 / 4초 날숨 리듬 안내, 바른 자세일 때만 시간 누적
+  const cyc = (S.holdMs / 1000) % 8;
+  setBreath(cyc < 4 ? "in" : "out");
+  $("breathFill").style.width = `${((cyc % 4) / 4) * 100}%`;
+  if (issues.length && issues[0].sev >= 2) {
+    S.holdBad += dt;
+    setCue(issues[0].m, "자세를 바로잡으면 시간이 다시 올라가요", "var(--bad)");
+    speak(issues[0].m, 2, issues[0].k);
+    S.issueTally[issues[0].k] = (S.issueTally[issues[0].k] || 0) + dt / 1000; S.msgs[issues[0].k] = issues[0].m;
+  } else {
+    S.holdMs += dt;
+    setCue(issues[0]?.m || "좋아요, 그대로 유지!", ex.coach, issues.length ? "var(--warn)" : "var(--good)");
+  }
+  const sec = Math.floor(S.holdMs / 1000);
+  $("count").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function updateSummary() {
+  const clean = S.reps.filter(r => !r.length).length;
+  const top = Object.entries(S.issueTally).sort((a, b) => b[1] - a[1])[0];
+  $("summary").textContent = `바른 자세 ${clean}/${S.count}회` + (top ? ` · 가장 자주 나온 교정: ${S.msgs[top[0]]}` : "");
+}
+
+// ---------- 카메라 / 모델 ----------
+async function init() {
+  $("status").textContent = "자세 인식 모델을 불러오는 중...";
+  const files = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  landmarker = await PoseLandmarker.createFromOptions(files, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO", numPoses: 1,
+  });
+}
+
+async function start() {
+  try {
+    if (!landmarker) await init();
+    stream?.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+    video.srcObject = stream; await video.play();
+    W = canvas.width = video.videoWidth; H = canvas.height = video.videoHeight;
+    const mirror = facing === "user" ? "scaleX(-1)" : "none";
+    video.style.transform = canvas.style.transform = mirror;
+    $("status").textContent = "인식 중입니다. 운동을 시작하세요!";
+    if (!running) { running = true; loop(); }
+  } catch (e) {
+    $("status").textContent = "시작 실패: " + e.message + " (카메라 권한과 인터넷 연결을 확인해주세요)";
+  }
+}
+
+const draw = new DrawingUtils(ctx);
+let lastVideoTime = -1;
+function loop() {
+  if (!running) return;
+  if (video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const now = performance.now();
+    const res = landmarker.detectForVideo(video, now);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const lm = res.landmarks[0];
+    if (lm) {
+      draw.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#4ade80", lineWidth: 4 });
+      draw.drawLandmarks(lm, { color: "#fff", radius: 3 });
+      process(lm, now);
+    } else setCue("사람이 보이지 않아요", "몸 전체가 화면에 들어오게 해주세요", "var(--muted)");
+  }
+  requestAnimationFrame(loop);
+}
+
+$("start").onclick = start;
+$("flip").onclick = () => { facing = facing === "user" ? "environment" : "user"; if (running) start(); };
+$("reset").onclick = resetState;
+$("exercise").onchange = resetState;
+$("voice").onclick = () => { voiceOn = !voiceOn; $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
+$("breathVoice").onclick = () => { breathVoiceOn = !breathVoiceOn; $("breathVoice").textContent = "호흡 음성: " + (breathVoiceOn ? "켜짐" : "꺼짐"); };
+resetState();
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+// 운동 중 화면 꺼짐 방지
+let wakeLock;
+async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+$("start").addEventListener("click", keepAwake);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running) keepAwake(); });
+</script>
+</body>
+</html>
