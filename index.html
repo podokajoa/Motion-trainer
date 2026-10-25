@@ -36,6 +36,19 @@
   .rep.bad { border-color:var(--warn); }
   #summary { margin-top:12px; font-size:14px; line-height:1.6; color:var(--muted); }
   #status { color:var(--muted); font-size:13px; margin:4px 0; }
+  #history { margin-top:28px; border-top:1px solid var(--line); padding-top:16px; }
+  #history h2 { font-size:18px; margin:0 0 10px; }
+  .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; min-width:96px; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { font-size:12px; color:var(--muted); }
+  #histChart { display:flex; align-items:flex-end; gap:6px; height:120px; margin-bottom:16px; }
+  .bar { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; font-size:11px; color:var(--muted); gap:4px; }
+  .bar i { display:block; width:100%; max-width:36px; background:var(--good); border-radius:6px 6px 2px 2px; min-height:2px; }
+  .bar.today i { background:var(--in); }
+  .hist-item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; }
+  .hist-item small { color:var(--muted); display:block; }
+  #histClear { margin-top:10px; font-size:13px; color:var(--muted); }
   #zoomWrap { display:none; align-items:center; gap:8px; color:var(--muted); font-size:14px; }
   #exit { display:none; }
   .flash { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 0 0 transparent; transition:box-shadow .25s; }
@@ -91,6 +104,14 @@
   </div>
   <div id="reps"></div>
   <div id="summary"></div>
+  <section id="history">
+    <h2>운동 기록</h2>
+    <div class="stats" id="histStats"></div>
+    <div class="label" style="margin-bottom:6px">최근 7일 (횟수)</div>
+    <div id="histChart"></div>
+    <div id="histList"></div>
+    <button id="histClear">기록 전체 삭제</button>
+  </section>
 </main>
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
@@ -256,7 +277,7 @@ const EX = {
 const S = {};
 function resetState() {
   Object.assign(S, { count: 0, phase: "up", minAng: 180, maxAng: 0, repIssues: new Map(), reps: [], ang: null, prevAng: null,
-    breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {}, dir: null, issueFrames: {}, cueIdx: 0, lastCoachAt: 0, lastHoldCue: 0 });
+    breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {}, dir: null, issueFrames: {}, cueIdx: 0, lastCoachAt: 0, lastHoldCue: 0, sid: Date.now(), lastSaveSec: 0 });
   $("count").textContent = "0"; $("reps").innerHTML = ""; $("summary").textContent = "";
   const ex = EX[$("exercise").value];
   $("countLabel").textContent = ex.hold ? "유지 시간" : "횟수";
@@ -396,6 +417,7 @@ function completeRep(ex) {
   el.textContent = `${S.count}회 ${iss.length ? "· " + iss.join(", ") : "· 완벽"}`;
   $("reps").prepend(el);
   updateSummary();
+  saveSession();
 }
 
 function processHold(ex, issues, dt) {
@@ -417,6 +439,7 @@ function processHold(ex, issues, dt) {
     setCue(issues[0]?.m || "좋아요, 그대로 유지!", ex.coach, issues.length ? "var(--warn)" : "var(--good)");
   }
   const sec = Math.floor(S.holdMs / 1000);
+  if (sec >= 3 && sec - S.lastSaveSec >= 5) { S.lastSaveSec = sec; saveSession(); }
   $("count").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
 
@@ -496,7 +519,66 @@ function enterWorkout() {
   document.body.classList.add("workout");
   document.documentElement.requestFullscreen?.().catch(() => {});
 }
+// ---------- 운동 기록 (이 기기 브라우저에 저장) ----------
+const loadHist = () => { try { return JSON.parse(store.get("history") || "[]"); } catch { return []; } };
+function saveSession() {
+  const exKey = $("exercise").value, ex = EX[exKey];
+  if (!S.count && S.holdMs < 3000) return;
+  const rec = {
+    id: S.sid, t: S.sid, ex: exKey, reps: S.count, clean: S.reps.filter(r => !r.length).length,
+    holdSec: Math.floor(S.holdMs / 1000),
+    issues: Object.entries(S.issueTally).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => [S.msgs[k], Math.round(n)]),
+  };
+  const h = loadHist(), i = h.findIndex(r => r.id === rec.id);
+  if (i >= 0) h[i] = rec; else h.push(rec);
+  store.set("history", JSON.stringify(h.slice(-1000)));
+  renderHist();
+}
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+const fmtSec = s => `${Math.floor(s / 60)}분 ${s % 60}초`;
+function renderHist() {
+  const h = loadHist(), now = Date.now(), today = dayKey(now);
+  const days = new Set(h.map(r => dayKey(r.t)));
+  let streak = 0;
+  for (let d = new Date(); ; d.setDate(d.getDate() - 1)) {
+    if (days.has(dayKey(d))) streak++;
+    else if (!(streak === 0 && dayKey(d) === today)) break; // 오늘 아직 안 했으면 어제부터 셈
+  }
+  const todayRecs = h.filter(r => dayKey(r.t) === today);
+  const todayReps = todayRecs.reduce((t, r) => t + r.reps, 0);
+  const todayHold = todayRecs.reduce((t, r) => t + (r.holdSec || 0), 0);
+  const allReps = h.reduce((t, r) => t + r.reps, 0), allClean = h.reduce((t, r) => t + r.clean, 0);
+  const stat = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+  $("histStats").innerHTML = stat(todayReps + "회", "오늘 횟수") + (todayHold ? stat(fmtSec(todayHold), "오늘 플랭크") : "")
+    + stat(streak + "일", "연속 운동") + stat(allReps ? Math.round(allClean / allReps * 100) + "%" : "-", "바른 자세 비율");
+
+  const bars = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = dayKey(d), n = h.filter(r => dayKey(r.t) === k).reduce((t, r) => t + r.reps, 0);
+    bars.push({ n, label: i === 0 ? "오늘" : `${d.getMonth() + 1}/${d.getDate()}`, today: i === 0 });
+  }
+  const max = Math.max(1, ...bars.map(b => b.n));
+  $("histChart").innerHTML = bars.map(b => `<div class="bar${b.today ? " today" : ""}"><span>${b.n || ""}</span><i style="height:${b.n / max * 80}%"></i><span>${b.label}</span></div>`).join("");
+
+  const list = $("histList"); list.innerHTML = "";
+  if (!h.length) { list.innerHTML = `<div class="hist-item"><small>아직 기록이 없어요. 운동을 시작하면 자동으로 저장돼요.</small></div>`; return; }
+  for (const r of h.slice().reverse().slice(0, 30)) {
+    const d = new Date(r.t), ex = EX[r.ex];
+    const main = ex?.hold ? `${ex.name} ${fmtSec(r.holdSec)}` : `${ex?.name || r.ex} ${r.reps}회 · 바른 자세 ${r.clean}회`;
+    const el = document.createElement("div"); el.className = "hist-item";
+    el.append(`${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} · ${main}`);
+    if (r.issues?.length) {
+      const sm = document.createElement("small");
+      sm.textContent = "자주 나온 교정: " + r.issues.map(([m, n]) => ex?.hold ? `${m} (${n}초)` : `${m} (${n}회)`).join(", ");
+      el.append(sm);
+    }
+    list.append(el);
+  }
+}
+
 function exitWorkout() {
+  saveSession();
   document.body.classList.remove("workout");
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   running = false; stream?.getTracks().forEach(t => t.stop()); speechSynthesis.cancel();
@@ -532,6 +614,9 @@ const showBreath = () => $("breathVoice").textContent = "호흡: " + BREATH_KO[b
 $("breathVoice").onclick = () => { breathMode = { tone: "voice", voice: "off", off: "tone" }[breathMode]; store.set("breathMode", breathMode); showBreath(); if (breathMode === "tone") tone(true); };
 showBreath();
 resetState();
+renderHist();
+$("histClear").onclick = () => { if (confirm("운동 기록을 모두 지울까요? 되돌릴 수 없어요.")) { store.set("history", "[]"); renderHist(); } };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSession(); });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
 // 운동 중 화면 꺼짐 방지
 let wakeLock;
