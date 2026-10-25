@@ -171,7 +171,7 @@ const VIEW_KO = { front: "정면", side: "측면", diag: "대각선", unknown: "
 // lowerIsInhale: 각도가 줄어드는 구간이 들숨이면 true (스쿼트/푸시업은 내려갈 때 들숨).
 const EX = {
   squat: {
-    name: "스쿼트", posture: "upright", view: "측면(등, 깊이) 또는 정면(무릎 방향)", down: 100, up: 160, depth: 95, lowerIsInhale: true,
+    name: "스쿼트", posture: "upright", legs: true, view: "측면(등, 깊이) 또는 정면(무릎 방향)", down: 100, up: 160, depth: 95, lowerIsInhale: true,
     keys: ["hip", "kn", "an"],
     metric: (lm, sd) => angle(P(lm, sd.s.hip), P(lm, sd.s.kn), P(lm, sd.s.an)),
     coach: "발은 어깨너비, 무릎을 바깥쪽으로 벌리며 앉으세요",
@@ -203,7 +203,7 @@ const EX = {
     repEnd: (minAng) => minAng > 105 ? [{ k: "depth", m: "조금 더 깊게 앉아보세요" }] : [],
   },
   lunge: {
-    name: "런지", posture: "upright", view: "측면", down: 105, up: 155, depth: 100, lowerIsInhale: true,
+    name: "런지", posture: "upright", legs: true, view: "측면", down: 105, up: 155, depth: 100, lowerIsInhale: true,
     keys: ["hip", "kn", "an"],
     // 더 많이 굽혀진 무릎을 앞다리로 봄
     metric: (lm) => Math.min(angle(P(lm, 23), P(lm, 25), P(lm, 27)), angle(P(lm, 24), P(lm, 26), P(lm, 28))),
@@ -356,7 +356,7 @@ function process(lm, t) {
   const pst = bodyPosture(lm);
   S.wrongPosture = pst !== ex.posture && pst !== "mid" ? (S.wrongPosture || 0) + 1 : 0;
   if (S.wrongPosture >= 5) {
-    S.phase = "up"; S.repIssues.clear(); S.dir = null; S.lastT = 0;
+    S.phase = "up"; S.repIssues.clear(); S.dir = null; S.lastT = 0; S.standFrames = 0; S.ready = false;
     const hint = ex.posture === "upright" ? "선 자세에서 해주세요" : "엎드린 자세에서 해주세요";
     setCue(`${ex.name} 자세가 아니에요`, hint, "var(--muted)");
     speak(`${ex.name} 자세가 아니에요. ${hint}`, 2, "posture");
@@ -393,7 +393,30 @@ function process(lm, t) {
   $("breathFill").style.width = `${Math.max(0, Math.min(100, (hi - ang) / (hi - lo) * 100))}%`;
 
   // 동작 단계
-  if (S.phase === "up" && ang < hi - 15) { S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.repIssues.clear(); }
+  // 1회는 반드시 "바른 시작 자세"(스쿼트면 똑바로 선 자세)에서 출발해야 함.
+  // 바닥에서 일어나는 동작이나 플랭크에서 돌아오는 동작이 1회로 세지지 않게 함.
+  if (S.phase === "up") {
+    S.standFrames = ang > hi - 5 && pst === ex.posture ? (S.standFrames || 0) + 1 : 0;
+    if (S.standFrames >= 5) S.ready = true;
+    if (pst !== ex.posture && pst !== "mid") S.ready = false;
+  }
+  if (S.phase === "up" && ang < hi - 15 && S.ready) {
+    S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.repIssues.clear();
+    S.repStart = t; S.badFrames = 0; S.repInvalid = null; S.ready = false;
+  }
+  // 동작 중에 엎드리거나 손을 바닥에 짚으면 이번 회는 무효
+  if (S.phase !== "up" && ex.posture === "upright") {
+    let reason = null;
+    if (pst !== "upright") reason = "몸이 앞으로 엎드려졌어요";
+    if (ex.legs) {
+      const kn = P(lm, sd.s.kn), an = P(lm, sd.s.an), shin = dist(kn, an);
+      const wr = [P(lm, 15), P(lm, 16)].filter(w => w.v > 0.5);
+      if (wr.some(w => w.y > Math.max(P(lm, 25).y, P(lm, 26).y) + shin * 0.3)) reason = "손을 바닥에 짚었어요";
+    }
+    S.badFrames = reason ? (S.badFrames || 0) + 1 : 0;
+    if (S.badFrames >= 3) S.repInvalid = reason;
+    if (t - S.repStart > 8000) S.repInvalid = "한 번 하는 데 너무 오래 걸렸어요";
+  }
   if (S.phase !== "up") { S.minAng = Math.min(S.minAng, ang); S.maxAng = Math.max(S.maxAng, ang); }
   if (S.phase === "moving" && ang < ex.down) S.phase = "bottom";
   if (S.phase !== "up") for (const i of issues) S.repIssues.set(i.k, i.m);
@@ -402,6 +425,7 @@ function process(lm, t) {
   else if (S.phase === "moving" && ang > hi) S.phase = "up"; // 덜 내려가고 돌아온 경우
   if (S.phase === "up") S.maxAng = Math.max(S.maxAng, ang);
 
+  if (t < (S.cueHold || 0)) return; // "세지 않았어요" 안내를 잠시 유지
   if (issues.length) {
     setCue(issues[0].m, issues[1]?.m, issues[0].sev >= 3 ? "var(--bad)" : "var(--warn)");
     speak(issues[0].m, 2, issues[0].k);
@@ -421,7 +445,14 @@ function coach(ex, dir, t) {
 }
 
 function completeRep(ex) {
-  S.phase = "up"; S.count++;
+  S.phase = "up";
+  if (S.repInvalid) {
+    setCue(`세지 않았어요: ${S.repInvalid}`, `${ex.name} 동작만 1회로 세요`, "var(--warn)");
+    speak(`세지 않았어요. ${S.repInvalid}`, 2, "invalid");
+    S.repInvalid = null; S.cueHold = performance.now() + 2500;
+    return;
+  }
+  S.count++;
   for (const i of ex.repEnd(S.minAng, S.maxAng)) S.repIssues.set(i.k, i.m);
   const iss = [...S.repIssues.values()];
   for (const [k, m] of S.repIssues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = m; }
