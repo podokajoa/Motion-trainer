@@ -158,6 +158,12 @@ function detectView(lm) {
   const r = shW / torso;
   return r > 0.55 ? "front" : r < 0.35 ? "side" : "diag";
 }
+// 몸 전체가 서 있는지(upright) 엎드려 있는지(horizontal): 어깨 중심→발목 중심 선의 기울기로 판단
+function bodyPosture(lm) {
+  const sh = mid(P(lm, 11), P(lm, 12)), an = mid(P(lm, 27), P(lm, 28));
+  const a = Math.atan2(Math.abs(an.y - sh.y), Math.abs(an.x - sh.x)) * 180 / Math.PI;
+  return a > 55 ? "upright" : a < 35 ? "horizontal" : "mid";
+}
 const VIEW_KO = { front: "정면", side: "측면", diag: "대각선", unknown: "-" };
 
 // ---------- 운동 정의 ----------
@@ -165,7 +171,7 @@ const VIEW_KO = { front: "정면", side: "측면", diag: "대각선", unknown: "
 // lowerIsInhale: 각도가 줄어드는 구간이 들숨이면 true (스쿼트/푸시업은 내려갈 때 들숨).
 const EX = {
   squat: {
-    name: "스쿼트", view: "측면(등, 깊이) 또는 정면(무릎 방향)", down: 100, up: 160, depth: 95, lowerIsInhale: true,
+    name: "스쿼트", posture: "upright", view: "측면(등, 깊이) 또는 정면(무릎 방향)", down: 100, up: 160, depth: 95, lowerIsInhale: true,
     keys: ["hip", "kn", "an"],
     metric: (lm, sd) => angle(P(lm, sd.s.hip), P(lm, sd.s.kn), P(lm, sd.s.an)),
     coach: "발은 어깨너비, 무릎을 바깥쪽으로 벌리며 앉으세요",
@@ -197,7 +203,7 @@ const EX = {
     repEnd: (minAng) => minAng > 105 ? [{ k: "depth", m: "조금 더 깊게 앉아보세요" }] : [],
   },
   lunge: {
-    name: "런지", view: "측면", down: 105, up: 155, depth: 100, lowerIsInhale: true,
+    name: "런지", posture: "upright", view: "측면", down: 105, up: 155, depth: 100, lowerIsInhale: true,
     keys: ["hip", "kn", "an"],
     // 더 많이 굽혀진 무릎을 앞다리로 봄
     metric: (lm) => Math.min(angle(P(lm, 23), P(lm, 25), P(lm, 27)), angle(P(lm, 24), P(lm, 26), P(lm, 28))),
@@ -221,7 +227,7 @@ const EX = {
     repEnd: (minAng) => minAng > 110 ? [{ k: "depth", m: "더 깊게 내려가세요" }] : [],
   },
   pushup: {
-    name: "푸시업", view: "측면", down: 95, up: 150, depth: 90, lowerIsInhale: true,
+    name: "푸시업", posture: "horizontal", view: "측면", down: 95, up: 150, depth: 90, lowerIsInhale: true,
     keys: ["sh", "el", "wr", "hip", "an"],
     metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
     coach: "머리부터 발끝까지 일직선, 복부에 힘",
@@ -240,7 +246,7 @@ const EX = {
     repEnd: (minAng) => minAng > 100 ? [{ k: "depth", m: "가슴이 바닥 가까이 가도록 더 내려가세요" }] : [],
   },
   plank: {
-    name: "플랭크", view: "측면", hold: true, keys: ["sh", "hip", "an"],
+    name: "플랭크", posture: "horizontal", view: "측면", hold: true, keys: ["sh", "hip", "an"],
     coach: "팔꿈치는 어깨 아래, 몸은 일직선, 호흡은 멈추지 마세요",
     holdCues: ["배꼽을 당기고 엉덩이를 조이세요", "어깨로 바닥을 밀어내세요", "호흡은 멈추지 마세요", "목은 일직선, 시선은 바닥"],
     checks(lm, sd, view) {
@@ -256,7 +262,7 @@ const EX = {
     },
   },
   curl: {
-    name: "덤벨 컬", view: "측면", down: 60, up: 145, depth: 55, lowerIsInhale: false,
+    name: "덤벨 컬", posture: "upright", view: "측면", down: 60, up: 145, depth: 55, lowerIsInhale: false,
     keys: ["sh", "el", "wr"],
     metric: (lm, sd) => angle(P(lm, sd.s.sh), P(lm, sd.s.el), P(lm, sd.s.wr)),
     coach: "팔꿈치는 옆구리에 고정, 천천히 내리세요",
@@ -345,6 +351,17 @@ function process(lm, t) {
   $("view").textContent = VIEW_KO[view];
   if (sd.vis < 0.5) { setCue("몸 전체가 보이게 서주세요", "카메라에서 2~3m 떨어지면 좋아요", "var(--muted)"); return; }
   const dt = S.lastT ? Math.min(t - S.lastT, 100) : 0; S.lastT = t;
+
+  // 운동에 맞지 않는 몸 자세(예: 스쿼트 중 엎드림)면 세지 않고 진행 중인 1회도 취소
+  const pst = bodyPosture(lm);
+  S.wrongPosture = pst !== ex.posture && pst !== "mid" ? (S.wrongPosture || 0) + 1 : 0;
+  if (S.wrongPosture >= 5) {
+    S.phase = "up"; S.repIssues.clear(); S.dir = null; S.lastT = 0;
+    const hint = ex.posture === "upright" ? "선 자세에서 해주세요" : "엎드린 자세에서 해주세요";
+    setCue(`${ex.name} 자세가 아니에요`, hint, "var(--muted)");
+    speak(`${ex.name} 자세가 아니에요. ${hint}`, 2, "posture");
+    return;
+  }
 
   const found = ex.checks(lm, sd, view, S.ang ?? 180).sort((a, b) => b.sev - a.sev);
   // 순간적인 인식 흔들림은 무시: 같은 문제가 6프레임 이상 이어질 때만 교정
