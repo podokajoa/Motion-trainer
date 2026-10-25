@@ -1,5 +1,5 @@
 // 앱 화면은 네트워크 우선(업데이트 반영), 라이브러리와 인식 모델은 캐시 우선(오프라인 실행)
-const CACHE = "smile-trainer-v2";
+const CACHE = "smile-trainer-v3";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
