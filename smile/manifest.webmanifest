@@ -1,0 +1,17 @@
+{
+  "name": "미소 트레이너",
+  "short_name": "미소트레이너",
+  "description": "카메라로 입꼬리 대칭과 높이를 코칭해 주는 미소 연습",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1015",
+  "theme_color": "#1a1015",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -10,3 +10,9 @@
 1. https://podokajoa.github.io/Motion-trainer/ 를 안드로이드 크롬으로 열기
 2. 메뉴(⋮) > 홈 화면에 추가
 3. 폰을 바닥이나 선반에 세우고, 몸 전체가 보이게 2~3m 떨어져서 시작
+
+## 미소 트레이너 (smile/)
+입꼬리 웃음 연습 앱입니다. MediaPipe Face Landmarker로 입꼬리 좌우 대칭, 높이, 유지 시간을 음성으로 코칭해요.
+
+- 주소: https://podokajoa.github.io/Motion-trainer/smile/ (따로 홈 화면에 추가 가능)
+- 은은한 미소 / 활짝 미소, 유지 시간과 횟수 선택, 연습 기록 저장

@@ -1,5 +1,5 @@
 // 앱 화면은 네트워크 우선(업데이트 반영), 라이브러리와 인식 모델은 캐시 우선(오프라인 실행)
-const CACHE = "motion-trainer-v6";
+const CACHE = "motion-trainer-v7";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -7,7 +7,7 @@ self.addEventListener("install", e => {
   self.skipWaiting();
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("motion-trainer-") && k !== CACHE).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 self.addEventListener("fetch", e => {
