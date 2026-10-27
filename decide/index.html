@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>갈대 탈출</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12201a">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#12201a; --fg:#f1f7ef; --muted:#a3b8a8; --card:#1b2e25; --line:#2d4638; --reed:#a7d9a2; --gold:#fbbf24; --bad:#f87171; --good:#4ade80; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 40px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  h2 { font-size:20px; margin:0 0 12px; line-height:1.35; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 16px; line-height:1.5; }
+  .muted { color:var(--muted); }
+  button, input, textarea { font:inherit; color:var(--fg); }
+  button { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; font-size:16px; cursor:pointer; }
+  button.primary { background:var(--reed); color:#0d1a13; border:none; font-weight:800; font-size:18px; padding:15px 20px; }
+  button.gold { background:var(--gold); color:#2a1c00; border:none; font-weight:800; }
+  button.ghost { background:none; border:none; color:var(--muted); padding:8px; }
+  button.wide { width:100%; }
+  button:disabled { opacity:.4; }
+  input, textarea { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:17px; }
+  textarea { resize:vertical; min-height:70px; }
+  input:focus, textarea:focus { outline:2px solid var(--reed); border-color:transparent; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > input { flex:1; }
+  .stack > * + * { margin-top:10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+  .top { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+  .top h1 { flex:1; font-size:20px; margin:0; }
+  .back { font-size:22px; padding:6px 12px; }
+  .view { display:none; } .view.on { display:block; }
+
+  /* 홈 */
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 16px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 6px; text-align:center; }
+  .stat b { display:block; font-size:24px; }
+  .stat span { font-size:12px; color:var(--muted); }
+  .item { display:block; width:100%; text-align:left; margin-top:8px; }
+  .item .q { font-weight:700; font-size:16px; }
+  .item .meta { font-size:13px; color:var(--muted); margin-top:4px; }
+  .tag { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; background:#0d1a13; margin-right:6px; }
+  .tag.lock { color:var(--gold); } .tag.open { color:var(--reed); } .tag.done { color:var(--good); }
+  .empty { text-align:center; padding:28px 10px; color:var(--muted); line-height:1.6; }
+
+  /* 고르는 방법 */
+  .method { display:block; width:100%; text-align:left; margin-top:10px; padding:16px; }
+  .method b { font-size:18px; display:block; }
+  .method span { font-size:14px; color:var(--muted); display:block; margin-top:4px; line-height:1.45; }
+
+  /* 룰렛 */
+  .spin { min-height:150px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:32px; font-weight:800; padding:20px; border-radius:20px; background:var(--card); border:2px solid var(--line); margin:10px 0 16px; word-break:keep-all; }
+  .spin.final { border-color:var(--gold); color:var(--gold); }
+  .feel { display:grid; grid-template-columns:1fr; gap:8px; }
+  .feel button { font-size:17px; text-align:left; }
+
+  /* 토너먼트 */
+  .vs { display:grid; gap:12px; }
+  .vs button { min-height:110px; font-size:22px; font-weight:800; word-break:keep-all; }
+  .vs .or { text-align:center; color:var(--muted); font-weight:700; }
+
+  /* 저울 */
+  .opt { margin-top:12px; }
+  .opt h3 { margin:0 0 8px; font-size:17px; display:flex; justify-content:space-between; gap:8px; }
+  .opt h3 em { font-style:normal; color:var(--gold); white-space:nowrap; }
+  .pc { list-style:none; margin:0 0 8px; padding:0; }
+  .pc li { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:15px; }
+  .pc li .t { flex:1; }
+  .pc li .w { font-size:13px; padding:4px 8px; border-radius:8px; }
+  .pc li.pro .s { color:var(--good); } .pc li.con .s { color:var(--bad); }
+  .pc li .x { padding:2px 8px; font-size:14px; }
+  .add { display:flex; gap:6px; }
+  .add input { flex:1; font-size:15px; padding:10px 12px; }
+  .add button { padding:8px 12px; font-weight:800; }
+  .add .p { color:var(--good); } .add .c { color:var(--bad); }
+  .bar { height:8px; background:#0d1a13; border-radius:4px; overflow:hidden; margin-top:6px; }
+  .bar i { display:block; height:100%; background:var(--reed); width:0; transition:width .3s; }
+
+  /* 결정 */
+  .chosen { font-size:30px; font-weight:800; color:var(--gold); text-align:center; padding:18px 10px; word-break:keep-all; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { padding:10px 14px; font-size:15px; }
+  .chips button.on { background:var(--reed); color:#0d1a13; border-color:var(--reed); font-weight:800; }
+  .reason { font-size:18px; line-height:1.5; padding:14px 16px; border-left:4px solid var(--gold); background:var(--card); border-radius:0 12px 12px 0; }
+  .lockbox { text-align:center; padding:12px; }
+  .lockbox .big { font-size:28px; font-weight:800; color:var(--gold); }
+  .hist { font-size:14px; color:var(--muted); line-height:1.6; padding-left:18px; margin:6px 0 0; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#0d1a13; border:1px solid var(--reed); color:var(--fg); padding:12px 18px; border-radius:14px; font-size:15px; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; text-align:center; }
+  .toast.on { opacity:1; }
+  @keyframes sway { 0%,100% { transform:rotate(-4deg); } 50% { transform:rotate(4deg); } }
+  .sway { display:inline-block; animation:sway 2.4s ease-in-out infinite; transform-origin:bottom center; }
+</style>
+</head>
+<body>
+<main>
+
+<!-- 홈 -->
+<section class="view" id="v-home">
+  <h1><span class="sway">🌾</span> 갈대 탈출</h1>
+  <p class="sub">마음이 갈대처럼 흔들릴 때, 대신 골라 주고 정한 마음을 지켜 주는 결정 도우미예요.</p>
+  <div class="stats">
+    <div class="stat"><b id="s-kept">0</b><span>지킨 결정</span></div>
+    <div class="stat"><b id="s-open">0</b><span>고민 중</span></div>
+    <div class="stat"><b id="s-wob">0</b><span>흔들린 횟수</span></div>
+  </div>
+  <button class="primary wide" id="newBtn">＋ 새 고민 정하기</button>
+  <div id="list"></div>
+</section>
+
+<!-- 새 고민 -->
+<section class="view" id="v-new">
+  <div class="top"><button class="ghost back" data-go="home">←</button><h1>무엇을 고민 중이에요?</h1></div>
+  <div class="stack">
+    <input id="q" placeholder="예: 오늘 저녁 뭐 먹지?" maxlength="80">
+    <p class="sub" style="margin:14px 0 4px">선택지 (2개 이상)</p>
+    <div id="opts" class="stack"></div>
+    <button id="addOpt">＋ 선택지 추가</button>
+    <button class="primary wide" id="toMethod" style="margin-top:18px">어떻게 고를까요? →</button>
+  </div>
+</section>
+
+<!-- 고르는 방법 -->
+<section class="view" id="v-method">
+  <div class="top"><button class="ghost back">←</button><h1>고르는 방법</h1></div>
+  <h2 id="m-q"></h2>
+  <button class="method" data-m="spin"><b>🎲 운에 맡기기</b><span>무작위로 하나를 뽑아요. 결과를 본 순간의 기분으로 진짜 속마음을 알아내요.</span></button>
+  <button class="method" data-m="duel"><b>⚔️ 둘씩 비교하기</b><span>두 개씩만 보고 더 끌리는 쪽을 눌러요. 선택지가 많을수록 좋아요.</span></button>
+  <button class="method" data-m="scale"><b>⚖️ 장단점 저울</b><span>선택지마다 장점과 단점을 적고 무게를 매겨 점수로 비교해요.</span></button>
+  <button class="method" data-m="self"><b>✋ 이미 마음이 있어요</b><span>바로 고르고 잠가 둬요.</span></button>
+</section>
+
+<!-- 운에 맡기기 -->
+<section class="view" id="v-spin">
+  <div class="top"><button class="ghost back" data-go="method">←</button><h1>운에 맡기기</h1></div>
+  <div class="spin" id="spinBox">?</div>
+  <button class="gold wide" id="spinBtn" style="font-size:18px;padding:15px">돌리기</button>
+  <div id="feelBox" style="display:none;margin-top:18px">
+    <h2>결과를 본 순간, 기분이 어때요?</h2>
+    <p class="sub">생각하지 말고 첫 느낌으로 눌러요.</p>
+    <div class="feel">
+      <button data-f="yes">😌 오, 좋은데? 다행이다</button>
+      <button data-f="no">😣 아… 아쉽다</button>
+      <button data-f="meh">😐 별 느낌 없어</button>
+    </div>
+  </div>
+  <div id="feelOut" style="display:none;margin-top:18px"></div>
+</section>
+
+<!-- 둘씩 비교 -->
+<section class="view" id="v-duel">
+  <div class="top"><button class="ghost back" data-go="method">←</button><h1>둘씩 비교하기</h1></div>
+  <p class="sub" id="duelInfo"></p>
+  <div class="vs">
+    <button id="duelA"></button>
+    <div class="or">또는</div>
+    <button id="duelB"></button>
+  </div>
+</section>
+
+<!-- 장단점 저울 -->
+<section class="view" id="v-scale">
+  <div class="top"><button class="ghost back" data-go="method">←</button><h1>장단점 저울</h1></div>
+  <p class="sub">적은 항목의 숫자(무게)를 누르면 1 → 2 → 3으로 바뀌어요. 중요한 것일수록 무겁게.</p>
+  <div id="scaleBox"></div>
+  <button class="primary wide" id="scaleDone" style="margin-top:18px">저울 결과 보기</button>
+</section>
+
+<!-- 직접 고르기 -->
+<section class="view" id="v-self">
+  <div class="top"><button class="ghost back" data-go="method">←</button><h1>무엇으로 할까요?</h1></div>
+  <div id="selfBox" class="stack"></div>
+</section>
+
+<!-- 결정 확정 -->
+<section class="view" id="v-commit">
+  <div class="top"><button class="ghost back" id="commitBack">←</button><h1>이걸로 정할까요?</h1></div>
+  <div class="card"><div class="muted" id="c-q" style="text-align:center"></div><div class="chosen" id="c-choice"></div><div class="muted" id="c-why" style="text-align:center;font-size:14px"></div></div>
+  <p class="sub" style="margin:18px 0 6px">나중에 흔들릴 나에게 한마디 (왜 이걸 골랐나요?)</p>
+  <textarea id="c-reason" maxlength="200" placeholder="예: 어제도 고민만 하다 굶었다. 그냥 먹자."></textarea>
+  <p class="sub" style="margin:16px 0 6px">결정 잠금: 이 기간엔 다시 고민하기 전에 한 번 더 붙잡아 드려요</p>
+  <div class="chips" id="lockChips">
+    <button data-h="0">잠금 없음</button>
+    <button data-h="3">3시간</button>
+    <button data-h="24" class="on">하루</button>
+    <button data-h="72">3일</button>
+    <button data-h="168">일주일</button>
+  </div>
+  <button class="primary wide" id="commitBtn" style="margin-top:22px">🔒 결정 확정</button>
+</section>
+
+<!-- 결정 보기 -->
+<section class="view" id="v-detail">
+  <div class="top"><button class="ghost back" data-go="home">←</button><h1>내 결정</h1></div>
+  <div id="detailBox"></div>
+</section>
+
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY = "reed-decider-v1";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+let data = { items: [] };
+try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
+
+let cur = null;          // 지금 다루는 고민
+let pending = null;      // 확정 직전 { choice, why, from }
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2600); }
+
+function go(v) {
+  document.querySelectorAll(".view").forEach(el => el.classList.toggle("on", el.id === "v-" + v));
+  window.scrollTo(0, 0);
+  if (v === "home") renderHome();
+}
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+
+function fmtLeft(ms) {
+  const m = Math.ceil(ms / 60000);
+  if (m < 60) return m + "분";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "시간 " + (m % 60 ? (m % 60) + "분" : "");
+  return Math.floor(h / 24) + "일 " + (h % 24 ? (h % 24) + "시간" : "");
+}
+const fmtDate = t => { const d = new Date(t); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+const locked = it => it.status === "decided" && it.lockUntil && it.lockUntil > Date.now();
+
+/* ---------- 홈 ---------- */
+function renderHome() {
+  const items = data.items;
+  $("#s-kept").textContent = items.filter(i => i.status === "done").length;
+  $("#s-open").textContent = items.filter(i => i.status === "open").length;
+  $("#s-wob").textContent = items.reduce((n, i) => n + (i.wobbles || 0), 0);
+  const order = { decided:0, open:1, done:2 };
+  const sorted = items.slice().sort((a, b) => order[a.status] - order[b.status] || b.updated - a.updated);
+  if (!sorted.length) {
+    $("#list").innerHTML = '<div class="empty">아직 고민이 없어요.<br>오늘 저녁 메뉴처럼 작은 것부터 정해 봐요.</div>';
+    return;
+  }
+  $("#list").innerHTML = '<p class="sub" style="margin:22px 0 0">내 고민들</p>' + sorted.map(it => {
+    let tag, meta;
+    if (it.status === "open") { tag = '<span class="tag open">고민 중</span>'; meta = it.options.length + "개 선택지"; }
+    else if (it.status === "done") { tag = '<span class="tag done">✓ 지켰어요</span>'; meta = "→ " + esc(it.choice); }
+    else { tag = locked(it) ? '<span class="tag lock">🔒 잠금 ' + fmtLeft(it.lockUntil - Date.now()) + '</span>' : '<span class="tag lock">정함</span>'; meta = "→ <b>" + esc(it.choice) + "</b>"; }
+    const wob = it.wobbles ? ' · 🌾 ' + it.wobbles + '번 흔들림' : "";
+    return '<button class="card item" data-id="' + it.id + '"><div class="q">' + esc(it.q) + '</div><div class="meta">' + tag + meta + wob + '</div></button>';
+  }).join("");
+  $("#list").querySelectorAll(".item").forEach(b => b.onclick = () => open(b.dataset.id));
+}
+function open(id) {
+  cur = data.items.find(i => i.id === id);
+  if (!cur) return;
+  if (cur.status === "open") { $("#m-q").textContent = cur.q; go("method"); }
+  else { renderDetail(); go("detail"); }
+}
+
+/* ---------- 새 고민 ---------- */
+function optRow(val) {
+  const d = document.createElement("div");
+  d.className = "row";
+  d.innerHTML = '<input maxlength="40" placeholder="선택지"><button class="ghost" aria-label="삭제">✕</button>';
+  d.querySelector("input").value = val || "";
+  d.querySelector("button").onclick = () => { if ($("#opts").children.length > 2) d.remove(); else d.querySelector("input").value = ""; };
+  $("#opts").appendChild(d);
+  return d;
+}
+$("#newBtn").onclick = () => {
+  cur = null;
+  $("#q").value = "";
+  $("#opts").innerHTML = "";
+  optRow(); optRow();
+  go("new");
+  setTimeout(() => $("#q").focus(), 50);
+};
+$("#addOpt").onclick = () => optRow().querySelector("input").focus();
+$("#toMethod").onclick = () => {
+  const q = $("#q").value.trim();
+  const options = [...new Set([...$("#opts").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean))];
+  if (!q) { toast("무엇을 고민 중인지 적어 주세요"); $("#q").focus(); return; }
+  if (options.length < 2) { toast("서로 다른 선택지를 2개 이상 적어 주세요"); return; }
+  if (cur) { cur.q = q; cur.options = options; cur.updated = Date.now(); }
+  else { cur = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), q, options, status: "open", wobbles: 0, history: [], pros: {}, created: Date.now(), updated: Date.now() }; data.items.push(cur); }
+  save();
+  $("#m-q").textContent = q;
+  go("method");
+};
+
+/* ---------- 고르는 방법 ---------- */
+document.querySelectorAll(".method").forEach(b => b.onclick = () => {
+  const m = b.dataset.m;
+  if (m === "spin") startSpin();
+  if (m === "duel") startDuel();
+  if (m === "scale") startScale();
+  if (m === "self") startSelf();
+  go(m);
+});
+// 방법 화면에서 뒤로: 선택지 수정
+$("#v-method .back").onclick = () => {
+  $("#q").value = cur.q;
+  $("#opts").innerHTML = "";
+  cur.options.forEach(o => optRow(o));
+  go("new");
+};
+
+/* ---------- 운에 맡기기 ---------- */
+let spinPick = null, spinning = false;
+function startSpin() {
+  spinPick = null;
+  $("#spinBox").textContent = "?";
+  $("#spinBox").classList.remove("final");
+  $("#spinBtn").style.display = "";
+  $("#spinBtn").textContent = "돌리기";
+  $("#feelBox").style.display = "none";
+  $("#feelOut").style.display = "none";
+}
+$("#spinBtn").onclick = () => {
+  if (spinning) return;
+  spinning = true;
+  $("#spinBtn").disabled = true;
+  $("#feelBox").style.display = "none";
+  $("#feelOut").style.display = "none";
+  $("#spinBox").classList.remove("final");
+  const opts = cur.options, final = opts[Math.floor(Math.random() * opts.length)];
+  let i = Math.floor(Math.random() * opts.length), delay = 50;
+  const tick = () => {
+    $("#spinBox").textContent = opts[i++ % opts.length];
+    if (navigator.vibrate) navigator.vibrate(8);
+    delay *= 1.12;
+    if (delay < 420) setTimeout(tick, delay);
+    else {
+      spinPick = final;
+      $("#spinBox").textContent = final;
+      $("#spinBox").classList.add("final");
+      if (navigator.vibrate) navigator.vibrate([30, 40, 60]);
+      spinning = false;
+      $("#spinBtn").disabled = false;
+      $("#spinBtn").style.display = "none";
+      $("#feelBox").style.display = "";
+    }
+  };
+  tick();
+};
+document.querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
+  const f = b.dataset.f, others = cur.options.filter(o => o !== spinPick);
+  $("#feelBox").style.display = "none";
+  const out = $("#feelOut");
+  out.style.display = "";
+  if (f === "yes") {
+    out.innerHTML = '<div class="card"><h2>마음은 이미 정해져 있었네요 🙂</h2><p class="sub" style="margin:0">뽑혔을 때 다행이라고 느꼈다면, 그게 원래 원하던 거예요.</p></div><button class="primary wide" style="margin-top:12px">「' + esc(spinPick) + '」(으)로 정하기</button>';
+    out.querySelector(".primary").onclick = () => toCommit(spinPick, "운에 맡겼는데 다행이라고 느낌", "spin");
+  } else if (f === "no") {
+    const body = '<div class="card"><h2>아쉬웠다면, 진짜 마음은 다른 쪽이에요</h2><p class="sub" style="margin:0">' + (others.length === 1 ? "아쉬움은 반대쪽을 원한다는 신호예요." : "아쉬웠던 순간 떠올랐던 걸 골라요.") + '</p></div><div class="stack" style="margin-top:12px">' +
+      others.map((o, k) => '<button class="primary wide" data-k="' + k + '">「' + esc(o) + '」(으)로 정하기</button>').join("") +
+      '<button class="wide" id="again">한 번 더 돌려 볼래요</button></div>';
+    out.innerHTML = body;
+    out.querySelectorAll("[data-k]").forEach(x => x.onclick = () => toCommit(others[+x.dataset.k], "운이 다른 걸 뽑았을 때 아쉬움을 느낌", "spin"));
+    out.querySelector("#again").onclick = () => { startSpin(); $("#spinBtn").click(); };
+  } else {
+    out.innerHTML = '<div class="card"><h2>어느 쪽이든 괜찮다는 뜻이에요</h2><p class="sub" style="margin:0">차이가 없다면 오래 고민할수록 손해예요. 뽑힌 걸로 가요.</p></div><button class="primary wide" style="margin-top:12px">「' + esc(spinPick) + '」(으)로 정하기</button>';
+    out.querySelector(".primary").onclick = () => toCommit(spinPick, "별 차이 없어서 운에 맡김", "spin");
+  }
+});
+
+/* ---------- 둘씩 비교 (토너먼트) ---------- */
+let duel = null;
+function startDuel() {
+  duel = { round: shuffle(cur.options), next: [], i: 0, done: 0, total: cur.options.length - 1 };
+  showDuel();
+}
+function showDuel() {
+  const r = duel.round;
+  // 홀수로 남은 마지막 하나는 부전승
+  if (duel.i === r.length - 1) { duel.next.push(r[duel.i]); duel.i++; }
+  if (duel.i >= r.length) {
+    if (duel.next.length === 1) return toCommit(duel.next[0], "둘씩 비교해서 끝까지 이김", "duel");
+    duel.round = shuffle(duel.next); duel.next = []; duel.i = 0;
+    return showDuel();
+  }
+  $("#duelInfo").textContent = cur.q + " · " + (duel.done + 1) + " / " + duel.total + "번째 비교";
+  $("#duelA").textContent = r[duel.i];
+  $("#duelB").textContent = r[duel.i + 1];
+}
+const pickDuel = k => { duel.next.push(duel.round[duel.i + k]); duel.i += 2; duel.done++; if (navigator.vibrate) navigator.vibrate(10); showDuel(); };
+$("#duelA").onclick = () => pickDuel(0);
+$("#duelB").onclick = () => pickDuel(1);
+
+/* ---------- 장단점 저울 ---------- */
+function score(o) { return (cur.pros[o] || []).reduce((n, p) => n + (p.pro ? p.w : -p.w), 0); }
+function startScale() {
+  cur.pros = cur.pros || {};
+  renderScale();
+}
+function renderScale() {
+  const scores = cur.options.map(score), max = Math.max(1, ...scores.map(Math.abs));
+  $("#scaleBox").innerHTML = cur.options.map((o, k) => {
+    const list = cur.pros[o] || [], s = scores[k];
+    return '<div class="card opt" data-k="' + k + '"><h3><span>' + esc(o) + '</span><em>' + (s > 0 ? "+" : "") + s + '점</em></h3>' +
+      '<ul class="pc">' + list.map((p, j) => '<li class="' + (p.pro ? "pro" : "con") + '"><span class="s">' + (p.pro ? "＋" : "－") + '</span><span class="t">' + esc(p.t) + '</span><button class="w" data-j="' + j + '">무게 ' + p.w + '</button><button class="ghost x" data-x="' + j + '">✕</button></li>').join("") + '</ul>' +
+      '<div class="add"><input maxlength="40" placeholder="장점이나 단점"><button class="p">＋장점</button><button class="c">－단점</button></div>' +
+      '<div class="bar"><i style="width:' + Math.max(0, s / max * 100) + '%"></i></div></div>';
+  }).join("");
+  $("#scaleBox").querySelectorAll(".opt").forEach(card => {
+    const o = cur.options[+card.dataset.k], inp = card.querySelector("input");
+    const add = pro => { const t = inp.value.trim(); if (!t) { inp.focus(); return; } (cur.pros[o] = cur.pros[o] || []).push({ t, pro, w: 1 }); save(); renderScale(); const again = $("#scaleBox").querySelector('[data-k="' + card.dataset.k + '"] input'); again.focus(); };
+    card.querySelector(".p").onclick = () => add(true);
+    card.querySelector(".c").onclick = () => add(false);
+    inp.onkeydown = e => { if (e.key === "Enter") add(true); };
+    card.querySelectorAll("[data-j]").forEach(b => b.onclick = () => { const p = cur.pros[o][+b.dataset.j]; p.w = p.w % 3 + 1; save(); renderScale(); });
+    card.querySelectorAll("[data-x]").forEach(b => b.onclick = () => { cur.pros[o].splice(+b.dataset.x, 1); save(); renderScale(); });
+  });
+}
+$("#scaleDone").onclick = () => {
+  const filled = cur.options.filter(o => (cur.pros[o] || []).length);
+  if (!filled.length) { toast("장점이나 단점을 하나 이상 적어 주세요"); return; }
+  const ranked = cur.options.map(o => ({ o, s: score(o) })).sort((a, b) => b.s - a.s);
+  const top = ranked.filter(r => r.s === ranked[0].s);
+  if (top.length > 1) {
+    toast("동점이에요! 동점끼리 둘씩 비교로 정해요");
+    duel = { round: shuffle(top.map(r => r.o)), next: [], i: 0, done: 0, total: top.length - 1 };
+    showDuel();
+    go("duel");
+    return;
+  }
+  toCommit(ranked[0].o, "장단점 저울에서 " + ranked[0].s + "점으로 1등", "scale");
+};
+
+/* ---------- 직접 고르기 ---------- */
+function startSelf() {
+  $("#selfBox").innerHTML = cur.options.map((o, k) => '<button class="wide" style="font-size:19px;padding:18px" data-k="' + k + '">' + esc(o) + '</button>').join("");
+  $("#selfBox").querySelectorAll("button").forEach(b => b.onclick = () => toCommit(cur.options[+b.dataset.k], "원래 마음이 있었음", "self"));
+}
+
+/* ---------- 확정 ---------- */
+let lockH = 24;
+$("#lockChips").querySelectorAll("button").forEach(b => b.onclick = () => {
+  lockH = +b.dataset.h;
+  $("#lockChips").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+});
+function toCommit(choice, why, from) {
+  pending = { choice, why, from };
+  $("#c-q").textContent = cur.q;
+  $("#c-choice").textContent = choice;
+  $("#c-why").textContent = why;
+  $("#c-reason").value = "";
+  go("commit");
+}
+$("#commitBack").onclick = () => go("method");
+$("#commitBtn").onclick = () => {
+  const now = Date.now();
+  if (cur.choice && cur.choice !== pending.choice) cur.history.push({ at: now, from: cur.choice, to: pending.choice });
+  cur.status = "decided";
+  cur.choice = pending.choice;
+  cur.why = pending.why;
+  cur.reason = $("#c-reason").value.trim();
+  cur.decidedAt = now;
+  cur.lockUntil = lockH ? now + lockH * 3600000 : 0;
+  cur.updated = now;
+  save();
+  if (navigator.vibrate) navigator.vibrate([20, 60, 20]);
+  toast(lockH ? "🔒 정했어요! 이제 흔들리지 않기" : "정했어요!");
+  renderDetail();
+  go("detail");
+};
+
+/* ---------- 결정 보기 ---------- */
+function renderDetail() {
+  const it = cur, isLocked = locked(it);
+  let h = '<div class="card"><div class="muted" style="text-align:center">' + esc(it.q) + '</div><div class="chosen">' + esc(it.choice) + '</div>' +
+    '<div class="muted" style="text-align:center;font-size:13px">' + fmtDate(it.decidedAt) + ' 결정 · ' + esc(it.why || "") + '</div></div>';
+  if (it.reason) h += '<p class="sub" style="margin:18px 0 6px">그때의 내가 남긴 말</p><div class="reason">' + esc(it.reason) + '</div>';
+  if (it.status === "done") {
+    h += '<div class="card lockbox" style="margin-top:16px"><div class="big" style="color:var(--good)">✓ 지켰어요</div><div class="muted">' + fmtDate(it.doneAt) + '</div></div>';
+  } else if (isLocked) {
+    h += '<div class="card lockbox" style="margin-top:16px"><div class="muted">결정 잠금</div><div class="big">🔒 ' + fmtLeft(it.lockUntil - Date.now()) + ' 남음</div></div>';
+  }
+  if (it.wobbles) {
+    h += '<p class="sub" style="margin:16px 0 0">🌾 ' + it.wobbles + '번 흔들렸어요</p>';
+    if (it.history.length) h += '<ul class="hist">' + it.history.map(x => '<li>' + fmtDate(x.at) + ' ' + esc(x.from) + ' → ' + esc(x.to) + '</li>').join("") + '</ul>';
+  }
+  h += '<div class="stack" style="margin-top:20px">';
+  if (it.status !== "done") h += '<button class="primary wide" id="d-done">✓ 이대로 했어요 (결정 지킴)</button><button class="wide" id="d-wobble">🌾 마음이 또 흔들려요</button>';
+  h += '<button class="ghost wide" id="d-del">이 고민 지우기</button></div><div id="wobBox"></div>';
+  $("#detailBox").innerHTML = h;
+  const done = $("#d-done");
+  if (done) done.onclick = () => { it.status = "done"; it.doneAt = Date.now(); it.updated = Date.now(); save(); toast("🎉 결정을 지켰어요!"); renderDetail(); };
+  const wob = $("#d-wobble");
+  if (wob) wob.onclick = () => {
+    const box = $("#wobBox");
+    box.innerHTML = '<div class="card" style="margin-top:14px"><h2>' + (isLocked ? "잠깐! 아직 잠금 중이에요" : "다시 고민해 볼까요?") + '</h2>' +
+      '<p class="sub" style="margin:0 0 10px">' + (it.reason ? "그때 이렇게 생각했어요: 「" + esc(it.reason) + "」<br>" : "") +
+      (isLocked ? "그새 새로운 정보가 생긴 게 아니라면, 흔들리는 건 그냥 불안이에요. 결정한 대로 해 보는 것도 방법이에요." : "새로 알게 된 게 있다면 다시 고민해도 괜찮아요.") + '</p>' +
+      '<div class="stack"><button class="primary wide" id="w-keep">그래, 원래대로 갈게요</button><button class="wide" id="w-redo">그래도 다시 고를래요 (흔들림 +1)</button></div></div>';
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("#w-keep").onclick = () => { toast("💪 흔들리지 않았어요!"); box.innerHTML = ""; };
+    $("#w-redo").onclick = () => {
+      it.wobbles = (it.wobbles || 0) + 1;
+      it.status = "open"; it.lockUntil = 0; it.updated = Date.now();
+      save();
+      $("#m-q").textContent = it.q;
+      go("method");
+    };
+  };
+  $("#d-del").onclick = () => {
+    if (!confirm("이 고민을 지울까요?")) return;
+    data.items = data.items.filter(x => x !== it);
+    save();
+    go("home");
+  };
+}
+
+go("home");
+setInterval(() => { if ($("#v-home").classList.contains("on")) renderHome(); }, 60000);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
