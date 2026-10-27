@@ -91,10 +91,11 @@
   </div>
   <div class="tips" id="refBox">
     <b>참고 미소 사진 (선택)</b><br>
-    마음에 드는 미소 사진을 넣으면 그 입꼬리 각도와 입 벌림 정도를 목표로 써요. 단, 내가 실제로 낸 최고 미소보다 조금씩만 목표를 올려요. 안 어울리면 끄면 돼요. 사진은 폰 안에서만 분석해요.
+    마음에 드는 미소 사진을 넣으면 그 입꼬리 각도와 입 벌림 정도를 목표로 써요. 연습할 때 사진 속 입 모양을 내 입 위에 겹쳐 보여 줘요. 단, 내가 실제로 낸 최고 미소보다 조금씩만 목표를 올려요. 안 어울리면 끄면 돼요. 사진은 폰 안에서만 분석해요.
     <div class="controls" style="margin:8px 0 0">
       <label class="btnlike"><input type="file" id="refFile" accept="image/*" hidden>사진 고르기</label>
       <button id="refToggle">참고 사진: 꺼짐</button>
+      <button id="overlay">겹쳐 보기: 사진+선</button>
       <button id="refDel">사진 지우기</button>
     </div>
     <div id="refInfo"></div>
@@ -299,10 +300,45 @@ function prettyScore(m, mode, score) {
     10 * cl(m.eyeSmile / 0.3) - (m.upperUp > 0.8 ? 8 : 0));
 }
 
+// ---------- 참고 입 모양 겹쳐 보기 ----------
+// 입 좌표계: 입 가운데가 원점, 눈 선 방향이 x축, 입 너비 = 1. 사진과 내 얼굴 크기·위치가 달라도 입끼리 맞춰 겹침
+function mouthFrame(lm, w, h) {
+  const P = i => ({ x: lm[i].x * w, y: lm[i].y * h });
+  const eR = P(EYE_R), eL = P(EYE_L), a = P(CORNER_R), b = P(CORNER_L), t = P(LIP_IN_TOP), u = P(LIP_IN_BOT);
+  return { ox: (t.x + u.x) / 2, oy: (t.y + u.y) / 2, ang: Math.atan2(eL.y - eR.y, eL.x - eR.x), s: Math.hypot(b.x - a.x, b.y - a.y) };
+}
+function toFrame(F, x, y) {
+  const dx = x - F.ox, dy = y - F.oy, c = Math.cos(-F.ang), n = Math.sin(-F.ang);
+  return [+((dx * c - dy * n) / F.s).toFixed(4), +((dx * n + dy * c) / F.s).toFixed(4)];
+}
+function fromFrame(F, [qx, qy]) {
+  const c = Math.cos(F.ang), n = Math.sin(F.ang), x = qx * F.s, y = qy * F.s;
+  return [F.ox + x * c - y * n, F.oy + x * n + y * c];
+}
+let overlayMode = store.get("overlay") || "both"; // both | line | off
+let REF_IMG = null;
+function loadRefImg() { REF_IMG = null; if (REF?.mouthImg) { const i = new Image(); i.onload = () => REF_IMG = i; i.src = REF.mouthImg; } }
+function drawOverlay(lm) {
+  if (overlayMode === "off" || !refOn || !REF?.lips) return;
+  const F = mouthFrame(lm, W, H), lw = Math.max(2, W / 260);
+  const path = (pts, k = 1) => { ctx.beginPath(); pts.forEach((q, n) => { const [x, y] = fromFrame(F, [q[0] * k, q[1] * k]); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); };
+  if (overlayMode === "both" && REF_IMG) {
+    ctx.save(); path(REF.lips.out, 1.3); ctx.clip();
+    ctx.translate(F.ox, F.oy); ctx.rotate(F.ang); ctx.scale(F.s / 100, F.s / 100);
+    ctx.globalAlpha = 0.45; ctx.drawImage(REF_IMG, -120, -80); ctx.restore();
+  }
+  ctx.save(); ctx.setLineDash([lw * 2.5, lw * 1.5]); ctx.strokeStyle = "#f472b6"; ctx.lineWidth = lw * 1.3;
+  path(REF.lips.out); ctx.stroke(); path(REF.lips.in); ctx.stroke();
+  // 참고 사진의 입꼬리 위치 (분홍 점)
+  for (const q of [REF.lips.out[0], REF.lips.out[10]]) { const [x, y] = fromFrame(F, q); ctx.beginPath(); ctx.arc(x, y, lw * 2.5, 0, 7); ctx.fillStyle = "#f472b6"; ctx.fill(); }
+  ctx.restore();
+}
+
 // ---------- 화면 그리기 ----------
-function draw(lm, color, m) {
+function draw(lm, color, m, overlay = false) {
   ctx.clearRect(0, 0, W, H);
   if (!lm) return;
+  if (overlay) drawOverlay(lm);
   const P = i => [lm[i].x * W, lm[i].y * H];
   const lw = Math.max(2, W / 260);
   for (const ring of [LIPS_OUT, LIPS_IN]) {
@@ -432,7 +468,7 @@ function step(lm, blend, t) {
     if (shown.length) speak(shown[0].m, 2, shown[0].k);
   }
   const color = ok ? "#4ade80" : shown.some(i => i.gate) ? "#f87171" : "#fbbf24";
-  draw(lm, color, m); bars(r.liftL, r.liftR, mode, true, m.tilt);
+  draw(lm, color, m, true); bars(r.liftL, r.liftR, mode, true, m.tilt);
   setState(ok ? "var(--good)" : shown.length ? "var(--warn)" : null);
   $("timeLabel").textContent = "남은 시간";
   $("time").textContent = Math.max(0, Math.ceil(hold - S.good));
@@ -503,21 +539,30 @@ async function analyzeRef(file) {
     if (!best) { $("refInfo").textContent = turned ? "얼굴이 옆으로 많이 돌아간 사진이에요. 정면에 가까운 사진으로 골라 주세요." : "사진에서 얼굴을 찾지 못했어요. 얼굴이 크게 나온 사진으로 골라 주세요."; return; }
     if (best.m.smile < 0.3) { $("refInfo").textContent = "사진 속 얼굴이 웃고 있지 않은 것 같아요. 웃는 사진으로 골라 주세요."; return; }
     const m = best.m;
+    const F = mouthFrame(best.lm, best.w, best.h);
+    const lips = { out: LIPS_OUT.map(i => toFrame(F, best.lm[i].x * best.w, best.lm[i].y * best.h)),
+                   in: LIPS_IN.map(i => toFrame(F, best.lm[i].x * best.w, best.lm[i].y * best.h)) };
+    // 입 주변만 똑바로 세워 잘라 둠 (입 너비 = 100px, 입 가운데 = 그림 가운데)
+    const mc = document.createElement("canvas"); mc.width = 240; mc.height = 160;
+    const g = mc.getContext("2d"); g.translate(120, 80); g.scale(100 / F.s, 100 / F.s); g.rotate(-F.ang); g.translate(-F.ox, -F.oy); g.drawImage(best.src, 0, 0);
     REF = { up: Math.round((m.upL + m.upR) / 2), open: +m.open.toFixed(3), smile: +m.smile.toFixed(2), small: best.small,
-            img: snapshot(best.lm, best.src, best.w, best.h, false) };
+            img: snapshot(best.lm, best.src, best.w, best.h, false), lips, mouthImg: mc.toDataURL("image/jpeg", 0.85) };
+    loadRefImg();
     store.set("refSmile", JSON.stringify(REF)); refOn = true; store.set("refOn", "on");
   } catch (e) { $("refInfo").textContent = "사진 분석 실패: " + e.message; return; }
   renderRef();
 }
 function renderRef() {
   $("refToggle").textContent = "참고 사진: " + (refOn && REF ? "켜짐" : "꺼짐");
-  $("refToggle").disabled = $("refDel").disabled = !REF;
+  $("refToggle").disabled = $("refDel").disabled = $("overlay").disabled = !REF;
+  $("overlay").textContent = "겹쳐 보기: " + { both: "사진+선", line: "선만", off: "끔" }[overlayMode];
   if (!REF) { $("refInfo").textContent = ""; return; }
   const m = refMode(true);
   $("refInfo").innerHTML = `<div class="pair"><figure><img src="${REF.img}" alt="참고 미소">참고 사진</figure>
     <div style="font-size:14px;line-height:1.6">입꼬리 각도 <b>${REF.up}도</b><br>${REF.open >= 0.08 ? "윗니가 보이는 미소" : "입을 다문 미소"}<br>
     ${m ? `다음 연습 목표: 입꼬리 <b>${Math.round(m.cornerUp)}도</b>${m.cornerUp < REF.up ? "<br><small>연습할수록 사진에 가까워져요</small>" : ""}` : "꺼져 있어요"}
-    ${REF.small ? "<br><small>얼굴이 작게 나온 사진이라 수치가 덜 정확할 수 있어요</small>" : ""}</div></div>`;
+    ${REF.small ? "<br><small>얼굴이 작게 나온 사진이라 수치가 덜 정확할 수 있어요</small>" : ""}
+    ${REF.lips ? "" : "<br><small>겹쳐 보기를 쓰려면 사진을 한 번 더 골라 주세요</small>"}</div></div>`;
 }
 async function start() {
   try {
@@ -613,8 +658,9 @@ $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐");
 $("voice").onclick = () => { voiceOn = !voiceOn; store.set("voice", voiceOn ? "on" : "off"); $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
 $("refFile").onchange = e => { const f = e.target.files[0]; if (f) analyzeRef(f); e.target.value = ""; };
 $("refToggle").onclick = () => { refOn = !refOn; store.set("refOn", refOn ? "on" : "off"); renderRef(); };
-$("refDel").onclick = () => { REF = null; store.set("refSmile", "null"); renderRef(); };
-renderRef();
+$("overlay").onclick = () => { overlayMode = { both: "line", line: "off", off: "both" }[overlayMode]; store.set("overlay", overlayMode); renderRef(); };
+$("refDel").onclick = () => { REF = null; REF_IMG = null; store.set("refSmile", "null"); renderRef(); };
+renderRef(); loadRefImg();
 $("start").onclick = () => { ding(); keepAwake(); start(); };
 $("exit").onclick = e => { e.stopPropagation(); stop(); };
 $("canvas").parentElement.onclick = () => { if (running && S.phase === "done") start(); };
