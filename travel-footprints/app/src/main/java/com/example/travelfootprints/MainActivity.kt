@@ -348,6 +348,11 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    uri!=null
   }
   g.setPrefetchZoomDelta(0)
+  // The compass sat under the top-right scan button and showed as a dark half circle.
+  // A travel map does not need rotation, so keep north up and hide the compass.
+  g.uiSettings.isCompassEnabled=false
+  g.uiSettings.isRotateGesturesEnabled=false
+  g.uiSettings.isTiltGesturesEnabled=false
   g.setStyle(org.maplibre.android.maps.Style.Builder().fromUri(TileNetwork.STYLE_URL)) { style ->
    TileNetwork.koreanize(style)
    Log.i("TravelFootprintsMap","style loaded; rendering ${points.size} cached coordinates")
@@ -449,7 +454,12 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     }
     val preview=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; background=rounded(Color.rgb(219,234,224),12); clipToOutline=true }
     item.addView(preview,LinearLayout.LayoutParams(-1,dp(114)))
-    try { preview.setImageBitmap(contentResolver.loadThumbnail(Uri.parse(p.uri),android.util.Size(dp(150),dp(125)),null)) } catch (_:Exception) { }
+    try { preview.setImageBitmap(contentResolver.loadThumbnail(Uri.parse(p.uri),android.util.Size(dp(150),dp(125)),null)) } catch (e:Exception) {
+     // Missing or unreadable photo (e.g. deleted from the gallery): show an icon instead of an empty box.
+     Log.w("TravelFootprintsMap","thumbnail failed for ${p.uri}: ${e.javaClass.simpleName}")
+     preview.scaleType=ImageView.ScaleType.CENTER
+     preview.setImageResource(android.R.drawable.ic_menu_gallery)
+    }
     val dateFormat=SimpleDateFormat("M.d",Locale.KOREA)
     val date="${dateFormat.format(Date(group.start))}–${dateFormat.format(Date(group.end))}"
     item.addView(TextView(this).apply { text="기록 ${index+1}"; textSize=13f; setTypeface(null,Typeface.BOLD); setTextColor(Color.rgb(37,72,59)); setPadding(dp(3),dp(8),0,0) })
