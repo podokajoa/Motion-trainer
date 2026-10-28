@@ -24,3 +24,10 @@
 - 고르는 방법: 운에 맡기기(결과를 본 순간의 기분으로 속마음 확인), 둘씩 비교하기(토너먼트), 장단점 저울(무게 1~3), 직접 고르기
 - 결정 잠금(3시간~일주일), 나중의 나에게 남기는 한마디, 번복할 때마다 "흔들림" 기록
 - 기록은 폰(브라우저)에만 저장
+
+## 여행 발자국 (travel-footprints/)
+갤럭시 갤러리 사진의 GPS로 여행 기록을 지도에 보여주는 안드로이드 앱이에요 (Kotlin, MapLibre).
+
+- 설치: 폰에서 https://github.com/podokajoa/Motion-trainer/releases/download/travel-footprints-latest/travel-footprints.apk 를 받아 설치
+- APK는 GitHub Actions가 main에 올라올 때마다 자동으로 만들어요. 기존 앱을 지우지 않고 업데이트하려면 저장소 Secret `DEBUG_KEYSTORE_B64`(집 PC `debug.keystore`의 base64)가 필요해요.
+- 사진과 분석 기록은 폰 안에만 저장돼요.
