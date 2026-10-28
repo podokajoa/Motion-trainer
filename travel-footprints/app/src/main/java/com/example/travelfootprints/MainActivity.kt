@@ -61,6 +61,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
   if (hasImageAccess() && hasLocationAccess()) scanGallery() else status.text = "필요한 권한 없음: 사진 전체 접근=${hasImageAccess()}, 위치 메타데이터 접근=${hasLocationAccess()}. 설정에서 모두 허용해줘."
  }
+ private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if(uri!=null) exportBackup(uri) }
+ private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) importBackup(uri) }
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
   MapLibre.getInstance(this); TileNetwork.configure(this)
@@ -92,7 +94,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   mapPanel.addView(scan,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.END).apply { setMargins(0,dp(12),dp(14),0) })
   root.addView(mapPanel,LinearLayout.LayoutParams(-1,0,1f))
   val copyright = TextView(this).apply {
-   text = "© OpenStreetMap contributors · ODbL"; textSize = 10f; setTextColor(green)
+   text = "© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors"; textSize = 10f; setTextColor(green)
    setPadding(dp(14),dp(5),dp(10),dp(5))
    setOnClickListener { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("https://www.openstreetmap.org/copyright"))) }
   }
@@ -264,6 +266,35 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    worker.execute { val classified=TravelClassifier.classify(snapshot); runOnUiThread { candidates=classified; render() } }
   } catch (_:Exception) { }
  }
+ /**
+  * One JSON file holding the scan cache, trip decisions and place names, so a
+  * reinstall never forces a fresh scan of the whole gallery. Photo URIs only
+  * work on the same phone; the file stays wherever the user saves it.
+  */
+ private fun exportBackup(uri:Uri) {
+  try {
+   val backup=JSONObject().put("app","travel-footprints").put("version",1)
+   listOf("points.json","trip_decisions.json","places.json").forEach { name ->
+    val text=try { openFileInput(name).bufferedReader().use { it.readText() } } catch (_:Exception) { null }
+    if(text!=null) backup.put(name,text)
+   }
+   contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(backup.toString()) } ?: throw IllegalStateException("파일 열기 실패")
+   Toast.makeText(this,"기록 백업 완료 · GPS 사진 ${points.size}장",Toast.LENGTH_LONG).show()
+  } catch (e:Exception) { Toast.makeText(this,"백업 실패: ${e.message}",Toast.LENGTH_LONG).show() }
+ }
+ private fun importBackup(uri:Uri) {
+  try {
+   val backup=JSONObject(contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: throw IllegalStateException("파일 열기 실패"))
+   if(backup.optString("app")!="travel-footprints" || !backup.has("points.json")) throw IllegalArgumentException("여행 발자국 백업 파일이 아니에요")
+   JSONArray(backup.getString("points.json"))
+   listOf("points.json","trip_decisions.json","places.json").forEach { name ->
+    if(backup.has(name)) openFileOutput(name,MODE_PRIVATE).bufferedWriter().use { it.write(backup.getString(name)) }
+   }
+   points.clear(); decisions.clear(); placeNames.clear()
+   loadDecisions(); loadPlaceNames(); loadCache(); updateYearButtons(); render()
+   Toast.makeText(this,"백업 불러오기 완료 · GPS 사진 ${points.size}장",Toast.LENGTH_LONG).show()
+  } catch (e:Exception) { Toast.makeText(this,"불러오기 실패: ${e.message}",Toast.LENGTH_LONG).show() }
+ }
  private fun yearOf(p:PhotoPoint):Int? = PhotoYears.yearOf(p.date)
  private fun updateYearButtons() {
   yearsRow.removeAllViews()
@@ -317,7 +348,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    uri!=null
   }
   g.setPrefetchZoomDelta(0)
-  g.setStyle(org.maplibre.android.maps.Style.Builder().fromJson(TileNetwork.style())) {
+  g.setStyle(org.maplibre.android.maps.Style.Builder().fromUri(TileNetwork.STYLE_URL)) { style ->
+   TileNetwork.koreanize(style)
    Log.i("TravelFootprintsMap","style loaded; rendering ${points.size} cached coordinates")
    render()
   }
@@ -431,7 +463,21 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    })
   }
   renderCandidateReviews()
- } override fun onStart(){super.onStart();mapView.onStart()}
+  renderBackupActions()
+ }
+ private fun renderBackupActions() {
+  val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setPadding(0,dp(16),0,dp(4)) }
+  listOf("기록 백업하기" to { exportLauncher.launch("여행발자국_백업_${SimpleDateFormat("yyyyMMdd",Locale.KOREA).format(Date())}.json") },
+   "백업 불러오기" to { importLauncher.launch(arrayOf("application/json","application/octet-stream","text/plain")) }).forEach { (label,action) ->
+   row.addView(TextView(this).apply {
+    text=label; gravity=Gravity.CENTER; textSize=11f; setTextColor(Color.rgb(25,82,58))
+    setPadding(dp(8),dp(9),dp(8),dp(9)); background=rounded(Color.rgb(237,245,232),18)
+    setOnClickListener { action() }
+   },LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),0,dp(3),0) })
+  }
+  gallery.addView(row)
+ }
+ override fun onStart(){super.onStart();mapView.onStart()}
  private fun renderCandidateReviews() {
   val shown=candidates.filter { candidate ->
    (selectedYear==null || candidate.photos.any { PhotoYears.yearOf(it.date)==selectedYear }) &&

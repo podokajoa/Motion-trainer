@@ -1,6 +1,6 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android { namespace = "com.example.travelfootprints"; compileSdk = 35
- defaultConfig { applicationId = "com.example.travelfootprints"; minSdk = 29; targetSdk = 35; versionCode = 14; versionName = "0.14"; manifestPlaceholders["appLabel"] = "여행 발자국" }
+ defaultConfig { applicationId = "com.example.travelfootprints"; minSdk = 29; targetSdk = 35; versionCode = 15; versionName = "0.15"; manifestPlaceholders["appLabel"] = "여행 발자국" }
  buildFeatures { viewBinding = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
