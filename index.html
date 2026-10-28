@@ -36,6 +36,20 @@
   .rep.bad { border-color:var(--warn); }
   #summary { margin-top:12px; font-size:14px; line-height:1.6; color:var(--muted); }
   #status { color:var(--muted); font-size:13px; margin:4px 0; }
+  #ana { position:absolute; inset:0; z-index:5; background:var(--bg); overflow:auto; padding:12px; }
+  .ana-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:18px; }
+  .rp { position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; }
+  .rp video, .rp canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .ana-ctrl { display:flex; gap:6px; align-items:center; margin:8px 0; }
+  .ana-ctrl button { padding:6px 10px; font-size:13px; }
+  .ana-ctrl button.on { border-color:var(--good); color:var(--good); }
+  #anaSummary { font-size:15px; line-height:1.6; margin:6px 0 10px; }
+  #anaSummary b { color:var(--warn); }
+  .ana-rep { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; cursor:pointer; }
+  .ana-rep.ok { border-color:var(--good); }
+  .ana-rep.bad { border-color:var(--warn); }
+  .ana-rep small { display:block; color:var(--muted); }
+  body.workout #ana { font-size:4vmin; }
   #history { margin-top:28px; border-top:1px solid var(--line); padding-top:16px; }
   #history h2 { font-size:18px; margin:0 0 10px; }
   .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -81,6 +95,11 @@
       <option value="pushup">푸시업</option>
       <option value="plank">플랭크</option>
       <option value="curl">덤벨 컬</option>
+      <optgroup label="케틀벨">
+        <option value="kbgoblet">고블릿 스쿼트</option>
+        <option value="kbdeadlift">케틀벨 데드리프트</option>
+        <option value="kbswing">케틀벨 스윙 (녹화 분석)</option>
+      </optgroup>
     </select>
     <button id="start" class="primary">카메라 시작</button>
     <select id="cam"><option value="">카메라: 전면</option></select>
@@ -101,6 +120,14 @@
       <div class="pill"><div class="label" id="countLabel">횟수</div><div class="count" id="count">0</div></div>
       <div class="pill" id="breathBox" style="color:var(--muted)"><div class="label">호흡</div><div id="breath">-</div><div id="breathBar"><div id="breathFill"></div></div></div>
       <div class="pill" style="text-align:right"><div class="label">카메라 방향</div><div id="view" style="font-weight:700">-</div><div class="label" id="angle"></div></div>
+    </div>
+    <div id="ana" hidden>
+      <div class="ana-head"><b id="anaTitle">스윙 분석</b><button id="anaClose">다시 하기</button></div>
+      <div class="rp"><video id="rv" playsinline muted loop></video><canvas id="rc"></canvas></div>
+      <div class="ana-ctrl"><span class="label">재생 속도</span>
+        <button data-rate="1">1배</button><button data-rate="0.5" class="on">0.5배</button><button data-rate="0.25">0.25배</button></div>
+      <div id="anaSummary"></div>
+      <div id="anaReps"></div>
     </div>
     <div class="cue" id="cue">준비되면 시작하세요<small>몸 전체가 화면에 들어오게 서주세요</small></div>
   </div>
@@ -169,9 +196,11 @@ function verticalRatio(wl, top, bottom) {
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
   return Math.abs(dy) / (Math.hypot(dx, dy, dz) || 1);
 }
-function bodyPosture(lm, wl) {
+// hinge: 데드리프트/스윙처럼 상체를 크게 숙이는 운동은 다리(어깨→발목) 기울기만 봄
+function bodyPosture(lm, wl, hinge) {
   if (wl) {
     const legs = verticalRatio(wl, [11, 12], [27, 28]), torso = verticalRatio(wl, [11, 12], [23, 24]);
+    if (hinge) return legs < 0.5 ? "horizontal" : legs > 0.7 ? "upright" : "mid";
     if (legs < 0.5 || torso < 0.4) return "horizontal";
     if (legs > 0.7 && torso > 0.55) return "upright";
     return "mid";
@@ -295,6 +324,256 @@ const EX = {
   },
 };
 
+// 옆에서 본 몸의 방향(+1: 화면 오른쪽을 봄)과, 상체가 앞(+)/뒤(-)로 기운 각도
+function facingDir(lm, s) { return Math.sign(P(lm, s.toe).x - P(lm, s.heel).x) || 1; }
+function signedLean(lm, s) {
+  const sh = P(lm, s.sh), hip = P(lm, s.hip);
+  return Math.atan2((sh.x - hip.x) * facingDir(lm, s), hip.y - sh.y) * 180 / Math.PI;
+}
+
+EX.kbgoblet = {
+  ...EX.squat, name: "고블릿 스쿼트",
+  coach: "벨은 가슴에 붙이고, 팔꿈치로 무릎 안쪽을 밀어내듯 앉으세요",
+  cues: { down: ["벨을 가슴에 붙이고 내려가세요", "팔꿈치로 무릎을 바깥쪽으로 밀어내세요", "가슴을 펴고 등을 곧게"], up: ["뒤꿈치로 바닥을 밀며 일어나세요", "일어나면서 엉덩이를 조이세요"] },
+};
+EX.kbdeadlift = {
+  name: "케틀벨 데드리프트", posture: "upright", hinge: true, view: "측면", down: 115, up: 165, lowerIsInhale: true,
+  keys: ["sh", "hip", "kn", "an"],
+  metric: (lm, sd) => hipAngle(lm, sd.s), // 엉덩이(고관절) 각도
+  coach: "벨은 발 사이에, 엉덩이를 뒤로 접고 등은 곧게",
+  cues: { down: ["엉덩이를 뒤로 밀면서 접으세요", "등을 곧게, 가슴을 펴세요"], up: ["바닥을 밀며 엉덩이를 앞으로", "정점에서 엉덩이를 조이세요"] },
+  checks(lm, sd, view, ang) {
+    if (view === "front") return [{ k: "view", m: "옆에서 찍어야 정확해요", sev: 1 }];
+    const s = sd.s, out = [];
+    const knee = angle(P(lm, s.hip), P(lm, s.kn), P(lm, s.an));
+    const hip = P(lm, s.hip), kn = P(lm, s.kn), an = P(lm, s.an), leg = dist(hip, kn) + dist(kn, an);
+    if (ang < 140 && knee < 115) out.push({ k: "squat", m: "무릎을 덜 굽히고 엉덩이를 뒤로 빼세요", sev: 3 });
+    const wr = P(lm, s.wr);
+    if (ang < 140 && Math.abs(wr.x - an.x) > leg * 0.35) out.push({ k: "far", m: "벨을 몸 가까이 붙이세요", sev: 2 });
+    if (ang > 160 && signedLean(lm, s) < -12) out.push({ k: "leanback", m: "정점에서 상체를 뒤로 젖히지 마세요", sev: 2 });
+    return out;
+  },
+  repEnd: (minAng) => minAng > 125 ? [{ k: "depth", m: "엉덩이를 더 깊게 뒤로 접으세요" }] : [],
+};
+EX.kbswing = {
+  name: "케틀벨 스윙", analyze: true, posture: "upright", hinge: true, view: "측면 (꼭 옆에서)",
+  keys: ["sh", "hip", "kn", "an"],
+  coach: "스윙을 시작하면 자동으로 녹화돼요. 끝나면 벨을 내려놓고 똑바로 서 계세요",
+  checks: () => [],
+};
+
+// ---------- 스윙: 자동 녹화 + 세트 후 분석 ----------
+// 실시간으로는 말하지 않고(집중 방해), 관절 위치를 저장해 두었다가 세트가 끝나면 분석.
+const SW = { mode: "wait", frames: [], recStart: 0, lastMotion: 0, lastSeen: 0, recorder: null, chunks: [], liveReps: 0, livePhase: "up", url: null, result: null };
+function resetSwing() {
+  if (SW.recorder?.state === "recording") SW.recorder.stop();
+  Object.assign(SW, { mode: "wait", frames: [], recorder: null, chunks: [], liveReps: 0, livePhase: "up", result: null });
+  $("ana").hidden = true;
+}
+// 고관절 각도(180 = 똑바로 섬, 180 미만 = 접힘, 180 초과 = 뒤로 젖힘).
+// 일반 각도는 뒤로 젖혀도 180 미만으로 접혀 보여서 정점을 놓치므로 방향을 구분함.
+function hipAngle(lm, s) {
+  const sh = P(lm, s.sh), hip = P(lm, s.hip), kn = P(lm, s.kn);
+  const a = angle(sh, hip, kn);
+  const cross = (sh.x - hip.x) * (kn.y - hip.y) - (sh.y - hip.y) * (kn.x - hip.x);
+  return cross * facingDir(lm, s) >= 0 ? a : 360 - a;
+}
+
+function processSwing(lm, t, sd, view) {
+  if (SW.mode === "done") return;
+  const hipA = hipAngle(lm, sd.s);
+  SW.lastSeen = t;
+  $("angle").textContent = `엉덩이 각도 ${Math.round(hipA)}°`;
+  if (SW.mode === "wait") {
+    $("count").textContent = "대기";
+    if (view === "front") setCue("옆에서 찍어주세요", "스윙은 측면에서만 정확하게 분석돼요", "var(--warn)");
+    else setCue("준비 완료", "스윙을 시작하면 자동으로 녹화돼요", "var(--fg)");
+    if (hipA < 125) startSwingRec(t);
+    else return;
+  }
+  // 녹화 중: 프레임 저장, 화면에는 회수만 크게
+  SW.frames.push({ t: t - SW.recStart, lm: lm.map(p => ({ x: p.x, y: p.y, visibility: p.visibility })) });
+  if (hipA < 150) SW.lastMotion = t;
+  if (SW.livePhase === "up" && hipA < 120) SW.livePhase = "down";
+  if (SW.livePhase === "down" && hipA > 160) {
+    SW.livePhase = "up"; SW.liveReps++;
+    if (breathMode !== "off") tone(false); // 정점 = 날숨 신호
+  }
+  const sec = Math.floor((t - SW.recStart) / 1000);
+  $("count").textContent = SW.liveReps;
+  setCue(`● 녹화 중 ${sec}초`, "끝나면 벨을 내려놓고 똑바로 서 계세요", "var(--bad)");
+  const standingStill = hipA > 165 && t - SW.lastMotion > 2500;
+  if (standingStill || t - SW.recStart > 60000) finishSwing();
+}
+function swingTick(now) { if (SW.mode === "rec" && now - SW.lastSeen > 3000) finishSwing(); }
+
+function startSwingRec(t) {
+  SW.mode = "rec"; SW.frames = []; SW.recStart = t; SW.lastMotion = t; SW.liveReps = 0; SW.livePhase = "down"; SW.chunks = [];
+  tone(true);
+  try {
+    const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find(m => MediaRecorder.isTypeSupported?.(m));
+    SW.recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 2_500_000 } : undefined);
+    SW.recorder.ondataavailable = e => e.data.size && SW.chunks.push(e.data);
+    SW.recorder.start(500);
+  } catch { SW.recorder = null; }
+}
+
+function finishSwing() {
+  if (SW.mode !== "rec") return;
+  SW.mode = "done";
+  const r = analyzeSwing(SW.frames);
+  SW.result = r;
+  const done = () => showSwingResult(r);
+  if (SW.recorder && SW.recorder.state !== "inactive") {
+    SW.recorder.onstop = () => {
+      if (SW.url) URL.revokeObjectURL(SW.url);
+      SW.url = SW.chunks.length ? URL.createObjectURL(new Blob(SW.chunks, { type: SW.recorder.mimeType || "video/webm" })) : null;
+      done();
+    };
+    SW.recorder.stop();
+  } else { SW.url = null; done(); }
+}
+
+const SWING_MSG = {
+  squat: "무릎을 너무 굽혀요. 무릎은 살짝만, 엉덩이를 뒤로 접으세요",
+  shallow: "엉덩이를 더 깊게 뒤로 접으세요",
+  low: "벨이 무릎 아래로 떨어져요. 사타구니 높이로 높게 하이크하세요",
+  lockout: "정점에서 엉덩이를 끝까지 펴세요",
+  kneeTop: "정점에서 무릎도 쭉 펴세요",
+  leanback: "정점에서 상체를 뒤로 젖히지 마세요. 몸은 일직선으로",
+  high: "벨이 너무 높아요. 어깨 높이까지만 띄우세요",
+  weak: "엉덩이를 더 세게 밀어 벨을 가슴 높이까지 띄우세요",
+};
+
+function analyzeSwing(frames) {
+  if (frames.length < 10) return { reps: [] };
+  const side = pickSide(frames[Math.floor(frames.length / 2)].lm, ["sh", "hip", "kn", "an"]).s;
+  let ema = null;
+  const series = frames.map(f => {
+    const h = hipAngle(f.lm, side);
+    ema = ema == null ? h : ema * 0.5 + h * 0.5;
+    return { t: f.t, lm: f.lm, hip: ema, raw: h, lean: signedLean(f.lm, side) };
+  });
+  // 회차 나누기(평활화한 각도 사용): 엉덩이 각도가 120° 아래(하이크) → 160° 위(정점)로 가면 1회.
+  // 측정값은 평활화 전 원래 값으로: 정점이 짧게 지나가도 놓치지 않게.
+  const reps = []; let cur = null, phase = "up";
+  for (let i = 0; i < series.length; i++) {
+    const f = series[i];
+    if (phase === "up" && f.hip < 120) {
+      if (cur?.top) reps.push(cur);
+      cur = { bottom: f, top: null, start: f.t }; phase = "down";
+    } else if (phase === "down") {
+      if (f.raw < cur.bottom.raw) cur.bottom = f;
+      if (f.hip > 160) { phase = "up"; cur.top = f; cur.peak = f; cur.back = f; }
+    }
+    if (phase === "up" && cur?.top) {
+      if (f.raw > cur.top.raw) cur.top = f;
+      if (f.lean < cur.back.lean) cur.back = f; // 가장 뒤로 젖혀진 순간
+      if (P(f.lm, side.wr).y < P(cur.peak.lm, side.wr).y) cur.peak = f; // 벨이 가장 높이 뜬 순간
+    }
+  }
+  if (cur?.top) reps.push(cur);
+
+  return { side, series, reps: reps.map((r, idx) => {
+    const issues = [];
+    const b = r.bottom.lm, tp = r.top.lm, s = side;
+    const kneeB = angle(P(b, s.hip), P(b, s.kn), P(b, s.an));
+    const shin = dist(P(b, s.kn), P(b, s.an)), torso = dist(P(tp, s.sh), P(tp, s.hip));
+    if (kneeB < 120) issues.push("squat");
+    else if (r.bottom.raw > 125) issues.push("shallow");
+    if (idx > 0 && P(b, s.wr).y > P(b, s.kn).y + shin * 0.25) issues.push("low"); // 첫 회는 바닥에서 들어올리는 동작이라 제외
+    const leanBack = r.back.lean < -12;
+    if (leanBack) issues.push("leanback");
+    else if (r.top.raw < 165) issues.push("lockout"); // 뒤로 젖히면 각도가 접혀 보이므로 그때는 락아웃 판정 생략
+    if (angle(P(tp, s.hip), P(tp, s.kn), P(tp, s.an)) < 160) issues.push("kneeTop");
+    const pk = r.peak.lm, wrY = P(pk, s.wr).y, shY = P(pk, s.sh).y;
+    if (wrY < shY - torso * 0.25) issues.push("high");
+    else if (wrY > shY + torso * 0.5) issues.push("weak");
+    return { n: idx + 1, t: r.start, tb: r.bottom.t, issues, hipMin: Math.round(r.bottom.raw), hipMax: Math.min(180, Math.round(r.top.raw)), kneeB: Math.round(kneeB) };
+  }) };
+}
+
+function showSwingResult(r) {
+  const reps = r.reps;
+  const tally = {};
+  for (const rp of reps) for (const k of rp.issues) tally[k] = (tally[k] || 0) + 1;
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+  const clean = reps.filter(rp => !rp.issues.length).length;
+
+  // 기록에 합산
+  for (const rp of reps) {
+    S.count++; S.reps.push(rp.issues.map(k => SWING_MSG[k]));
+    for (const k of rp.issues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = SWING_MSG[k]; }
+  }
+  if (reps.length) saveSession();
+
+  $("anaTitle").textContent = `스윙 ${reps.length}회 분석`;
+  const sum = $("anaSummary"); sum.innerHTML = "";
+  if (!reps.length) sum.textContent = "스윙 동작을 찾지 못했어요. 옆에서 몸 전체가 보이게 찍어주세요.";
+  else {
+    sum.append(`바른 자세 ${clean}/${reps.length}회. `);
+    if (top.length) {
+      sum.append("가장 많이 나온 교정: ");
+      top.slice(0, 2).forEach(([k, n], i) => { const b = document.createElement("b"); b.textContent = `${SWING_MSG[k]} (${n}회)`; sum.append(i ? " / " : "", b); });
+    } else sum.append("아주 좋아요! 지금 리듬 그대로 가세요.");
+  }
+  const list = $("anaReps"); list.innerHTML = "";
+  for (const rp of reps) {
+    const el = document.createElement("div");
+    el.className = "ana-rep " + (rp.issues.length ? "bad" : "ok");
+    el.append(`${rp.n}회 · ${rp.issues.length ? rp.issues.length + "개 교정" : "완벽"}`);
+    const sm = document.createElement("small");
+    sm.textContent = (rp.issues.length ? rp.issues.map(k => SWING_MSG[k]).join(" / ") + " · " : "") + `엉덩이 ${rp.hipMin}°→${rp.hipMax}°, 하이크 때 무릎 ${rp.kneeB}°`;
+    el.append(sm);
+    el.onclick = () => seekReplay(rp.t / 1000 - 0.3);
+    list.append(el);
+  }
+  $("ana").hidden = false;
+  setupReplay(r);
+  // 음성 요약: 핵심 교정 2개까지만
+  const say = !reps.length ? "스윙을 찾지 못했어요. 옆에서 찍어주세요."
+    : `스윙 ${reps.length}회. ` + (top.length ? top.slice(0, 2).map(([k]) => SWING_MSG[k]).join(". ") : "아주 좋아요.");
+  speak(say, 3);
+}
+
+// 리플레이: 녹화 영상 위에 저장한 관절을 시간에 맞춰 그림. 교정이 있는 회차는 빨간 뼈대.
+let replayRAF = 0;
+function setupReplay(r) {
+  const rv = $("rv"), rc = $("rc"), rctx = rc.getContext("2d"), rdraw = new DrawingUtils(rctx);
+  cancelAnimationFrame(replayRAF);
+  const mirror = video.style.transform;
+  rv.style.transform = rc.style.transform = mirror;
+  rc.width = W; rc.height = H;
+  const frames = SW.frames;
+  const badAt = t => r.reps.find(rp => t >= rp.t - 200 && t <= (r.reps[rp.n]?.t ?? Infinity))?.issues.length > 0;
+  let fallbackStart = performance.now();
+  const frameAt = ms => { let lo = 0, hi = frames.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (frames[m].t < ms) lo = m + 1; else hi = m; } return frames[lo]; };
+  const paint = () => {
+    rctx.clearRect(0, 0, rc.width, rc.height);
+    let ms;
+    if (SW.url) ms = rv.currentTime * 1000;
+    else { // 영상 녹화가 안 되는 기기: 뼈대만 0.5배속으로 재생
+      const dur = frames.at(-1)?.t || 1;
+      ms = ((performance.now() - fallbackStart) * 0.5) % dur;
+      rctx.fillStyle = "#000"; rctx.fillRect(0, 0, rc.width, rc.height);
+    }
+    const f = frames.length && frameAt(ms);
+    if (f) {
+      const color = badAt(f.t) ? "#f87171" : "#4ade80";
+      rdraw.drawConnectors(f.lm, PoseLandmarker.POSE_CONNECTIONS, { color, lineWidth: 5 });
+      rdraw.drawLandmarks(f.lm, { color: "#fff", radius: 3 });
+    }
+    if (!$("ana").hidden) replayRAF = requestAnimationFrame(paint);
+  };
+  if (SW.url) {
+    rv.hidden = false; rv.src = SW.url; rv.playbackRate = 0.5;
+    // 크롬 녹화 webm은 길이 정보가 없어 탐색이 안 되는 문제 우회
+    rv.onloadedmetadata = () => { if (rv.duration === Infinity) { rv.currentTime = 1e9; rv.ondurationchange = () => { rv.ondurationchange = null; rv.currentTime = 0; rv.play().catch(() => {}); }; } else rv.play().catch(() => {}); };
+  } else rv.hidden = true;
+  paint();
+}
+function seekReplay(sec) { const rv = $("rv"); if (SW.url) { rv.currentTime = Math.max(0, sec); rv.play().catch(() => {}); } }
+
 // ---------- 상태 ----------
 const S = {};
 function resetState() {
@@ -305,6 +584,7 @@ function resetState() {
   $("countLabel").textContent = ex.hold ? "유지 시간" : "횟수";
   $("guide").innerHTML = `<b>${ex.name}</b> · 카메라: ${ex.view}<br>${ex.coach}`;
   setCue("준비되면 시작하세요", ex.coach, "var(--fg)");
+  resetSwing();
 }
 
 // ---------- 음성 ----------
@@ -367,9 +647,10 @@ function process(lm, t, wl) {
   $("view").textContent = VIEW_KO[view];
   if (sd.vis < 0.5) { setCue("몸 전체가 보이게 서주세요", "카메라에서 2~3m 떨어지면 좋아요", "var(--muted)"); return; }
   const dt = S.lastT ? Math.min(t - S.lastT, 100) : 0; S.lastT = t;
+  if (ex.analyze) return processSwing(lm, t, sd, view);
 
   // 운동에 맞지 않는 몸 자세(예: 스쿼트 중 엎드림)면 세지 않고 진행 중인 1회도 취소
-  const pst = bodyPosture(lm, wl);
+  const pst = bodyPosture(lm, wl, ex.hinge);
   S.wrongPosture = pst !== ex.posture && pst !== "mid" ? (S.wrongPosture || 0) + 1 : 0;
   if (S.wrongPosture >= 5) {
     S.phase = "up"; S.repIssues.clear(); S.dir = null; S.lastT = 0; S.standFrames = 0; S.ready = false;
@@ -642,6 +923,7 @@ function renderHist() {
 }
 
 function exitWorkout() {
+  if (SW.mode === "rec") finishSwing();
   saveSession();
   document.body.classList.remove("workout");
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -662,12 +944,18 @@ function loop() {
       draw.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#4ade80", lineWidth: 4 });
       draw.drawLandmarks(lm, { color: "#fff", radius: 3 });
       process(lm, now, res.worldLandmarks?.[0]);
-    } else setCue("사람이 보이지 않아요", "몸 전체가 화면에 들어오게 해주세요", "var(--muted)");
+      swingTick(now);
+    } else { swingTick(now); if (SW.mode !== "done") setCue("사람이 보이지 않아요", "몸 전체가 화면에 들어오게 해주세요", "var(--muted)"); }
   }
   requestAnimationFrame(loop);
 }
 
 $("start").onclick = start;
+$("anaClose").onclick = () => { $("ana").hidden = true; $("rv").pause(); SW.mode = "wait"; SW.frames = []; };
+document.querySelectorAll(".ana-ctrl button").forEach(b => b.onclick = () => {
+  $("rv").playbackRate = +b.dataset.rate;
+  document.querySelectorAll(".ana-ctrl button").forEach(x => x.classList.toggle("on", x === b));
+});
 $("cam").onchange = () => { store.set("camId", $("cam").value); store.set("zoom", ""); if (running) start(); };
 $("exit").onclick = exitWorkout;
 $("reset").onclick = resetState;
