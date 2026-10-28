@@ -194,8 +194,10 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   if (scanning) return
   scanning = true
   status.text = "갤러리 검색 시작…"
+  val previous = points.toList()
   worker.execute {
    val found = mutableListOf<PhotoPoint>()
+   val failedIds = mutableSetOf<Long>()
    var checked = 0; var noGps = 0; var failed = 0; var total = 0
    var firstError = ""; var fatalError = ""
    val columns = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN)
@@ -223,7 +225,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
         else noGps++
        }
       } catch (e: Exception) {
-       failed++
+       failed++; failedIds.add(id)
        if (firstError.isEmpty()) firstError = "${e.javaClass.simpleName}: ${e.message ?: "설명 없음"}"
       }
       if (checked % 100 == 0) {
@@ -235,18 +237,20 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    } catch (e: Exception) {
     fatalError = "${e.javaClass.simpleName}: ${e.message ?: "설명 없음"}"
    }
+   // Photos that failed to read keep their previous point instead of vanishing from the cache.
+   val merged = ScanMerge.keepUnreadable(previous, found, failedIds)
    if (fatalError.isEmpty()) {
-    try { saveCache(found) } catch (e: Exception) {
+    try { saveCache(merged) } catch (e: Exception) {
      fatalError = "저장 실패: ${e.javaClass.simpleName}: ${e.message ?: "설명 없음"}"
     }
    }
    val result = if (fatalError.isNotEmpty()) "분석 오류: ${fatalError}" else
-    "분석 완료 · 전체 ${total}장 · 검사 ${checked}장 · GPS ${found.size}장 · GPS 없음 ${noGps}장 · 읽기 실패 ${failed}장" +
+    "분석 완료 · 전체 ${total}장 · 검사 ${checked}장 · GPS ${merged.size}장 · GPS 없음 ${noGps}장 · 읽기 실패 ${failed}장" +
     (if (firstError.isNotEmpty()) "\n첫 오류: ${firstError}" else "")
-   val classified = if(fatalError.isEmpty()) TravelClassifier.classify(found) else emptyList()
+   val classified = if(fatalError.isEmpty()) TravelClassifier.classify(merged) else emptyList()
    runOnUiThread {
     if (fatalError.isEmpty()) {
-     points.clear(); points.addAll(found); candidates=classified; updateYearButtons(); render()
+     points.clear(); points.addAll(merged); candidates=classified; updateYearButtons(); render()
     }
     scanning = false
     status.text = result
