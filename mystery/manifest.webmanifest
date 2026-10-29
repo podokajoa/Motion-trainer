@@ -1,0 +1,17 @@
+{
+  "name": "새벽 시장 떡집",
+  "short_name": "떡집 미스터리",
+  "description": "새벽 시장 떡집에서 벌어진 사건을 푸는 1인 머더미스터리",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14110f",
+  "theme_color": "#14110f",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
