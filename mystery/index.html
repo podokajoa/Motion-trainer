@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>새벽 시장 떡집</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14110f">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#14110f; --fg:#f5efe6; --muted:#a8998a; --card:#211b17; --card2:#2b231e; --line:#3a2f28; --amber:#f59e0b; --rice:#efe6d2; --bad:#f87171; --good:#4ade80; --yoon:#7dd3fc; --kang:#fca5a5; --sms:#c4b5fd; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; word-break:keep-all; overflow-wrap:anywhere; }
+  button { font:inherit; color:var(--fg); background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:15px; cursor:pointer; }
+  button.primary { background:var(--amber); color:#241500; border:none; font-weight:800; font-size:17px; padding:14px 18px; }
+  button.ghost { background:none; border:none; color:var(--muted); }
+  button:disabled { opacity:.4; }
+  .wide { width:100%; }
+  .muted { color:var(--muted); }
+  .hidden { display:none !important; }
+
+  /* 시작 화면 */
+  #intro { max-width:560px; margin:0 auto; padding:28px 16px 40px; }
+  #intro .poster { border-radius:18px; overflow:hidden; border:1px solid var(--line); margin-bottom:18px; }
+  #intro h1 { font-size:28px; margin:0 0 6px; }
+  #intro p { line-height:1.65; color:#e2d7ca; margin:0 0 12px; font-size:15.5px; }
+  #intro .how { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; font-size:14px; line-height:1.6; color:var(--muted); margin:16px 0; }
+  #intro .how b { color:var(--fg); }
+  #intro .stack > * + * { margin-top:10px; }
+
+  /* 게임 */
+  #game { display:flex; flex-direction:column; height:100%; max-width:560px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--bg); }
+  header .clock { flex:1; }
+  header .clock b { font-size:18px; font-variant-numeric:tabular-nums; }
+  header .clock span { display:block; font-size:12px; color:var(--muted); }
+  header .clock.low b { color:var(--bad); }
+  header .accuse { background:#7f1d1d; border:none; font-weight:800; color:#fff; padding:10px 14px; }
+  .pane { flex:1; overflow-y:auto; padding:12px 12px 20px; display:none; }
+  .pane.on { display:block; }
+  nav { display:grid; grid-template-columns:repeat(5,1fr); border-top:1px solid var(--line); background:#1a1512; padding-bottom:env(safe-area-inset-bottom); }
+  nav button { background:none; border:none; border-radius:0; padding:8px 2px 9px; font-size:11.5px; color:var(--muted); position:relative; }
+  nav button i { display:block; font-style:normal; font-size:21px; margin-bottom:2px; }
+  nav button.on { color:var(--amber); }
+  nav button .dot { position:absolute; top:6px; right:calc(50% - 18px); width:8px; height:8px; border-radius:50%; background:var(--bad); }
+
+  /* 단톡방 */
+  .msg { display:flex; gap:8px; margin:10px 0; align-items:flex-start; }
+  .msg .av { width:34px; height:34px; border-radius:50%; background:var(--card2); display:flex; align-items:center; justify-content:center; font-size:19px; flex:none; }
+  .msg .who { font-size:12px; margin-bottom:3px; font-weight:700; }
+  .msg .bubble { background:var(--card); border:1px solid var(--line); border-radius:4px 14px 14px 14px; padding:9px 12px; font-size:15px; line-height:1.55; max-width:290px; }
+  .msg .bubble button { margin-top:8px; font-size:13.5px; padding:7px 11px; display:block; }
+  .msg.me { justify-content:flex-end; }
+  .msg.me .bubble { background:#4a3416; border-color:#6b4a1c; border-radius:14px 4px 14px 14px; }
+  .msg.sms .bubble { background:#241f33; border-color:#3b3256; }
+  .msg.sms .who { color:var(--sms); }
+  .sys { text-align:center; font-size:12.5px; color:var(--muted); margin:14px 0; line-height:1.5; }
+  .sys b { color:var(--amber); }
+  .sys.alert { color:var(--bad); font-weight:700; }
+  .hintbar { position:sticky; bottom:0; padding-top:10px; background:linear-gradient(transparent, var(--bg) 30%); }
+
+  /* 현장 */
+  .scene { position:relative; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#1e1916; }
+  .scene svg { display:block; width:100%; height:auto; }
+  .hot { cursor:pointer; }
+  .hot .ring { fill:rgba(245,158,11,.18); stroke:var(--amber); stroke-width:1.5; animation:pulse 1.8s ease-in-out infinite; transform-box:fill-box; transform-origin:center; }
+  .hot.done .ring { fill:rgba(74,222,128,.15); stroke:var(--good); animation:none; }
+  .hot text { font-size:10px; font-weight:800; fill:var(--fg); text-anchor:middle; dominant-baseline:central; pointer-events:none; }
+  @keyframes pulse { 50% { transform:scale(1.25); opacity:.6; } }
+  .note { font-size:13.5px; color:var(--muted); line-height:1.55; margin:10px 2px; }
+  .spots { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .spots button { text-align:left; font-size:14px; }
+  .spots button.done { border-color:#2f5a3c; color:#bfe8cb; }
+
+  /* 심문 */
+  .suspects { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+  .suspect { text-align:center; padding:10px 4px; }
+  .suspect i { display:block; font-style:normal; font-size:30px; }
+  .suspect b { display:block; font-size:15px; margin-top:4px; }
+  .suspect span { display:block; font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .suspect.on { border-color:var(--amber); background:#33261a; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
+  .card + .card { margin-top:10px; }
+  .card h3 { margin:0 0 4px; font-size:17px; }
+  .card p { margin:0; font-size:14.5px; line-height:1.6; color:#e2d7ca; }
+  .qs button { display:block; width:100%; text-align:left; margin-top:8px; font-size:15px; }
+  .qs button.asked { color:var(--muted); background:none; }
+  .qs .lbl { font-size:12.5px; color:var(--muted); margin-top:14px; }
+  .talk { margin-top:10px; }
+  .talk .line { border-left:3px solid var(--line); padding:4px 0 4px 10px; margin:8px 0; font-size:14.5px; line-height:1.6; }
+  .talk .line.q { color:var(--amber); border-color:#6b4a1c; }
+  .talk .line.hit { border-color:var(--bad); }
+
+  /* 단서/연결 */
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:inline-flex; gap:6px; align-items:center; padding:8px 11px; font-size:14px; border-radius:99px; text-align:left; }
+  .chip.fact { background:#2c2414; border-color:#6b4a1c; }
+  .chip.sel { background:var(--amber); color:#241500; border-color:var(--amber); font-weight:700; }
+  .boardbar { position:sticky; bottom:0; padding:10px 0 0; background:linear-gradient(transparent, var(--bg) 25%); }
+  .section { font-size:13px; color:var(--muted); margin:16px 2px 8px; font-weight:700; }
+  .section:first-child { margin-top:2px; }
+  .clue { display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left; margin-top:8px; }
+  .clue i { font-style:normal; font-size:22px; }
+  .clue b { display:block; font-size:15px; }
+  .clue span { display:block; font-size:13.5px; color:#d6cabd; line-height:1.55; margin-top:3px; }
+  .clue.fact { background:#2c2414; border-color:#6b4a1c; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:var(--bg); color:var(--muted); margin-left:4px; font-weight:400; vertical-align:2px; }
+
+  /* 모달 */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.72); display:flex; align-items:flex-end; justify-content:center; z-index:20; }
+  .modal .sheet { background:var(--bg); border:1px solid var(--line); border-radius:20px 20px 0 0; width:100%; max-width:560px; max-height:92%; overflow-y:auto; padding:16px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .modal h2 { font-size:19px; margin:0 0 10px; }
+  .modal .zoom { border-radius:12px; overflow:hidden; border:1px solid var(--line); margin-bottom:12px; }
+  .modal .zoom svg { display:block; width:100%; height:auto; }
+  .modal p { line-height:1.65; font-size:15px; margin:0 0 12px; color:#e2d7ca; }
+  .newclue { background:#2c2414; border:1px solid #6b4a1c; border-radius:12px; padding:10px 12px; font-size:14px; margin-bottom:12px; }
+  .newclue b { color:var(--amber); }
+
+  /* 폰 엿보기, 장부 */
+  .phone { background:linear-gradient(160deg,#1c2533,#0d1118); border-radius:26px; padding:18px 12px 22px; border:6px solid #000; max-width:300px; margin:0 auto 12px; }
+  .phone .lock { text-align:center; color:#cfd8e3; margin-bottom:12px; }
+  .phone .lock b { font-size:40px; font-weight:300; display:block; }
+  .noti { background:rgba(255,255,255,.1); border-radius:14px; padding:9px 11px; margin-top:8px; font-size:13.5px; line-height:1.45; color:#eef2f7; }
+  .noti small { display:block; color:#9fb0c3; font-size:11.5px; margin-bottom:2px; }
+  .ledger { background:#f3ead4; color:#3a2e1c; border-radius:6px; padding:14px; font-family:"Nanum Pen Script","Apple SD Gothic Neo",serif; margin-bottom:12px; box-shadow:inset 0 0 30px rgba(120,90,40,.25); }
+  .ledger table { width:100%; border-collapse:collapse; font-size:14px; }
+  .ledger td { border-bottom:1px solid #cbbd9c; padding:6px 4px; }
+  .ledger td:last-child { text-align:right; }
+  .ledger .red { color:#b91c1c; font-weight:700; font-size:15px; margin-top:10px; transform:rotate(-2deg); }
+
+  /* 지목 */
+  .pick { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:6px; }
+  .verdict { text-align:center; padding:14px 0 6px; }
+  .verdict .big { font-size:48px; }
+  .verdict h2 { font-size:23px; margin:6px 0; }
+  .truth { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; line-height:1.75; font-size:15px; color:#e2d7ca; margin:14px 0; }
+  .truth h3 { margin:0 0 8px; color:var(--amber); font-size:16px; }
+  .truth p { margin:0 0 10px; }
+  .pillars { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:10px 0; }
+  .pillars div { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 4px; text-align:center; font-size:12.5px; }
+  .pillars div.ok { border-color:#2f5a3c; color:#bfe8cb; }
+  .pillars div.no { color:var(--muted); }
+
+  #toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(20px); background:#3a2a12; border:1px solid #6b4a1c; padding:10px 16px; border-radius:99px; font-size:14px; opacity:0; transition:.25s; pointer-events:none; z-index:30; max-width:90%; text-align:center; }
+  #toast.on { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<section id="intro">
+  <div class="poster" id="poster"></div>
+  <h1>새벽 시장 떡집</h1>
+  <p>새벽 4시 38분, 한빛시장 <b>복순떡집</b> 창고에서 40년째 떡을 쪄 온 김복순(67) 사장이 무너진 쌀가마에 깔린 채 발견됐다.</p>
+  <p>관할서는 단순 사고로 보고 <b>아침 8시</b>에 사건을 닫으려 한다. 그 전에 진실을 밝혀야 한다.</p>
+  <div class="how">
+    <b>이렇게 해요</b><br>
+    · 현장을 살피고 용의자 셋을 심문해요. 한 번 움직일 때마다 <b>10분</b>이 흘러요.<br>
+    · 단서 하나만으론 아무것도 안 보여요. <b>연결</b> 탭에서 두 단서를 실로 이으면 새 사실이 열려요.<br>
+    · 진술과 어긋나는 증거를 찾으면 심문에서 <b>증거를 내밀어</b> 보세요.<br>
+    · 범인을 지목할 땐 <b>근거 3개</b>를 함께 내야 해요. 찍어서는 못 맞혀요.
+  </div>
+  <div class="stack">
+    <button class="primary wide" id="btnStart">수사 시작</button>
+    <button class="wide hidden" id="btnResume">이어서 하기</button>
+  </div>
+</section>
+
+<section id="game" class="hidden">
+  <header>
+    <div class="clock" id="clock"></div>
+    <button class="accuse" id="btnAccuse">범인 지목</button>
+  </header>
+  <div class="pane" id="p-chat"></div>
+  <div class="pane" id="p-scene"></div>
+  <div class="pane" id="p-talk"></div>
+  <div class="pane" id="p-board"></div>
+  <div class="pane" id="p-clues"></div>
+  <nav id="nav">
+    <button data-tab="chat"><i>💬</i>단톡방</button>
+    <button data-tab="scene"><i>🔍</i>현장</button>
+    <button data-tab="talk"><i>🗣️</i>심문</button>
+    <button data-tab="board"><i>🧵</i>연결</button>
+    <button data-tab="clues"><i>📁</i>단서함</button>
+  </nav>
+</section>
+
+<div class="modal hidden" id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+
+<script>
+// ───────────────────────── 사건 데이터 ─────────────────────────
+// 나중에 2~4인 모드로 넓힐 때: holder가 "me"가 아닌 단서는 그 동료(=다른 플레이어)만 처음에 갖고 있다.
+// 1인 모드에선 NPC 동료가 그 자리를 채우고, 단톡방에서 "자세히"를 눌러야 내 단서함에 들어온다.
+
+const START_MIN = 5 * 60;   // 05:00
+const STEP = 10;            // 행동 하나 = 10분
+const MAX_ACTIONS = 18;     // 08:00이면 강제 지목
+
+const PEOPLE = {
+  yoon: { name: "윤 경위", av: "🕵️‍♀️", color: "var(--yoon)" },
+  kang: { name: "강 형사", av: "👮‍♂️", color: "var(--kang)" },
+  choi: { name: "최미경 (문자)", av: "🥬", sms: true },
+};
+
+const SUSPECTS = [
+  { id: "dong", name: "이동석", age: 45, av: "🛵", role: "배달 기사 · 최초 발견자",
+    desc: "10년째 매일 새벽 떡을 받아 카페와 식당에 배달한다. 4시 38분에 119에 신고했다." },
+  { id: "son", name: "박준호", age: 38, av: "🧑", role: "사장의 아들",
+    desc: "가게를 물려받을 예정이다. 시장 사람들 말로는 요즘 돈 문제가 있다고 한다." },
+  { id: "choi", name: "최미경", age: 55, av: "🥬", role: "옆 반찬가게 사장",
+    desc: "가게를 넓히고 싶어서 떡집 자리를 두고 사장과 자주 다퉜다." },
+];
+
+const CLUES = {
+  c_tteok:   { icon: "🍡", kind: "물증", title: "굳은 가래떡",
+    text: "떡판 위 가래떡이 차갑게 식어 딱딱하다. 겉이 말라 잔금까지 갔다. 손으로 눌러도 들어가지 않는다. 추운 새벽 창고라도 꺼낸 지 꽤 지났다는 뜻이다." },
+  c_steamer: { icon: "⏲️", kind: "물증", title: "멈춘 찜기 타이머",
+    text: "찜기 타이머가 [03:30 완료]에 멈춰 있다. 시장 사람들 말로는 사장은 매일 3시 반에 마지막 떡을 꺼냈다." },
+  c_shelf:   { icon: "🌾", kind: "물증", title: "넘어진 쌀가마 선반",
+    text: "20kg 쌀가마가 실린 선반이 앞으로 넘어져 사장을 덮쳤다. 그런데 바닥에 선반 다리가 끌린 자국이 있다. 저절로 쓰러졌다면 생기지 않을 자국이다." },
+  c_msg:     { icon: "💬", kind: "기록", title: "사장의 마지막 문자",
+    text: "03:40 사장 → 이동석: \"오늘 오면 얘기 좀 해. 장부 다 봤어.\"" },
+  c_bank:    { icon: "🏦", kind: "기록", title: "새벽 3시 이체 알림",
+    text: "03:02 사장 계좌에서 300만 원이 박준호(아들) 계좌로 이체됐다. 사장 폰의 은행 앱으로 보냈다." },
+  c_ledger:  { icon: "📒", kind: "물증", title: "떡집 장부",
+    text: "동석이 맡은 카페 세 곳 주문은 하루 10판인데, 출고는 매일 12판. 빨간 펜으로 \"2판 어디로? 내일 물어볼 것\"이라고 적혀 있다." },
+  c_cctv:    { icon: "📹", kind: "기록", title: "시장 입구 CCTV", holder: "yoon",
+    brief: "시장 입구 CCTV 받아왔어. 새벽에 오토바이 한 대가 찍혔는데…",
+    text: "03:50 배달 오토바이 한 대가 시장 입구로 들어온다. 그 뒤로 8시까지 입구로 나간 오토바이는 없다." },
+  c_parking: { icon: "🚗", kind: "기록", title: "주차장 출차 기록", holder: "kang",
+    brief: "아들 차 주차장 기록 떴다! 새벽에 시장 왔었어!",
+    text: "박준호의 차: 02:55 시장 공영주차장 입차, 03:12 출차." },
+  c_app:     { icon: "📲", kind: "기록", title: "배달앱 픽업 기록",
+    text: "이동석의 배달앱: 복순떡집 \"픽업 완료\" 03:55." },
+  c_noise:   { icon: "🔊", kind: "진술", title: "4시쯤 쿵 소리",
+    text: "최미경: \"4시쯤 가게 셔터 올리다가 떡집 창고에서 쿵 하는 소리를 들었어요. 쌀가마 내리는 소린 줄 알았죠.\"" },
+  c_landlord:{ icon: "🏢", kind: "기록", title: "건물주와의 문자",
+    text: "건물주 → 최미경 (어제): \"떡집 계약 끝나면 그 자리 미경 씨 드릴게요. 할머니가 버티셔서 문제지.\"" },
+  c_scratch: { icon: "🩹", kind: "물증", title: "동석 손등의 긁힌 상처",
+    text: "이동석의 손등에 새로 난 긁힌 상처. 선반의 거친 나무 모서리 결과 비슷하다." },
+  s_dong:    { icon: "🗨️", kind: "진술", title: "이동석의 진술",
+    text: "\"4시 반에 도착했어요. 떡 받으러 창고에 들어갔더니 떡판에서 김이 모락모락 나고 있고, 사장님이 쌀가마 밑에….\"" },
+  s_son:     { icon: "🗨️", kind: "진술", title: "박준호의 진술",
+    text: "\"밤새 집에서 잤어요. 연락 받고 바로 온 거예요.\"" },
+  s_son2:    { icon: "🗨️", kind: "진술", title: "박준호의 고백",
+    text: "\"…3시에 와서 엄마 폰으로 300만 원 보냈어요. 빚 때문에요. 엄마한테 들켜서 소리 지르고 3시 10분쯤 나왔어요. 그때 엄마 멀쩡했어요.\"" },
+  s_choi:    { icon: "🗨️", kind: "진술", title: "최미경의 진술",
+    text: "\"저는 4시에 가게 열었어요. 떡집엔 안 가 봤고요.\"" },
+};
+
+// 두 단서를 이으면 열리는 사실. pairs 중 하나만 맞으면 된다.
+const FACTS = {
+  f_cool:       { title: "떡은 3시 반에 나와 식어 있었다", pairs: [["c_tteok","c_steamer"]],
+    text: "마지막 떡은 3시 반에 나왔고, 발견 무렵엔 이미 차갑게 굳어 있었다. 떡에서 김이 났던 건 3시 반 직후뿐이다." },
+  f_dong_lie:   { title: "동석은 떡이 뜨거울 때 거기 있었다", pairs: [["f_cool","s_dong"]],
+    text: "4시 반이면 굳어 있었을 떡을 동석은 \"김이 모락모락\"이라고 기억한다. 그가 떡을 본 건 4시 반이 아니라, 떡이 막 나왔을 때다." },
+  f_dong_early: { title: "동석은 3시 50분에 이미 와 있었다", pairs: [["c_cctv","s_dong"],["c_app","s_dong"]],
+    text: "\"4시 반 도착\"은 거짓이다. 동석은 3시 50분에 시장에 들어왔고, 3시 55분엔 픽업 버튼까지 눌렀다." },
+  f_motive:     { title: "사장은 동석의 빼돌리기를 알았다", pairs: [["c_msg","c_ledger"]],
+    text: "동석이 매일 떡 2판씩 빼돌린 걸 사장이 장부로 알아챘고, 사건 20분 전 \"얘기 좀 하자\"고 불렀다." },
+  f_son_alibi:  { title: "아들이 떠난 뒤에도 사장은 살아 있었다", pairs: [["c_parking","c_msg"],["s_son2","c_msg"]],
+    text: "아들은 3시 12분에 떠났고, 사장은 3시 40분에 직접 문자를 보냈다. 아들이 떠날 때 사장은 살아 있었다." },
+  f_struggle:   { title: "사고가 아니다", pairs: [["c_noise","c_shelf"]],
+    text: "4시쯤 쿵 소리와 함께 선반이 넘어졌고, 바닥엔 끌린 자국이 남았다. 누군가 선반을 잡아당겼다." },
+  f_window:     { title: "4시에 시장 안에 있던 외부인", pairs: [["c_noise","c_cctv"]],
+    text: "쿵 소리가 난 4시쯤, 새벽에 시장으로 들어온 외부인은 3시 50분의 오토바이 한 대뿐이다." },
+};
+
+// 범인 지목 때 근거 3개가 채워야 할 세 기둥
+const PILLARS = [
+  { id: "motive",   label: "동기",         ids: ["c_msg","c_ledger","f_motive"] },
+  { id: "presence", label: "현장에 있었다", ids: ["c_cctv","c_app","f_dong_early","f_window","c_scratch"] },
+  { id: "lie",      label: "거짓말",       ids: ["f_dong_lie","f_dong_early"] },
+];
+
+const HOTSPOTS = [
+  { id: "tteok",   name: "떡판",      clues: ["c_tteok"],   x: 290, y: 120, view: "228 96 128 70" },
+  { id: "steamer", name: "찜기",      clues: ["c_steamer"], x: 188, y: 92,  view: "146 52 88 90" },
+  { id: "shelf",   name: "쌀가마 선반", clues: ["c_shelf"],   x: 70,  y: 120, view: "4 52 170 186" },
+  { id: "phone",   name: "사장의 폰",  clues: ["c_bank","c_msg"], x: 160, y: 210, ui: "phone" },
+  { id: "ledger",  name: "벽 선반의 공책", clues: ["c_ledger"], x: 318, y: 78, ui: "ledger" },
+];
+
+// 심문: need가 있으면 그 단서/질문을 먼저 얻어야 질문이 보인다
+const TALK = {
+  dong: {
+    qs: [
+      { id: "d1", q: "몇 시에 도착하셨어요?", a: CLUES.s_dong.text, give: "s_dong" },
+      { id: "d2", q: "사장님과는 어떤 사이였어요?", a: "\"10년 거래했어요. 어머니 같은 분이었죠. …요즘이요? 뭐, 별일 없었어요.\"" },
+      { id: "d3", q: "배달앱 기록 좀 볼 수 있을까요?", need: "s_dong", a: "\"…아, 픽업 버튼은 오기 전에 미리 눌러요. 습관이라. 진짜예요.\" (화면에 03:55가 찍혀 있다)", give: "c_app" },
+    ],
+    show: {
+      c_cctv: { a: "\"3시 50분… 아, 일찍 와서 골목에서 담배 좀 피웠어요. 그게 다예요.\"", hit: true },
+      c_app: { a: "\"미리 눌렀다니까요. 다들 그래요.\"" },
+      f_dong_early: { a: "\"담배 피웠다니까요!\" 목소리가 커진다.", hit: true },
+      c_msg: { a: "\"장부요? 무슨 얘긴지… 문자는 못 봤어요. 운전 중이라.\"", hit: true },
+      c_ledger: { a: "\"2판이요? 사장님이 잘못 세신 거겠죠. 연세가 있으시니까.\"", hit: true },
+      f_motive: { a: "동석이 한참 바닥만 본다. \"…그거 갚으려고 했어요. 근데 그거랑 이거는 상관없어요.\"", hit: true },
+      f_dong_lie: { a: "동석이 대답 대신 두 손을 비빈다. 손등에 새로 긁힌 상처가 보인다.", hit: true, give: "c_scratch" },
+      c_shelf: { a: "\"선반이 원래 좀 흔들렸어요. 사장님이 고친다고 하셨는데….\"" },
+    },
+  },
+  son: {
+    qs: [
+      { id: "s1", q: "어젯밤 어디 계셨어요?", a: CLUES.s_son.text, give: "s_son" },
+      { id: "s2", q: "어머니와 사이는 어땠어요?", a: "\"가게 물려받으라고 매일 잔소리… 그래도 엄마예요. 제가 왜요.\"" },
+    ],
+    show: {
+      c_bank: { a: CLUES.s_son2.text, hit: true, give: "s_son2" },
+      c_parking: { a: CLUES.s_son2.text, hit: true, give: "s_son2" },
+      c_msg: { a: "\"3시 40분에 엄마가 문자를 보냈다고요? …그럼 제가 나온 뒤에도 살아 계셨던 거네요.\"" },
+    },
+  },
+  choi: {
+    qs: [
+      { id: "c1", q: "오늘 몇 시에 나오셨어요?", a: CLUES.s_choi.text, give: "s_choi" },
+      { id: "c2", q: "혹시 이상한 소리 못 들으셨어요?", need: "s_choi", a: CLUES.c_noise.text.replace("최미경: ", ""), give: "c_noise" },
+      { id: "c3", q: "떡집 사장님과는 어떤 사이셨어요?", a: "\"자리 문제로 좀 다퉜죠. 근데 그게 사람 해칠 일은 아니잖아요.\" 최미경이 폰을 슬쩍 뒤집어 놓는다." },
+      { id: "c4", q: "폰 좀 보여주시겠어요?", need: "c3", a: "\"…건물주랑 얘기한 거예요. 나가시길 바랐던 건 맞아요. 그래도 저는 아니에요.\"", give: "c_landlord" },
+    ],
+    show: {
+      c_landlord: { a: "\"그래요, 그 자리 탐났어요. 근데 쿵 소리 났을 때 전 제 가게에 있었어요. 반찬통 담느라 손이 열 개라도 모자랐다고요.\"", hit: true },
+      c_cctv: { a: "\"상인들은 다 뒷문으로 다녀요. 정문 CCTV엔 안 찍히죠.\"" },
+      c_noise: { a: "\"그때 가 봤어야 했는데….\" 최미경이 입술을 깨문다." },
+    },
+  },
+};
+
+const WRONG_LINK = [
+  ["kang", "그 둘이 무슨 상관이야?"],
+  ["yoon", "음, 그건 따로 노는 것 같아."],
+  ["kang", "실만 아깝다."],
+  ["yoon", "둘을 겹쳐 봐도 새로 보이는 게 없네."],
+];
+
+// ───────────────────────── 상태 ─────────────────────────
+const KEY = "mm-tteok-v1";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const all = id => CLUES[id] || FACTS[id];
+
+let S = null;
+const fresh = () => ({ t: 0, found: [], facts: [], chat: [], asked: [], shown: [], spots: [], events: [], talk: { dong: [], son: [], choi: [] }, who: "dong", tab: "chat", unread: {}, sel: [], over: false });
+function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+const has = id => S.found.includes(id) || S.facts.includes(id) || S.asked.includes(id);
+const timeStr = t => { const m = START_MIN + t * STEP; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const left = () => MAX_ACTIONS - S.t;
+
+function toast(msg) { const el = $("#toast"); el.textContent = msg; el.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.remove("on"), 2400); }
+
+function say(from, text, extra = {}) { S.chat.push({ from, text, ...extra }); if (S.tab !== "chat") S.unread.chat = true; }
+function gain(id) {
+  if (S.found.includes(id)) return false;
+  S.found.push(id);
+  if (S.tab !== "clues") S.unread.clues = true;
+  return true;
+}
+function spend() {
+  if (S.over) { toast("시간이 다 됐어요. 범인을 지목하세요."); return false; }
+  S.t++;
+  return true;
+}
+// 행동 뒤에 항상 부른다: 시간에 따라 동료가 움직이고, 단서에 따라 반응한다
+function tick() {
+  const once = (id, cond, fn) => { if (!S.events.includes(id) && cond) { S.events.push(id); fn(); } };
+  once("cctv", S.t >= 3, () => say("yoon", CLUES.c_cctv.brief, { detail: "c_cctv" }));
+  once("sms", S.t >= 5, () => {
+    say("choi", "형사님, 아까 그 아들 있잖아요. 요즘 도박 빚 때문에 엄마랑 맨날 싸웠어요. 저는 그냥 알려드리는 거예요.");
+    say("yoon", "남 얘기부터 꺼내는 사람도 기억해 둬.");
+  });
+  once("parking", S.t >= 7, () => say("kang", CLUES.c_parking.brief, { detail: "c_parking" }));
+  once("bank", has("c_bank"), () => { say("kang", "봐! 새벽 3시에 엄마 돈 300 빼갔잖아. 끝났네, 아들이야."); say("yoon", "돈 빼간 거랑 사람 해친 건 다른 문제야. 시간을 맞춰 봐."); });
+  once("son2", has("s_son2"), () => say("kang", "돈 빼간 건 자백했어! 3시 10분에 나갔다는 건 본인 말뿐이지만."));
+  once("low", S.t >= 15, () => say("sys", "⏰ 7시 30분. 서장이 8시에 사고로 종결하겠대요.", { alert: true }));
+  once("end", S.t >= MAX_ACTIONS, () => { S.over = true; say("sys", "8시. 더는 수사할 시간이 없다. 지금 범인을 지목해야 한다.", { alert: true }); setTimeout(openAccuse, 400); });
+  save();
+  render();
+}
+
+// ───────────────────────── 현장 그림 ─────────────────────────
+function sceneSVG(view = "0 0 360 240", interactive = false) {
+  const tteok = [0,1,2,3,4].map(i => {
+    const y = 108 + i * 7;
+    return `<rect x="252" y="${y}" width="78" height="5.5" rx="2.7" fill="#e9dfc8" stroke="#bfb193" stroke-width=".5"/>
+      <path d="M${262 + i*5} ${y+1.2} l3 2.4 M${284 + i*3} ${y+.8} l-2 3 M${306 - i*4} ${y+1.5} l2.5 2" stroke="#9e8f6e" stroke-width=".45" fill="none"/>`;
+  }).join("");
+  const sacks = [[22,150,-20],[52,176,15],[92,196,-8],[28,200,30],[120,172,-35],[70,214,5]].map(([x,y,r]) =>
+    `<g transform="rotate(${r} ${x+18} ${y+11})"><rect x="${x}" y="${y}" width="36" height="22" rx="7" fill="#d6c7a1" stroke="#a8966c"/><text x="${x+18}" y="${y+14}" font-size="8" fill="#7a6a45" text-anchor="middle" font-weight="700">쌀</text></g>`).join("");
+  let hots = "";
+  if (interactive) hots = HOTSPOTS.map(h => {
+    const done = S.spots.includes(h.id);
+    return `<g class="hot ${done ? "done" : ""}" data-spot="${h.id}"><rect x="${h.x-26}" y="${h.y-22}" width="52" height="44" fill="transparent"/><circle class="ring" cx="${h.x}" cy="${h.y}" r="10"/><text x="${h.x}" y="${h.y}">${done ? "✓" : "?"}</text></g>`;
+  }).join("");
+  return `<svg viewBox="${view}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="떡집 창고 현장">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="0%" r="75%"><stop offset="0" stop-color="#ffd58a" stop-opacity=".35"/><stop offset="1" stop-color="#ffd58a" stop-opacity="0"/></radialGradient>
+      <linearGradient id="metal" x1="0" x2="1"><stop offset="0" stop-color="#6b7280"/><stop offset=".5" stop-color="#c3c8cf"/><stop offset="1" stop-color="#5b616b"/></linearGradient>
+    </defs>
+    <rect width="360" height="150" fill="#2a2320"/>
+    <rect y="150" width="360" height="90" fill="#1e1916"/>
+    <path d="M0 150 H360" stroke="#3a2f28" stroke-width="2"/>
+    <rect width="360" height="240" fill="url(#glow)"/>
+    <line x1="180" y1="0" x2="180" y2="18" stroke="#555" /><circle cx="180" cy="22" r="5" fill="#ffe2a8"/>
+    <!-- 벽 선반과 장부 -->
+    <rect x="280" y="86" width="72" height="4" fill="#5a4636"/>
+    <rect x="304" y="72" width="22" height="14" rx="1.5" fill="#8b2323" transform="rotate(-6 315 79)"/>
+    <rect x="330" y="70" width="10" height="16" fill="#3f5f4a"/>
+    <!-- 찜기 -->
+    <rect x="160" y="134" width="56" height="16" rx="3" fill="#3b3b3b"/>
+    <rect x="164" y="76" width="48" height="58" rx="4" fill="url(#metal)"/>
+    <path d="M164 95 H212 M164 114 H212" stroke="#4b5059" stroke-width="1.2"/>
+    <ellipse cx="188" cy="76" rx="24" ry="5" fill="#d7dbe0" stroke="#8a9099"/>
+    <rect x="170" y="118" width="26" height="11" rx="2" fill="#0b0f0c" stroke="#333"/>
+    <text x="183" y="126.5" font-size="7.5" fill="#4ade80" text-anchor="middle" font-family="monospace" font-weight="700">03:30</text>
+    <!-- 작업대와 떡판 -->
+    <rect x="236" y="140" width="112" height="7" fill="#6b4e37"/>
+    <rect x="242" y="147" width="6" height="40" fill="#4a3627"/><rect x="336" y="147" width="6" height="40" fill="#4a3627"/>
+    <rect x="246" y="102" width="90" height="38" rx="2" fill="#8a6a4c" stroke="#5b4430"/>
+    ${tteok}
+    <!-- 넘어진 선반 -->
+    <polygon points="14,62 46,54 120,150 88,158" fill="#5b4636" stroke="#3d2e23" stroke-width="1.5"/>
+    <path d="M30 58 L104 154 M23 80 L60 70 M50 112 L86 102" stroke="#3d2e23" stroke-width="2"/>
+    <path d="M96 162 l30 6 M98 168 l28 5" stroke="#6e5a48" stroke-width="1.6" stroke-dasharray="3 2"/>
+    ${sacks}
+    <!-- 감식 표시 -->
+    <path d="M118 196 q10 -14 26 -8 q16 6 20 20 q4 14 -10 18 q-16 2 -26 -6 q-14 -10 -10 -24z" fill="none" stroke="#f5efe6" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75"/>
+    <rect x="148" y="205" width="12" height="20" rx="2" fill="#111" stroke="#444" transform="rotate(22 154 215)"/>
+    <rect x="150" y="208" width="8" height="13" rx="1" fill="#2f4a6b" transform="rotate(22 154 215)"/>
+    <g font-size="7" font-weight="800"><rect x="196" y="196" width="12" height="10" fill="#facc15"/><text x="202" y="204" text-anchor="middle" fill="#111">1</text>
+    <rect x="96" y="226" width="12" height="10" fill="#facc15"/><text x="102" y="234" text-anchor="middle" fill="#111">2</text></g>
+    ${hots}
+  </svg>`;
+}
+
+// ───────────────────────── 렌더 ─────────────────────────
+function render() {
+  const c = $("#clock");
+  c.className = "clock" + (left() <= 3 ? " low" : "");
+  c.innerHTML = `<b>${timeStr(S.t)}</b><span>${S.over ? "수사 종료 · 지목만 남았어요" : `8시까지 행동 ${left()}번 남음`}</span>`;
+  document.querySelectorAll("#nav button").forEach(b => {
+    const t = b.dataset.tab;
+    b.classList.toggle("on", t === S.tab);
+    b.querySelector(".dot")?.remove();
+    if (S.unread[t] && t !== S.tab) b.insertAdjacentHTML("beforeend", '<span class="dot"></span>');
+  });
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === "p-" + S.tab));
+  ({ chat: renderChat, scene: renderScene, talk: renderTalk, board: renderBoard, clues: renderClues })[S.tab]();
+}
+
+function renderChat() {
+  const el = $("#p-chat");
+  const html = S.chat.map((m, i) => {
+    if (m.from === "sys") return `<div class="sys ${m.alert ? "alert" : ""}">${m.text}</div>`;
+    if (m.from === "me") return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
+    const p = PEOPLE[m.from];
+    let btn = "";
+    if (m.photo) btn = `<button data-go="scene">📷 현장 사진 보기</button>`;
+    if (m.detail) btn = has(m.detail) ? `<button disabled>단서함에 넣음 ✓</button>` : `<button data-detail="${m.detail}" data-i="${i}">자세히 물어보기</button>`;
+    return `<div class="msg ${p.sms ? "sms" : ""}"><div class="av">${p.av}</div><div><div class="who" style="color:${p.color || ""}">${p.name}</div><div class="bubble">${esc(m.text)}${btn}</div></div></div>`;
+  }).join("");
+  el.innerHTML = html + `<div class="hintbar"><button class="wide" id="btnHint" ${S.over ? "disabled" : ""}>💡 윤 경위에게 의견 묻기 (10분)</button></div>`;
+  el.querySelectorAll("[data-go]").forEach(b => b.onclick = () => setTab(b.dataset.go));
+  el.querySelectorAll("[data-detail]").forEach(b => b.onclick = () => askDetail(b.dataset.detail));
+  $("#btnHint").onclick = hint;
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderScene() {
+  const el = $("#p-scene");
+  el.innerHTML = `<div class="scene">${sceneSVG("0 0 360 240", true)}</div>
+    <p class="note">복순떡집 창고, 새벽 4시 50분 감식 사진. 반짝이는 곳을 누르면 자세히 조사해요. <b>처음 조사할 때마다 10분</b>이 흘러요.</p>
+    <div class="spots">${HOTSPOTS.map(h => `<button data-spot="${h.id}" class="${S.spots.includes(h.id) ? "done" : ""}">${S.spots.includes(h.id) ? "✓ " : "🔍 "}${h.name}</button>`).join("")}</div>`;
+  el.querySelectorAll("[data-spot]").forEach(b => b.onclick = () => inspect(b.dataset.spot));
+}
+
+function renderTalk() {
+  const el = $("#p-talk");
+  const s = SUSPECTS.find(x => x.id === S.who), T = TALK[S.who];
+  const qs = T.qs.filter(q => !q.need || has(q.need));
+  const log = S.talk[S.who].map(l => `<div class="line ${l.q ? "q" : ""} ${l.hit ? "hit" : ""}">${esc(l.text)}</div>`).join("");
+  el.innerHTML = `<div class="suspects">${SUSPECTS.map(x => `<button class="suspect ${x.id === S.who ? "on" : ""}" data-who="${x.id}"><i>${x.av}</i><b>${x.name}</b><span>${x.role.split(" · ")[0]}</span></button>`).join("")}</div>
+    <div class="card"><h3>${s.av} ${s.name} <span class="muted" style="font-size:13px;font-weight:400">${s.age}세 · ${s.role}</span></h3><p>${s.desc}</p></div>
+    <div class="qs">
+      <div class="lbl">질문하기 · 각 10분</div>
+      ${qs.map(q => `<button data-q="${q.id}" class="${S.asked.includes(q.id) ? "asked" : ""}" ${S.asked.includes(q.id) ? "disabled" : ""}>${S.asked.includes(q.id) ? "✓ " : "❓ "}${q.q}</button>`).join("")}
+      <button data-show="1" style="margin-top:12px;border-color:#7f1d1d">🧾 증거 내밀기 (10분)</button>
+    </div>
+    ${log ? `<div class="talk"><div class="lbl muted" style="font-size:12.5px;margin-top:16px">심문 기록</div>${log}</div>` : ""}`;
+  el.querySelectorAll("[data-who]").forEach(b => b.onclick = () => { S.who = b.dataset.who; save(); renderTalk(); });
+  el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => ask(b.dataset.q));
+  el.querySelector("[data-show]").onclick = pickEvidence;
+}
+
+function chipList(ids, selected, attr) {
+  return ids.map(id => { const c = all(id); const f = !!FACTS[id];
+    return `<button class="chip ${f ? "fact" : ""} ${selected.includes(id) ? "sel" : ""}" ${attr}="${id}">${f ? "💡" : c.icon} ${esc(c.title)}</button>`; }).join("");
+}
+
+function renderBoard() {
+  const el = $("#p-board");
+  const pool = [...S.found, ...S.facts];
+  if (pool.length < 2) { el.innerHTML = `<div class="card"><p>단서가 두 개 이상 모이면 여기서 실로 이어 볼 수 있어요. 현장과 심문부터 가 보세요.</p></div>`; return; }
+  el.innerHTML = `<p class="note" style="margin-top:0">두 단서를 고르고 실로 이어 보세요. 맞물리면 💡 새 사실이 열려요. 잇기는 시간이 들지 않아요.</p>
+    <div class="section">단서</div><div class="chips">${chipList(S.found, S.sel, "data-pick")}</div>
+    ${S.facts.length ? `<div class="section">밝혀낸 사실</div><div class="chips">${chipList(S.facts, S.sel, "data-pick")}</div>` : ""}
+    <div class="boardbar"><button class="primary wide" id="btnLink" ${S.sel.length === 2 ? "" : "disabled"}>🧵 ${S.sel.length === 2 ? "두 단서 잇기" : `단서 ${2 - S.sel.length}개 더 고르기`}</button></div>`;
+  el.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+    const id = b.dataset.pick;
+    S.sel = S.sel.includes(id) ? S.sel.filter(x => x !== id) : [...S.sel, id].slice(-2);
+    renderBoard();
+  });
+  $("#btnLink").onclick = link;
+}
+
+function renderClues() {
+  const el = $("#p-clues");
+  if (!S.found.length) { el.innerHTML = `<div class="card"><p>아직 모은 단서가 없어요.</p></div>`; return; }
+  const kinds = ["물증", "기록", "진술"];
+  el.innerHTML = (S.facts.length ? `<div class="section">💡 밝혀낸 사실</div>` + S.facts.map(id => `<div class="card clue fact"><i>💡</i><div><b>${esc(FACTS[id].title)}</b><span>${esc(FACTS[id].text)}</span></div></div>`).join("") : "")
+    + kinds.map(k => { const ids = S.found.filter(id => CLUES[id].kind === k); if (!ids.length) return "";
+      return `<div class="section">${k}</div>` + ids.map(id => `<div class="card clue"><i>${CLUES[id].icon}</i><div><b>${esc(CLUES[id].title)}</b><span>${esc(CLUES[id].text)}</span></div></div>`).join(""); }).join("");
+}
+
+function setTab(t) { S.tab = t; delete S.unread[t]; S.sel = t === "board" ? S.sel : []; save(); render(); $("#p-" + t).scrollTop = t === "chat" ? 1e6 : 0; }
+
+// ───────────────────────── 행동 ─────────────────────────
+function modal(html) { $("#sheet").innerHTML = html; $("#modal").classList.remove("hidden"); $("#sheet").scrollTop = 0; }
+function closeModal() { $("#modal").classList.add("hidden"); }
+$("#modal").onclick = e => { if (e.target.id === "modal") closeModal(); };
+
+function newClueBox(ids) { return ids.length ? `<div class="newclue"><b>단서 확보</b> · ${ids.map(id => esc(all(id).title)).join(", ")}</div>` : ""; }
+
+function inspect(id) {
+  const h = HOTSPOTS.find(x => x.id === id);
+  const first = !S.spots.includes(id);
+  if (first && !spend()) return;
+  if (first) S.spots.push(id);
+  const got = h.clues.filter(gain);
+  let body;
+  if (h.ui === "phone") body = `<div class="phone"><div class="lock"><b>4:52</b>10월 29일 목요일</div>
+      <div class="noti"><small>💬 메시지 · 보냄 · 03:40</small>이동석: 오늘 오면 얘기 좀 해. 장부 다 봤어.</div>
+      <div class="noti"><small>🏦 한빛은행 · 03:02</small>이체 완료 3,000,000원 → 박준호</div>
+      <div class="noti"><small>📞 부재중 전화 · 04:51</small>우리 아들</div></div>
+      <p>바닥에 떨어진 사장의 폰. 잠금화면 알림이 그대로 남아 있다.</p>`;
+  else if (h.ui === "ledger") body = `<div class="ledger"><table>
+      <tr><td>카페 봄날 (동석)</td><td>4판</td></tr><tr><td>담 커피 (동석)</td><td>3판</td></tr><tr><td>모퉁이 카페 (동석)</td><td>3판</td></tr>
+      <tr><td><b>주문 합계</b></td><td><b>10판</b></td></tr><tr><td><b>동석 출고</b></td><td><b>12판</b></td></tr></table>
+      <div class="red">2판 어디로?? 매일!! 내일 물어볼 것</div></div>
+      <p>벽 선반 위 빨간 공책. 거래처별 납품을 손으로 적어 둔 장부다.</p>`;
+  else body = `<div class="zoom">${sceneSVG(h.view)}</div><p>${esc(CLUES[h.clues[0]].text)}</p>`;
+  modal(`<h2>${esc(h.name)}</h2>${body}${first ? newClueBox(got) : `<p class="muted" style="font-size:13px">이미 조사한 곳이에요.</p>`}<button class="primary wide" id="mOk">확인</button>`);
+  $("#mOk").onclick = closeModal;
+  if (first) tick();
+}
+
+function ask(qid) {
+  const q = TALK[S.who].qs.find(x => x.id === qid);
+  if (S.asked.includes(qid) || !spend()) return;
+  S.asked.push(qid);
+  const log = S.talk[S.who];
+  log.push({ q: true, text: "나: " + q.q }, { text: q.a });
+  if (q.give && gain(q.give)) toast("단서 확보 · " + all(q.give).title);
+  tick();
+  $("#p-talk").scrollTop = 1e6;
+}
+
+function pickEvidence() {
+  if (S.over) return toast("시간이 다 됐어요. 범인을 지목하세요.");
+  const pool = [...S.found, ...S.facts];
+  const s = SUSPECTS.find(x => x.id === S.who);
+  modal(`<h2>${s.name}에게 무엇을 내밀까요?</h2><p class="muted" style="font-size:14px">진술과 어긋나는 증거를 들이밀면 말이 바뀔 수 있어요. 10분이 흘러요.</p>
+    <div class="chips">${pool.length ? chipList(pool, [], "data-ev") : '<span class="muted">아직 내밀 단서가 없어요.</span>'}</div>
+    <button class="ghost wide" id="mX" style="margin-top:12px">닫기</button>`);
+  $("#mX").onclick = closeModal;
+  document.querySelectorAll("[data-ev]").forEach(b => b.onclick = () => { closeModal(); present(b.dataset.ev); });
+}
+
+function present(id) {
+  if (!spend()) return;
+  const r = TALK[S.who].show[id];
+  const log = S.talk[S.who];
+  log.push({ q: true, text: "나: (" + all(id).title + "을/를 내민다)" });
+  log.push(r ? { text: r.a, hit: r.hit } : { text: "\"그게 저랑 무슨 상관이죠?\"" });
+  const key = S.who + ":" + id;
+  if (!S.shown.includes(key)) S.shown.push(key);
+  if (r && r.give && gain(r.give)) toast("단서 확보 · " + all(r.give).title);
+  tick();
+  $("#p-talk").scrollTop = 1e6;
+}
+
+function link() {
+  const [a, b] = S.sel;
+  const hit = Object.entries(FACTS).find(([fid, f]) => !S.facts.includes(fid) && f.pairs.some(p => p.includes(a) && p.includes(b)));
+  S.sel = [];
+  if (!hit) {
+    const already = Object.entries(FACTS).find(([fid, f]) => S.facts.includes(fid) && f.pairs.some(p => p.includes(a) && p.includes(b)));
+    if (already) toast("이미 밝혀낸 사실이에요 · " + already[1].title);
+    else { const [w, t] = WRONG_LINK[Math.floor(Math.random() * WRONG_LINK.length)]; say(w, t); toast(PEOPLE[w].name + ": " + t); }
+    save(); renderBoard(); return;
+  }
+  const [fid, f] = hit;
+  S.facts.push(fid);
+  S.unread.clues = true;
+  say("sys", `💡 새 사실 · <b>${esc(f.title)}</b>`);
+  const react = {
+    f_cool: ["yoon", "떡이 식은 시간이라… 누군가의 말이랑 겹쳐 보면 재밌겠는데."],
+    f_dong_lie: ["kang", "잠깐, 4시 반에 왔다는 사람이 뜨거운 떡을 봤다고? 이거 크다!"],
+    f_dong_early: ["yoon", "40분이나 일찍 와 있었네. 그동안 뭘 했을까."],
+    f_motive: ["yoon", "사건 20분 전에 불러냈어. 동기로는 충분해."],
+    f_son_alibi: ["kang", "…3시 40분에 살아 계셨다고? 젠장. 아들은 아니네. 인정."],
+    f_struggle: ["yoon", "역시 사고가 아니야. 4시쯤 창고에 누군가 있었어."],
+    f_window: ["kang", "그 시간에 들어와 있던 오토바이… 배달 기사잖아?"],
+  }[fid];
+  if (react) say(...react);
+  save();
+  modal(`<h2>💡 새 사실</h2><div class="newclue"><b>${esc(f.title)}</b></div><p>${esc(f.text)}</p>
+    <p class="muted" style="font-size:13px">${esc(all(a).title)} + ${esc(all(b).title)}</p>
+    <button class="primary wide" id="mOk">좋아</button>`);
+  $("#mOk").onclick = () => { closeModal(); render(); };
+  render();
+}
+
+function askDetail(id) {
+  if (has(id)) return;
+  const c = CLUES[id];
+  say("me", "자세히 알려 줘.");
+  say(c.holder, c.text);
+  gain(id);
+  toast("단서 확보 · " + c.title);
+  save(); render();
+}
+
+function hint() {
+  if (!spend()) return;
+  const H = [
+    [!has("c_tteok"), "처음 올린 현장 사진 다시 봐. 떡판 위에 뭔가 걸려."],
+    [!has("c_steamer"), "떡이 언제 나왔는지 알려 줄 물건이 창고에 있을 거야. 찜기 봤어?"],
+    [!has("f_cool"), "굳은 떡이랑 찜기 타이머, 둘을 실로 이어 봐."],
+    [!has("s_dong"), "최초 발견자 얘기부터 들어 보자. 몇 시에 왔대?"],
+    [!has("f_dong_lie"), "식은 떡이랑 동석 씨 진술, 같이 놓고 봐. 뭔가 안 맞아."],
+    [!has("c_msg") && !has("c_ledger"), "사장님 폰이랑 벽 선반 공책, 아직 안 봤지?"],
+    [!has("f_motive"), "마지막 문자에 '장부'라는 말이 나와. 장부랑 이어 봐."],
+    [!has("f_dong_early"), "동석 씨가 진짜 몇 시에 왔는지 남은 기록이 있을 거야. 배달앱이나 CCTV."],
+    [true, "이제 지목해도 될 것 같아. 동기, 현장에 있었다는 증거, 거짓말. 하나씩 골라."],
+  ];
+  say("me", "어떻게 생각해?");
+  say("yoon", H.find(h => h[0])[1]);
+  tick();
+}
+
+// ───────────────────────── 범인 지목 ─────────────────────────
+let pick = { who: null, ev: [] };
+function openAccuse() {
+  pick = { who: null, ev: [] };
+  drawAccuse();
+}
+function drawAccuse() {
+  const pool = [...S.facts, ...S.found];
+  modal(`<h2>⚖️ 범인 지목</h2>
+    <p class="muted" style="font-size:14px">범인 한 명과, 그 사람을 범인이라고 생각하는 근거 3개를 골라요.</p>
+    <div class="pick">${SUSPECTS.map(x => `<button class="suspect ${pick.who === x.id ? "on" : ""}" data-who="${x.id}"><i>${x.av}</i><b>${x.name}</b><span>${x.role.split(" · ")[0]}</span></button>`).join("")}</div>
+    <div class="section">근거 ${pick.ev.length}/3</div>
+    <div class="chips">${chipList(pool, pick.ev, "data-ev")}</div>
+    <button class="primary wide" id="mGo" style="margin-top:16px" ${pick.who && pick.ev.length === 3 ? "" : "disabled"}>이 사람이 범인이다</button>
+    ${S.over ? "" : `<button class="ghost wide" id="mX">더 수사하기</button>`}`);
+  document.querySelectorAll("#sheet [data-who]").forEach(b => b.onclick = () => { pick.who = b.dataset.who; drawAccuse(); });
+  document.querySelectorAll("#sheet [data-ev]").forEach(b => b.onclick = () => {
+    const id = b.dataset.ev;
+    pick.ev = pick.ev.includes(id) ? pick.ev.filter(x => x !== id) : pick.ev.length < 3 ? [...pick.ev, id] : pick.ev;
+    drawAccuse();
+  });
+  $("#mGo").onclick = verdict;
+  $("#mX") && ($("#mX").onclick = closeModal);
+}
+
+// 근거 3개로 기둥 몇 개를 채웠는지 (카드 한 장은 기둥 하나만)
+function pillarsCovered(ev) {
+  let best = [];
+  const go = (i, used, got) => {
+    if (got.length > best.length) best = got.slice();
+    if (i === ev.length) return;
+    go(i + 1, used, got);
+    PILLARS.forEach(p => { if (!used.includes(p.id) && p.ids.includes(ev[i])) go(i + 1, [...used, p.id], [...got, p.id]); });
+  };
+  go(0, [], []);
+  return best;
+}
+
+const TRUTH = `<h3>그날 새벽의 진상</h3>
+  <p>배달 기사 이동석은 몇 달째 매일 떡 두 판을 몰래 빼서 따로 팔고 있었다. 장부를 맞춰 보던 김복순 사장은 그걸 알아챘고, 새벽 <b>3시 40분</b> "오늘 오면 얘기 좀 해. 장부 다 봤어."라고 문자를 보냈다.</p>
+  <p>동석은 평소보다 40분 이른 <b>3시 50분</b>에 시장에 들어왔다. 습관처럼 3시 55분에 픽업 버튼을 누르고 창고로 들어갔을 때, 떡판에는 3시 반에 꺼낸 떡이 아직 <b>김을 뿜고</b> 있었다.</p>
+  <p>"경찰 부를 거야." 사장의 말에 실랑이가 벌어졌고, <b>4시쯤</b> 동석이 붙잡은 선반이 끌리며 넘어졌다. 옆 가게 최미경이 들은 쿵 소리가 그것이다. 손등엔 선반 모서리에 긁힌 상처가 남았다.</p>
+  <p>겁에 질린 동석은 시장 뒤편에 숨어 있다가 4시 반에 "방금 도착한" 척 사장을 발견하고 4시 38분 신고했다. 그리고 진술할 때, 3시 50분에 본 <b>뜨거운 떡</b>을 무심코 그대로 말해 버렸다. 그 시간엔 이미 굳어 있었을 떡을.</p>
+  <p class="muted" style="font-size:13.5px">아들 박준호는 정말 엄마 돈 300만 원을 몰래 빼 갔지만 3시 12분에 떠났다. 최미경은 떡집 자리를 노렸지만 그날은 제 가게에 있었다. 둘 다 숨긴 게 있었을 뿐, 범인은 아니었다.</p>`;
+
+function verdict() {
+  const got = pillarsCovered(pick.ev);
+  const pill = `<div class="pillars">${PILLARS.map(p => `<div class="${pick.who === "dong" && got.includes(p.id) ? "ok" : "no"}">${pick.who === "dong" && got.includes(p.id) ? "✓" : "✗"} ${p.label}</div>`).join("")}</div>`;
+  let big, title, line;
+  if (pick.who === "dong" && got.length === 3) { big = "🏆"; title = "완벽한 추리"; line = "동기, 현장에 있었다는 증거, 거짓말까지. 이동석은 더 버티지 못하고 모든 걸 털어놓았다."; }
+  else if (pick.who === "dong" && got.length === 2) { big = "⚖️"; title = "범인은 맞혔지만…"; line = "이동석이 범인인 건 맞다. 하지만 근거 하나가 비어서, 변호사가 그 틈을 파고들기 시작했다. 어떤 기둥이 비었는지 확인해 보세요."; }
+  else if (pick.who === "dong") { big = "🎲"; title = "감으로 맞혔다"; line = "범인은 맞혔지만 증거가 부족해 이동석은 풀려났다. 근거는 동기, 현장에 있었다는 증거, 거짓말을 하나씩 골라야 해요."; }
+  else if (pick.who === "son") { big = "🚔"; title = "강 형사의 승리…가 아니었다"; line = "아들은 돈을 훔친 건 맞지만 3시 12분에 떠났다. 사장은 3시 40분에 직접 문자를 보냈다. 진범은 따로 있다."; }
+  else { big = "🥬"; title = "동기만으로는 부족했다"; line = "최미경은 떡집 자리를 노렸지만, 그날 새벽 그녀가 창고에 있었다는 증거는 하나도 없다. 진범은 따로 있다."; }
+  S.done = { who: pick.who, got: got.length };
+  save();
+  modal(`<div class="verdict"><div class="big">${big}</div><h2>${title}</h2><p>${line}</p></div>${pick.who === "dong" ? pill : ""}
+    <p class="muted" style="font-size:13px;text-align:center">${timeStr(S.t)}에 지목 · 행동 ${S.t}번 · 밝혀낸 사실 ${S.facts.length}/${Object.keys(FACTS).length}</p>
+    <div class="truth">${TRUTH}</div>
+    <button class="primary wide" id="mAgain">처음부터 다시</button>
+    <button class="ghost wide" id="mStay">사건 기록 더 보기</button>`);
+  $("#mAgain").onclick = () => { closeModal(); start(); };
+  $("#mStay").onclick = closeModal;
+}
+
+// ───────────────────────── 시작 ─────────────────────────
+function start() {
+  S = fresh();
+  say("sys", "04:38 신고 접수 · 한빛시장 <b>복순떡집</b>");
+  say("yoon", "현장 사진 올렸어. 관할서는 쌀가마 선반이 넘어진 사고로 보고 8시에 덮겠대.", { photo: true });
+  say("kang", "사고는 무슨. 아들이야. 시장 사람들 말로는 엄마 돈에 손댔다더라.");
+  say("yoon", "섣불러. 최초 발견자는 배달 기사 이동석 씨고, 옆 반찬가게 최미경 씨도 그 시간에 나와 있었어. 현장부터 보고 한 명씩 얘기 들어 보자.");
+  say("yoon", "단서 두 개가 맞물리면 '연결' 탭에서 실로 이어 봐. 하나만 봐서는 아무것도 안 보일 거야.");
+  S.unread = {};
+  save();
+  $("#intro").classList.add("hidden");
+  $("#game").classList.remove("hidden");
+  render();
+}
+function resume() {
+  $("#intro").classList.add("hidden");
+  $("#game").classList.remove("hidden");
+  render();
+}
+
+$("#poster").innerHTML = sceneSVG();
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+$("#btnAccuse").onclick = openAccuse;
+$("#btnStart").onclick = () => { const sv = load(); if (!sv || sv.done || !sv.chat || !sv.chat.length || confirm("처음부터 다시 시작할까요? 진행 중인 수사는 지워져요.")) start(); };
+const saved = load();
+if (saved && saved.chat && saved.chat.length && !saved.done) { S = saved; $("#btnResume").classList.remove("hidden"); $("#btnResume").onclick = resume; }
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
