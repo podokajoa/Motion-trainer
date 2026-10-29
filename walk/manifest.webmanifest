@@ -1,0 +1,17 @@
+{
+  "name": "낯선 동네 뽑기",
+  "short_name": "낯선동네",
+  "description": "안 가 본 동네의 시장·버스정류장·골목을 뽑아 주고 사진 미션을 주는 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf6ef",
+  "theme_color": "#faf6ef",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
