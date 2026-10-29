@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>낯선 동네 뽑기</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#faf6ef">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --bg:#faf6ef; --fg:#2a2420; --muted:#7d7168; --card:#fff; --line:#eadfd2; --orange:#d4692e; --green:#2f4a3c; --chip:#f3e6d8; --chipfg:#8a4f24; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 96px; }
+  button, input, textarea { font:inherit; color:inherit; }
+  button { border:none; border-radius:16px; padding:14px 16px; font-size:16px; font-weight:700; cursor:pointer; }
+  button:disabled { opacity:.45; }
+  .primary { background:var(--orange); color:#fff; }
+  .dark { background:var(--green); color:#fff; }
+  .soft { background:var(--chip); color:var(--chipfg); }
+  .ghost { background:none; color:var(--muted); font-weight:500; padding:8px; }
+  .wide { width:100%; }
+  .eyebrow { color:var(--orange); font-weight:800; font-size:14px; margin:4px 0 8px; }
+  h1 { font-size:24px; margin:0 0 14px; }
+  .muted { color:var(--muted); }
+  .view { display:none; } .view.on { display:block; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { background:var(--chip); color:var(--chipfg); border-radius:99px; padding:5px 11px; font-size:13px; font-weight:600; }
+  .err { background:#fdeaea; color:#9b2c2c; border-radius:12px; padding:10px 12px; font-size:14px; margin-top:10px; line-height:1.5; }
+
+  /* 뽑기 */
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; }
+  .seg button { background:var(--card); border:1.5px solid var(--line); color:var(--fg); padding:10px 4px; font-size:15px; }
+  .seg button small { display:block; font-size:12px; color:var(--muted); font-weight:500; margin-top:2px; }
+  .seg button.on { border-color:var(--orange); background:#fff4ec; }
+  .label { font-size:13px; color:var(--muted); font-weight:700; margin:12px 0 6px; }
+  .place { border:2px dashed #e3b48e; border-radius:20px; padding:18px; background:var(--card); }
+  .place .kind { color:var(--muted); font-size:14px; }
+  .place .name { font-size:28px; font-weight:900; margin:6px 0 4px; word-break:keep-all; line-height:1.25; }
+  .place .area { color:var(--muted); font-size:14px; margin-bottom:12px; }
+  .mission { background:var(--green); color:#fff; border-radius:20px; padding:18px; margin-top:14px; }
+  .mission .t { font-size:13px; opacity:.75; }
+  .mission .m { font-size:21px; font-weight:800; line-height:1.4; margin:6px 0 10px; word-break:keep-all; }
+  .mission .h { font-size:14px; opacity:.85; line-height:1.5; }
+  .mission button { background:rgba(255,255,255,.14); color:#fff; font-size:13px; padding:7px 12px; border-radius:10px; margin-top:10px; font-weight:600; }
+  .btns { display:grid; grid-template-columns:1fr 1.6fr; gap:8px; margin-top:16px; }
+  .rolling .name { animation:blink .18s linear infinite alternate; }
+  @keyframes blink { from { opacity:.35 } to { opacity:1 } }
+
+  /* 촬영 */
+  .shoot { position:fixed; inset:0; background:#111; z-index:50; display:flex; flex-direction:column; justify-content:space-between; }
+  .shoot .bar { color:#fff; padding:14px 16px 8px; display:flex; align-items:center; gap:8px; }
+  .shoot .bar .m { flex:1; font-weight:800; font-size:16px; word-break:keep-all; }
+  .shoot .bar button { background:rgba(255,255,255,.12); color:#fff; padding:8px 12px; font-size:14px; }
+  .frame { position:relative; width:100%; max-width:560px; margin:0 auto; aspect-ratio:3/4; max-height:calc(100vh - 210px); overflow:hidden; background:#000; }
+  .frame video { width:100%; height:100%; object-fit:cover; display:block; }
+  .grid { position:absolute; inset:0; pointer-events:none; }
+  .grid i { position:absolute; background:rgba(255,255,255,.55); }
+  .grid i:nth-child(1) { left:33.333%; top:0; bottom:0; width:1px; }
+  .grid i:nth-child(2) { left:66.666%; top:0; bottom:0; width:1px; }
+  .grid i:nth-child(3) { top:33.333%; left:0; right:0; height:1px; }
+  .grid i:nth-child(4) { top:66.666%; left:0; right:0; height:1px; }
+  .grid b { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border:1.5px solid rgba(255,214,120,.9); border-radius:50%; }
+  .grid.off { display:none; }
+  .shoot .hint { color:#ddd; font-size:13px; text-align:center; padding:8px 16px; }
+  .shutter { display:flex; align-items:center; justify-content:space-around; padding:6px 16px 22px; }
+  .shutter .snap { width:72px; height:72px; border-radius:50%; background:#fff; border:5px solid #888; padding:0; }
+  .shutter .side { background:rgba(255,255,255,.12); color:#fff; font-size:13px; padding:10px 12px; min-width:84px; }
+  .camerr { color:#fff; padding:24px; text-align:center; line-height:1.6; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+
+  /* 기록 작성 */
+  .photo { width:100%; border-radius:20px; display:block; background:#ddd; }
+  .memo { background:var(--card); border-radius:16px; padding:14px; margin-top:12px; border:1px solid var(--line); }
+  .memo label { font-weight:800; font-size:15px; display:block; margin-bottom:6px; }
+  .memo textarea { width:100%; border:none; resize:none; min-height:60px; font-size:16px; outline:none; background:none; padding:0; line-height:1.5; }
+  .where { color:var(--muted); font-size:13px; margin:10px 2px 0; }
+
+  /* 지도 */
+  #map { height:300px; border-radius:20px; overflow:hidden; background:#e6ede4; }
+  #map .leaflet-tile-pane { filter:saturate(.55) brightness(1.04); }
+  .rec { display:flex; gap:12px; align-items:center; background:var(--card); border-radius:16px; padding:10px; margin-top:10px; width:100%; text-align:left; font-weight:500; }
+  .rec img, .rec .ph { width:64px; height:64px; border-radius:12px; object-fit:cover; flex:none; background:var(--chip); }
+  .rec .n { font-weight:800; font-size:16px; }
+  .rec .s { color:var(--muted); font-size:13px; margin-top:3px; line-height:1.4; }
+  .empty { text-align:center; color:var(--muted); padding:28px 10px; line-height:1.6; }
+  .pop img { width:150px; border-radius:8px; display:block; margin-bottom:4px; }
+
+  /* 탭 */
+  nav { position:fixed; left:0; right:0; bottom:0; background:rgba(250,246,239,.96); border-top:1px solid var(--line); display:flex; justify-content:center; padding:6px 8px calc(6px + env(safe-area-inset-bottom)); z-index:20; }
+  nav button { flex:1; max-width:200px; background:none; color:var(--muted); font-size:14px; padding:8px; }
+  nav button.on { color:var(--orange); }
+  nav button span { display:block; font-size:20px; }
+</style>
+</head>
+<body>
+<main>
+  <!-- 뽑기 -->
+  <section class="view on" id="v-pick">
+    <div id="pick-setup">
+      <div class="eyebrow">이번에 가 볼 낯선 곳</div>
+      <h1>어디로 갈지 뽑아 드릴게요</h1>
+      <div class="label">지금 있는 곳에서</div>
+      <div class="seg" id="seg-dist"></div>
+      <div class="label">어떤 곳으로</div>
+      <div class="seg" id="seg-kind"></div>
+      <button class="primary wide" id="btn-pick" style="margin-top:14px;font-size:18px;padding:16px">동네 뽑기 🎲</button>
+      <div id="pick-msg"></div>
+      <p class="muted" style="font-size:13px;line-height:1.6;margin-top:16px">지금 위치를 기준으로, 안 가 본 시장·버스정류장·골목 중 한 곳을 오픈스트리트맵 자료에서 뽑아요. 위치는 뽑을 때만 쓰고 어디로도 보내지 않아요.</p>
+    </div>
+    <div id="pick-result" style="display:none">
+      <div class="eyebrow" id="r-eyebrow">이번에 가 볼 낯선 곳</div>
+      <div class="place" id="r-place">
+        <div class="kind" id="r-kind"></div>
+        <div class="name" id="r-name"></div>
+        <div class="area" id="r-area"></div>
+        <div class="chips" id="r-chips"></div>
+      </div>
+      <div class="mission">
+        <div class="t">오늘의 미션</div>
+        <div class="m" id="r-mission"></div>
+        <div class="h" id="r-hint"></div>
+        <button id="btn-remission">다른 미션 ↻</button>
+      </div>
+      <div class="btns">
+        <button class="soft" id="btn-repick">다시 뽑기 🎲</button>
+        <button class="primary" id="btn-route">길 찾기 →</button>
+      </div>
+      <button class="dark wide" id="btn-shoot" style="margin-top:8px">도착했어요, 미션 사진 찍기 📷</button>
+      <button class="ghost wide" id="btn-giveup" style="margin-top:4px">이번 곳은 그만두기</button>
+    </div>
+  </section>
+
+  <!-- 기록 작성 -->
+  <section class="view" id="v-write">
+    <div class="eyebrow">미션 사진 찍기</div>
+    <h1 id="w-mission"></h1>
+    <img class="photo" id="w-photo" alt="">
+    <div class="memo">
+      <label for="w-memo">✍️ 한 줄 메모</label>
+      <textarea id="w-memo" maxlength="200" placeholder="뭐가 이상했는지, 누구를 만났는지 한 줄만"></textarea>
+    </div>
+    <div class="where" id="w-where"></div>
+    <div class="btns" style="grid-template-columns:1fr 1.6fr">
+      <button class="soft" id="btn-retake">다시 찍기</button>
+      <button class="dark" id="btn-done">미션 완료 ✓</button>
+    </div>
+  </section>
+
+  <!-- 지도 -->
+  <section class="view" id="v-map">
+    <div class="eyebrow">내가 가 본 낯선 동네</div>
+    <h1 id="m-title"></h1>
+    <div id="map"></div>
+    <div id="m-list"></div>
+  </section>
+
+  <!-- 기록 보기 -->
+  <section class="view" id="v-detail">
+    <button class="ghost" id="btn-back" style="padding-left:0;font-size:16px">← 내 지도</button>
+    <div class="eyebrow" id="d-kind"></div>
+    <h1 id="d-name" style="margin-bottom:4px"></h1>
+    <div class="muted" id="d-area" style="font-size:14px;margin-bottom:12px"></div>
+    <img class="photo" id="d-photo" alt="">
+    <div class="memo">
+      <label id="d-mission"></label>
+      <div id="d-memo" style="line-height:1.5"></div>
+    </div>
+    <div class="where" id="d-where"></div>
+    <div class="btns" style="grid-template-columns:1fr 1fr">
+      <button class="soft" id="btn-save">사진 폰에 저장</button>
+      <button class="soft" id="btn-del" style="color:#9b2c2c">기록 지우기</button>
+    </div>
+  </section>
+</main>
+
+<!-- 촬영 화면 -->
+<div class="shoot" id="shoot" style="display:none">
+  <div class="bar">
+    <div class="m" id="s-mission"></div>
+    <button id="btn-grid">격자 끄기</button>
+    <button id="btn-close">닫기</button>
+  </div>
+  <div class="frame" id="frame">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="grid" id="grid"><i></i><i></i><i></i><i></i><b style="left:33.333%;top:33.333%"></b><b style="left:66.666%;top:33.333%"></b><b style="left:33.333%;top:66.666%"></b><b style="left:66.666%;top:66.666%"></b></div>
+  </div>
+  <div class="hint" id="s-hint"></div>
+  <div class="shutter">
+    <button class="side" id="btn-album">앨범에서</button>
+    <button class="snap" id="btn-snap" aria-label="찍기"></button>
+    <button class="side" id="btn-flip">앞/뒤 바꾸기</button>
+  </div>
+  <input type="file" id="file" accept="image/*" hidden>
+</div>
+
+<nav>
+  <button class="on" data-tab="pick"><span>🎲</span>뽑기</button>
+  <button data-tab="map"><span>🗺️</span>내 지도</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+
+// ---------- 설정 ----------
+const DISTS = [
+  { key:"near", label:"가까이", sub:"1~4km", min:1, max:4 },
+  { key:"mid", label:"조금 멀리", sub:"4~10km", min:4, max:10 },
+  { key:"far", label:"멀리", sub:"10~25km", min:10, max:25 },
+];
+const KINDS = [
+  { key:"any", label:"아무 데나", sub:"섞어서" },
+  { key:"market", label:"시장", sub:"재래시장" },
+  { key:"bus", label:"정류장·골목", sub:"동네 길" },
+];
+const KIND_NAME = { market:"🏮 시장", bus:"🚏 버스정류장", alley:"🏘️ 골목길" };
+
+const MISSIONS = {
+  market: [
+    ["시장 간판 중에서 제일 이상한 글자 하나 찍어 오기", "간판을 가운데 말고 삼분할선 교차점에 두기"],
+    ["제일 오래돼 보이는 저울이나 계산대 찍어 오기", "가까이 다가가서 화면 3분의 2를 채우기"],
+    ["색이 제일 많은 좌판 하나 찍어 오기", "좌판 줄이 대각선으로 흐르게 비스듬히 서서 찍기"],
+    ["시장 천장이나 지붕 틈으로 들어오는 빛 찍어 오기", "빛을 위쪽 3분의 1 선에 걸치기"],
+    ["손글씨 가격표 중에 제일 정성스러운 것 찍어 오기", "가격표는 한쪽 세로선에, 나머지는 여백으로"],
+    ["시장 골목 끝까지 이어지는 길 찍어 오기", "낮게 앉아서, 길이 화면 안쪽으로 빨려 들어가게"],
+    ["이 시장에서만 파는 것 같은 물건 찍어 오기", "물건 뒤 가게 풍경도 흐릿하게 같이 담기"],
+  ],
+  bus: [
+    ["정류장에서 기다리는 사람 뒷모습 찍어 오기 (얼굴 말고)", "사람을 왼쪽이나 오른쪽 세로선에 두고 반대쪽은 비우기"],
+    ["노선도에서 가장 먼 종점 이름 찍어 오기", "종점 이름이 교차점에 오게 바짝 다가가기"],
+    ["정류장 이름이랑 제일 잘 어울리는 풍경 찍어 오기", "정류장 표지판을 앞에 크게, 풍경은 뒤에"],
+    ["정류장 의자나 기둥에 남은 흔적 찍어 오기", "흔적을 아래쪽 3분의 1 선에 걸치기"],
+    ["버스가 지나간 직후의 빈 정류장 찍어 오기", "수평선을 아래 3분의 1 선에 맞추고 위는 하늘로"],
+  ],
+  alley: [
+    ["골목에서 제일 이상한 화분 찍어 오기", "화분을 교차점에, 골목 벽은 배경으로"],
+    ["기계 소리가 나는 곳 한 장 찍어 오기", "문틀이나 창틀로 액자처럼 감싸서 찍기"],
+    ["고양이나 고양이의 흔적 찍어 오기", "고양이 눈높이까지 낮게 앉기"],
+    ["손으로 쓴 안내문이나 경고문 찍어 오기", "글씨는 한쪽 세로선에, 벽 질감도 같이"],
+    ["골목이 꺾이는 모퉁이 찍어 오기", "꺾이는 지점을 교차점에 두면 다음이 궁금해져요"],
+  ],
+  any: [
+    ["이 동네에서 제일 이상한 것 한 장 찍어 오기", "주인공을 가운데 말고 교차점에 두기"],
+    ["이 동네 사람만 아는 것 같은 표지 찍어 오기", "표지 하나만 남기고 나머지는 비우기"],
+    ["지금 이 동네의 색깔을 한 장으로 찍어 오기", "같은 색이 3분의 1 이상 차게"],
+  ],
+};
+
+// ---------- 저장 ----------
+const KEY = "nbhd.v1";
+let state = { current:null, records:[], dist:"near", kind:"any" };
+try { Object.assign(state, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+// 사진은 커서 IndexedDB에 따로 둔다
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open("nbhd-photos", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("photos");
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+async function idb(mode, fn) {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const tx = db.transaction("photos", mode);
+    const req = fn(tx.objectStore("photos"));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const putPhoto = (id, blob) => idb("readwrite", s => s.put(blob, id));
+const getPhoto = id => idb("readonly", s => s.get(id));
+const delPhoto = id => idb("readwrite", s => s.delete(id));
+const urlCache = {};
+async function photoURL(id) {
+  if (urlCache[id]) return urlCache[id];
+  const b = await getPhoto(id).catch(() => null);
+  return b ? (urlCache[id] = URL.createObjectURL(b)) : "";
+}
+
+// ---------- 위치/거리 ----------
+function here(opts) {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error("이 브라우저는 위치를 못 써요"));
+    navigator.geolocation.getCurrentPosition(p => res({ lat:p.coords.latitude, lon:p.coords.longitude }), rej,
+      Object.assign({ enableHighAccuracy:true, timeout:15000, maximumAge:60000 }, opts));
+  });
+}
+const R = 6371;
+const rad = d => d * Math.PI / 180;
+function km(a, b) {
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function offset(p, dist, bearing) {
+  const d = dist / R, br = rad(bearing), la = rad(p.lat), lo = rad(p.lon);
+  const la2 = Math.asin(Math.sin(la)*Math.cos(d) + Math.cos(la)*Math.sin(d)*Math.cos(br));
+  const lo2 = lo + Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la), Math.cos(d) - Math.sin(la)*Math.sin(la2));
+  return { lat:la2 * 180 / Math.PI, lon:lo2 * 180 / Math.PI };
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+const pickOne = arr => arr[Math.floor(Math.random() * arr.length)];
+
+// ---------- 오픈스트리트맵 ----------
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+async function overpass(q) {
+  let last;
+  for (const url of OVERPASS) {
+    try {
+      const r = await fetch(url, { method:"POST", body:"data=" + encodeURIComponent(q), headers:{ "Content-Type":"application/x-www-form-urlencoded" } });
+      if (r.ok) return (await r.json()).elements || [];
+      last = new Error("지도 서버 응답 " + r.status);
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+function kindOf(t) {
+  if (t.amenity === "marketplace") return "market";
+  if (t.highway === "bus_stop") return "bus";
+  return "alley";
+}
+async function findAround(p, kind) {
+  const a = `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+  const parts = [];
+  if (kind !== "bus") parts.push(`nwr["amenity"="marketplace"](around:1500,${a});`);
+  if (kind !== "market") {
+    parts.push(`node["highway"="bus_stop"]["name"](around:900,${a});`);
+    parts.push(`way["highway"~"^(living_street|pedestrian)$"]["name"](around:1200,${a});`);
+  }
+  const els = await overpass(`[out:json][timeout:20];(${parts.join("")});out center tags 80;`);
+  const seen = new Set();
+  return els.map(e => {
+    const t = e.tags || {};
+    const name = t["name:ko"] || t.name;
+    const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon;
+    if (!name || lat == null) return null;
+    const k = kindOf(t);
+    if (seen.has(k + name)) return null;           // 길 건너편 같은 이름 정류장은 하나로
+    seen.add(k + name);
+    return { id:e.type + "/" + e.id, name, kind:k, lat, lon };
+  }).filter(Boolean);
+}
+async function areaName(p) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&accept-language=ko&lat=${p.lat}&lon=${p.lon}`);
+    const a = (await r.json()).address || {};
+    const parts = [a.city || a.province || a.state, a.borough || a.county || a.city_district, a.suburb || a.quarter || a.town || a.village || a.neighbourhood];
+    const out = [];
+    parts.forEach(x => { if (x && !out.includes(x)) out.push(x); });
+    return out.join(" ");
+  } catch (e) { return ""; }
+}
+const dongOf = area => (area || "").split(" ").pop();
+
+// ---------- 뽑기 ----------
+function renderSegs() {
+  $("seg-dist").innerHTML = DISTS.map(d => `<button data-v="${d.key}" class="${state.dist === d.key ? "on" : ""}">${d.label}<small>${d.sub}</small></button>`).join("");
+  $("seg-kind").innerHTML = KINDS.map(d => `<button data-v="${d.key}" class="${state.kind === d.key ? "on" : ""}">${d.label}<small>${d.sub}</small></button>`).join("");
+}
+$("seg-dist").onclick = e => { const b = e.target.closest("button"); if (b) { state.dist = b.dataset.v; save(); renderSegs(); } };
+$("seg-kind").onclick = e => { const b = e.target.closest("button"); if (b) { state.kind = b.dataset.v; save(); renderSegs(); } };
+
+function newMission(kind, not) {
+  const pool = MISSIONS[kind].concat(MISSIONS.any).filter(m => m[0] !== not);
+  const [mission, hint] = pickOne(pool);
+  return { mission, hint };
+}
+
+function visitedNear(c) {
+  return state.records.some(r => r.placeId === c.id || km(r, c) < 0.3);
+}
+
+let picking = false;
+async function doPick() {
+  if (picking) return;
+  picking = true;
+  const msg = $("pick-msg"); msg.innerHTML = "";
+  showRolling(true);
+  try {
+    const me = await here().catch(() => { throw new Error("위치를 알 수 없어요. 크롬 설정에서 이 사이트의 위치 권한을 허용해 주세요."); });
+    const d = DISTS.find(x => x.key === state.dist);
+    let found = null;
+    for (let i = 0; i < 6 && !found; i++) {
+      const spot = offset(me, rand(d.min, d.max), rand(0, 360));
+      const cands = (await findAround(spot, state.kind)).filter(c => !visitedNear(c) && km(me, c) >= d.min * 0.7);
+      if (!cands.length) continue;
+      // 종류를 먼저 고르고(시장이 정류장보다 훨씬 적어서 묻히지 않게) 그 안에서 하나
+      const kinds = [...new Set(cands.map(c => c.kind))];
+      const k = pickOne(kinds);
+      found = pickOne(cands.filter(c => c.kind === k));
+    }
+    if (!found) throw new Error("이 거리에서는 갈 만한 곳을 못 찾았어요. 거리를 바꿔서 다시 뽑아 보세요.");
+    found.area = await areaName(found);
+    found.km = km(me, found);
+    found.firstDong = !state.records.some(r => r.area && dongOf(r.area) === dongOf(found.area));
+    Object.assign(found, newMission(found.kind), { pickedAt:Date.now() });
+    state.current = found; save();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(e.message || "뽑기에 실패했어요. 인터넷 연결을 확인해 주세요.")}</div>`;
+  }
+  picking = false;
+  showRolling(false);
+  renderPick();
+}
+
+let rollTimer;
+function showRolling(on) {
+  clearInterval(rollTimer);
+  $("btn-pick").disabled = on;
+  $("btn-repick").disabled = on;
+  if (on) {
+    const names = ["시장 골목", "어느 정류장", "모르는 동네", "언덕 위 골목", "종점 근처", "오래된 상가"];
+    $("pick-setup").style.display = "none";
+    $("pick-result").style.display = "block";
+    $("pick-result").classList.add("rolling");
+    $("r-kind").textContent = "🎲 뽑는 중";
+    $("r-area").textContent = "주변 지도를 뒤지는 중이에요";
+    $("r-chips").innerHTML = "";
+    $("r-mission").textContent = "…";
+    $("r-hint").textContent = "";
+    let i = 0;
+    rollTimer = setInterval(() => { $("r-name").textContent = names[i++ % names.length]; }, 160);
+  } else {
+    $("pick-result").classList.remove("rolling");
+  }
+}
+
+function renderPick() {
+  const c = state.current;
+  $("pick-setup").style.display = c ? "none" : "block";
+  $("pick-result").style.display = c ? "block" : "none";
+  if (!c) return;
+  $("r-kind").textContent = KIND_NAME[c.kind];
+  $("r-name").textContent = c.name;
+  $("r-area").textContent = [c.area, `여기서 직선 ${c.km.toFixed(1)}km`].filter(Boolean).join(" · ");
+  const chips = [];
+  if (c.firstDong) chips.push("처음 가는 동네");
+  chips.push({ market:"재래시장", bus:"버스정류장", alley:"골목" }[c.kind]);
+  chips.push(fmtDate(c.pickedAt) + " 뽑음");
+  $("r-chips").innerHTML = chips.map(x => `<span class="chip">${esc(x)}</span>`).join("");
+  $("r-mission").textContent = c.mission;
+  $("r-hint").textContent = "📐 구도 힌트: " + c.hint;
+}
+
+$("btn-pick").onclick = doPick;
+$("btn-repick").onclick = doPick;
+$("btn-remission").onclick = () => {
+  const c = state.current; if (!c) return;
+  Object.assign(c, newMission(c.kind, c.mission)); save(); renderPick();
+};
+$("btn-route").onclick = () => {
+  const c = state.current; if (!c) return;
+  window.open(`https://map.kakao.com/link/to/${encodeURIComponent(c.name)},${c.lat},${c.lon}`, "_blank");
+};
+$("btn-giveup").onclick = () => {
+  if (!confirm("이번 곳은 그만두고 새로 뽑을까요?")) return;
+  state.current = null; save(); renderPick();
+};
+
+// ---------- 촬영 ----------
+let stream = null, facing = "environment", shot = null, shotPos = null;
+async function openCamera() {
+  const c = state.current; if (!c) return;
+  $("s-mission").textContent = c.mission;
+  $("s-hint").textContent = "📐 " + c.hint;
+  $("shoot").style.display = "flex";
+  $("frame").querySelector(".camerr")?.remove();
+  try {
+    stopCamera();
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, width:{ ideal:1920 }, height:{ ideal:1920 } }, audio:false });
+    $("video").srcObject = stream;
+    await $("video").play().catch(() => {});
+  } catch (e) {
+    const div = document.createElement("div");
+    div.className = "camerr";
+    div.innerHTML = "카메라를 열 수 없어요.<br>카메라 권한을 허용하거나<br>‘앨범에서’로 사진을 골라 주세요.";
+    $("frame").appendChild(div);
+  }
+  // 촬영 지점 위치는 미리 받아 둔다(셔터 누를 때 기다리지 않게)
+  shotPos = null;
+  here({ maximumAge:30000 }).then(p => shotPos = p).catch(() => {});
+}
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+function closeCamera() { stopCamera(); $("shoot").style.display = "none"; }
+
+// 화면에 보이는 3:4 영역 그대로 잘라서 저장 → 격자와 사진 구도가 일치
+function snap() {
+  const v = $("video");
+  const vw = v.videoWidth, vh = v.videoHeight;
+  if (!vw) return;
+  const A = 3 / 4;
+  let sw = vw, sh = vh;
+  if (vw / vh > A) sw = vh * A; else sh = vw / A;
+  const scale = Math.min(1, 1600 / Math.max(sw, sh));
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
+  cv.getContext("2d").drawImage(v, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, cv.width, cv.height);
+  cv.toBlob(b => { if (b) gotPhoto(b); }, "image/jpeg", 0.88);
+}
+async function shrink(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+    cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+    return await new Promise(r => cv.toBlob(b => r(b || file), "image/jpeg", 0.88));
+  } catch (e) { return file; }
+}
+function gotPhoto(blob) {
+  shot = { blob, at:Date.now() };
+  closeCamera();
+  const c = state.current;
+  $("w-mission").textContent = c.mission;
+  if ($("w-photo").src) URL.revokeObjectURL($("w-photo").src);
+  $("w-photo").src = URL.createObjectURL(blob);
+  $("w-memo").value = "";
+  const t = new Date(shot.at).toLocaleString("ko-KR", { month:"long", day:"numeric", hour:"numeric", minute:"2-digit" });
+  $("w-where").textContent = `📍 ${c.name}${c.area ? " · " + dongOf(c.area) : ""} · ${t} 자동 기록`;
+  show("write");
+}
+
+$("btn-shoot").onclick = openCamera;
+$("btn-close").onclick = closeCamera;
+$("btn-snap").onclick = snap;
+$("btn-grid").onclick = () => {
+  const off = $("grid").classList.toggle("off");
+  $("btn-grid").textContent = off ? "격자 켜기" : "격자 끄기";
+};
+$("btn-flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; openCamera(); };
+$("btn-album").onclick = () => $("file").click();
+$("file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (f) gotPhoto(await shrink(f));
+};
+$("btn-retake").onclick = openCamera;
+$("btn-done").onclick = async () => {
+  const c = state.current; if (!c || !shot) return;
+  $("btn-done").disabled = true;
+  const id = "r" + shot.at;
+  try { await putPhoto(id, shot.blob); }
+  catch (e) { alert("사진을 저장하지 못했어요. 폰 저장 공간을 확인해 주세요."); $("btn-done").disabled = false; return; }
+  const pos = shotPos || { lat:c.lat, lon:c.lon };
+  state.records.unshift({
+    id, placeId:c.id, name:c.name, kind:c.kind, area:c.area || "",
+    mission:c.mission, memo:$("w-memo").value.trim(),
+    lat:c.lat, lon:c.lon, shotLat:pos.lat, shotLon:pos.lon, gps:!!shotPos, at:shot.at,
+  });
+  state.current = null; shot = null; save();
+  $("btn-done").disabled = false;
+  renderPick();
+  show("map");
+};
+
+// ---------- 지도 ----------
+let map, layer;
+function fmtDate(t) { return new Date(t).toLocaleDateString("ko-KR", { month:"numeric", day:"numeric" }).replace(/\.\s?/g, "/").replace(/\/$/, ""); }
+async function renderMap() {
+  const recs = state.records;
+  const dongs = new Set(recs.map(r => dongOf(r.area) || r.name));
+  $("m-title").textContent = recs.length ? `${dongs.size}곳 · 미션 ${recs.length}개` : "아직 없어요";
+  if (window.L) {
+    if (!map) {
+      map = L.map("map", { zoomControl:false, attributionControl:true }).setView([37.5665, 126.978], 11);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+    }
+    setTimeout(() => map.invalidateSize(), 0);
+    layer.clearLayers();
+    const pts = [];
+    for (const r of recs) {
+      const m = L.circleMarker([r.lat, r.lon], { radius:8, color:"#fff", weight:2.5, fillColor:"#d4692e", fillOpacity:1 }).addTo(layer);
+      m.bindPopup(`<div class="pop" data-id="${r.id}"><img data-ph="${r.id}"><b>${esc(r.name)}</b><br>${esc(r.mission)}</div>`);
+      m.on("popupopen", async e => {
+        const img = e.popup.getElement().querySelector("img");
+        img.src = await photoURL(r.id);
+        e.popup.getElement().querySelector(".pop").onclick = () => openDetail(r.id);
+      });
+      pts.push([r.lat, r.lon]);
+    }
+    if (state.current) {
+      L.circleMarker([state.current.lat, state.current.lon], { radius:8, color:"#d4692e", weight:2.5, dashArray:"3 3", fillColor:"#fff", fillOpacity:1 })
+        .bindPopup(`<b>${esc(state.current.name)}</b><br>다음에 갈 곳`).addTo(layer);
+      pts.push([state.current.lat, state.current.lon]);
+    }
+    if (pts.length === 1) map.setView(pts[0], 14);
+    else if (pts.length) map.fitBounds(pts, { padding:[30, 30], maxZoom:15 });
+  } else {
+    $("map").innerHTML = `<div class="empty">지도를 불러오지 못했어요.<br>인터넷에 연결되면 보여요.</div>`;
+  }
+  const list = $("m-list");
+  if (!recs.length) {
+    list.innerHTML = `<div class="empty">동네를 뽑고 미션 사진을 찍으면<br>여기에 하나씩 쌓여요.</div>`;
+    return;
+  }
+  list.innerHTML = recs.map(r => `<button class="rec" data-id="${r.id}"><img data-ph="${r.id}" alt=""><div><div class="n">${esc(r.name)}</div><div class="s">${esc(r.memo || r.mission)} · ${fmtDate(r.at)}</div></div></button>`).join("");
+  list.querySelectorAll("img[data-ph]").forEach(async img => { img.src = await photoURL(img.dataset.ph); });
+}
+$("m-list").onclick = e => { const b = e.target.closest(".rec"); if (b) openDetail(b.dataset.id); };
+
+let detailId = null;
+async function openDetail(id) {
+  const r = state.records.find(x => x.id === id); if (!r) return;
+  detailId = id;
+  $("d-kind").textContent = KIND_NAME[r.kind];
+  $("d-name").textContent = r.name;
+  $("d-area").textContent = r.area;
+  $("d-mission").textContent = "📷 " + r.mission;
+  $("d-memo").textContent = r.memo || "(메모 없음)";
+  $("d-memo").className = r.memo ? "" : "muted";
+  const t = new Date(r.at).toLocaleString("ko-KR", { year:"numeric", month:"long", day:"numeric", hour:"numeric", minute:"2-digit" });
+  $("d-where").textContent = `📍 ${t}${r.gps ? " · 찍은 곳 위치 기록됨" : ""}`;
+  $("d-photo").src = await photoURL(id);
+  show("detail");
+}
+$("btn-back").onclick = () => show("map");
+$("btn-save").onclick = async () => {
+  const r = state.records.find(x => x.id === detailId); if (!r) return;
+  const a = document.createElement("a");
+  a.href = await photoURL(r.id);
+  a.download = `낯선동네_${r.name}_${new Date(r.at).toISOString().slice(0, 10)}.jpg`;
+  a.click();
+};
+$("btn-del").onclick = async () => {
+  if (!confirm("이 기록과 사진을 지울까요? 되돌릴 수 없어요.")) return;
+  state.records = state.records.filter(x => x.id !== detailId); save();
+  await delPhoto(detailId).catch(() => {});
+  show("map");
+};
+
+// ---------- 화면 전환 ----------
+function show(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + name));
+  const tab = name === "pick" || name === "write" ? "pick" : "map";
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  if (name === "map") renderMap();
+  window.scrollTo(0, 0);
+}
+document.querySelector("nav").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.tab === "pick") { renderPick(); show("pick"); } else show("map");
+};
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+
+renderSegs();
+renderPick();
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
