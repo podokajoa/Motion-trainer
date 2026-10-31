@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>저장 검문소</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1a1614">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#1a1614; --fg:#f6efe8; --muted:#b3a59a; --card:#26201d; --line:#3d332e; --red:#f05a3c; --paper:#e8ded3; --good:#6fcf7f; --gold:#f5b942; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 48px; }
+  h1 { font-size:24px; margin:0; }
+  h2 { font-size:19px; margin:0 0 10px; line-height:1.4; }
+  p { line-height:1.55; }
+  .sub { color:var(--muted); font-size:14px; margin:4px 0 16px; line-height:1.5; }
+  .muted { color:var(--muted); }
+  button, input, textarea { font:inherit; color:var(--fg); }
+  button { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; font-size:16px; cursor:pointer; }
+  button.primary { background:var(--paper); color:#1a1614; border:none; font-weight:800; font-size:17px; padding:15px 18px; }
+  button.drop { background:var(--red); color:#fff; border:none; font-weight:800; font-size:17px; padding:15px 18px; }
+  button.ghost { background:none; border:none; color:var(--muted); padding:8px; }
+  button.wide { width:100%; }
+  button:disabled { opacity:.35; }
+  input, textarea { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:17px; }
+  textarea { resize:vertical; min-height:64px; }
+  input:focus, textarea:focus { outline:2px solid var(--paper); border-color:transparent; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+  .stack > * + * { margin-top:10px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { flex:1; }
+  .top { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+  .top h1 { flex:1; font-size:20px; }
+  .back { font-size:22px; padding:6px 12px; }
+  .view { display:none; } .view.on { display:block; }
+  .barrier { height:10px; border-radius:5px; margin:10px 0 16px; background:repeating-linear-gradient(-55deg,var(--red) 0 16px,var(--paper) 16px 32px); }
+
+  /* 홈 */
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 18px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 4px; text-align:center; }
+  .stat b { display:block; font-size:26px; }
+  .stat span { font-size:12px; color:var(--muted); }
+  .stat.hero { border-color:var(--red); }
+  .stat.hero b { color:var(--red); }
+  .sec { margin:22px 0 8px; font-size:15px; font-weight:800; display:flex; align-items:center; gap:6px; }
+  .sec small { font-weight:400; color:var(--muted); }
+  .item { display:block; width:100%; text-align:left; margin-top:8px; }
+  .item .t { font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .why { font-size:14px; color:var(--paper); margin-top:4px; line-height:1.45; }
+  .item .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .item.due { border:2px solid var(--red); }
+  .item.sit { border-style:dashed; }
+  .empty { text-align:center; padding:22px 10px; color:var(--muted); line-height:1.6; font-size:14px; }
+  .how { font-size:14px; line-height:1.6; color:var(--muted); }
+  .how b { color:var(--fg); }
+
+  /* 검문 */
+  .incoming { border-left:4px solid var(--paper); }
+  .incoming .t { font-weight:800; font-size:17px; word-break:break-all; }
+  .incoming .x { font-size:14px; color:var(--muted); margin-top:6px; line-height:1.45; max-height:5.8em; overflow:hidden; word-break:break-all; }
+  .incoming a { color:var(--gold); font-size:13px; word-break:break-all; }
+  .q { font-weight:800; font-size:17px; margin:20px 0 8px; }
+  .q span { color:var(--red); }
+  .warn { color:var(--red); font-size:14px; margin-top:6px; line-height:1.45; min-height:1.45em; }
+  .ok { color:var(--good); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { padding:10px 14px; font-size:15px; border-radius:99px; }
+  .chips button.on { background:var(--paper); color:#1a1614; border-color:var(--paper); font-weight:800; }
+  .gatebtns { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:24px; }
+
+  /* 도장 */
+  .stamp { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(10,8,7,.75); z-index:10; }
+  .stamp.on { display:flex; }
+  .stamp div { font-size:64px; font-weight:900; padding:10px 28px; border:8px solid currentColor; border-radius:18px; transform:rotate(-12deg) scale(2.2); opacity:0; animation:thump .35s ease-out forwards; letter-spacing:6px; }
+  .stamp .pass { color:var(--good); } .stamp .rej { color:var(--red); }
+  @keyframes thump { to { transform:rotate(-12deg) scale(1); opacity:1; } }
+
+  /* 도착 */
+  .said { font-size:22px; font-weight:800; line-height:1.45; margin:6px 0 4px; color:var(--paper); word-break:keep-all; }
+  .said::before { content:"“"; color:var(--red); } .said::after { content:"”"; color:var(--red); }
+
+  .toast { position:fixed; left:16px; right:16px; bottom:18px; max-width:528px; margin:0 auto; background:var(--paper); color:#1a1614; border-radius:14px; padding:12px 14px; display:none; align-items:center; gap:10px; font-size:15px; z-index:20; }
+  .toast.on { display:flex; }
+  .toast span { flex:1; }
+  .toast button { background:#1a1614; color:var(--paper); border:none; padding:8px 12px; font-size:14px; font-weight:800; }
+  .loglist .item { cursor:default; }
+  .tabs { display:flex; gap:8px; margin-bottom:10px; }
+  .tabs button { flex:1; }
+  .tabs button.on { background:var(--paper); color:#1a1614; font-weight:800; }
+</style>
+</head>
+<body>
+<main>
+  <!-- 홈 -->
+  <section class="view on" id="v-home">
+    <h1>🚧 저장 검문소</h1>
+    <p class="sub">아무거나 쌓아 두지 않게, 저장하기 전에 묻습니다. 왜 저장해요? 언제 쓸 거예요?</p>
+    <div class="stats">
+      <div class="stat hero"><b id="s-drop">0</b><span>안 쌓은 것</span></div>
+      <div class="stat"><b id="s-wait">0</b><span>기다리는 중</span></div>
+      <div class="stat"><b id="s-used">0</b><span>써먹은 것</span></div>
+    </div>
+    <button class="primary wide" id="btn-paste">📋 붙여넣어서 검문 받기</button>
+
+    <div id="due-wrap"></div>
+    <div id="sit-wrap"></div>
+    <div id="wait-wrap"></div>
+
+    <div class="sec" id="how-sec">사용법</div>
+    <div class="card how" id="how">
+      <b>1.</b> 이 앱을 홈 화면에 추가하세요.<br>
+      <b>2.</b> 링크나 글을 저장하고 싶을 때, 스크랩이나 나에게 보내기 대신 <b>공유 → 검문소</b>를 누르세요.<br>
+      <b>3.</b> 이유와 쓸 때를 못 대면 버리는 게 기본이에요.<br>
+      <b>4.</b> 정한 때가 되면 앱 맨 위에 다시 튀어나와요. 미루기는 딱 한 번만 돼요.
+    </div>
+    <div class="row" style="margin-top:18px">
+      <button id="btn-log">📒 기록 보기</button>
+      <button id="btn-backup">💾 백업</button>
+    </div>
+  </section>
+
+  <!-- 붙여넣기 -->
+  <section class="view" id="v-paste">
+    <div class="top"><button class="ghost back" data-home>←</button><h1>검문 받을 것</h1></div>
+    <p class="sub">저장하려던 링크나 글을 붙여넣으세요.</p>
+    <textarea id="paste-text" rows="5" placeholder="https://… 또는 메모"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="btn-clip">클립보드에서 가져오기</button>
+      <button class="primary" id="btn-paste-go">검문소로</button>
+    </div>
+  </section>
+
+  <!-- 검문 -->
+  <section class="view" id="v-gate">
+    <div class="top"><button class="ghost back" data-home>←</button><h1>검문 중</h1></div>
+    <div class="barrier"></div>
+    <div class="card incoming" id="in-card"></div>
+
+    <div class="q"><span>①</span> 왜 저장해요?</div>
+    <input id="why" maxlength="120" autocomplete="off" placeholder="">
+    <div class="warn" id="why-warn"></div>
+
+    <div class="q"><span>②</span> 언제 다시 꺼내 볼래요?</div>
+    <div class="chips" id="when-chips"></div>
+    <div id="when-extra" style="margin-top:10px"></div>
+    <div class="warn" id="when-warn"></div>
+
+    <div class="gatebtns">
+      <button class="drop" id="btn-drop">그냥 버리기</button>
+      <button class="primary" id="btn-pass" disabled>통과</button>
+    </div>
+    <p class="sub" style="text-align:center;margin-top:10px">둘 다 대답 못 하면 버리는 게 맞아요.</p>
+  </section>
+
+  <!-- 통과 후 -->
+  <section class="view" id="v-passed">
+    <div class="top"><h1>통과했어요</h1></div>
+    <div class="card stack">
+      <div class="muted" style="font-size:14px">저장한 이유</div>
+      <div class="said" id="p-why"></div>
+      <div class="muted" id="p-when"></div>
+    </div>
+    <div class="stack" style="margin-top:16px" id="p-cal-wrap">
+      <button class="wide" id="btn-cal">📅 구글 캘린더에 알림 넣기</button>
+      <p class="sub" style="margin:0">앱은 열었을 때 맨 위에 다시 꺼내 줘요. 폰 알림까지 받고 싶으면 캘린더에 넣어 두세요.</p>
+    </div>
+    <button class="primary wide" style="margin-top:16px" data-home>확인</button>
+  </section>
+
+  <!-- 도착 -->
+  <section class="view" id="v-due">
+    <div class="top"><button class="ghost back" data-home>←</button><h1 id="d-head">도착했어요</h1></div>
+    <div class="card stack">
+      <div class="muted" style="font-size:14px" id="d-ago"></div>
+      <div class="said" id="d-why"></div>
+      <div class="incoming" id="d-card" style="padding-left:12px"></div>
+    </div>
+    <div class="stack" style="margin-top:18px">
+      <div class="q" style="margin:0">그래서, 썼어요?</div>
+      <input id="d-note" maxlength="120" placeholder="어떻게 썼는지 한 줄 (선택)">
+      <button class="primary wide" id="btn-used">✅ 썼어요</button>
+      <div id="d-later"></div>
+      <button class="drop wide" id="btn-ddrop">이제 필요 없어요, 버리기</button>
+    </div>
+  </section>
+
+  <!-- 기록 -->
+  <section class="view" id="v-log">
+    <div class="top"><button class="ghost back" data-home>←</button><h1>기록</h1></div>
+    <div class="tabs">
+      <button class="on" data-tab="drop">안 쌓은 것</button>
+      <button data-tab="used">써먹은 것</button>
+    </div>
+    <div class="loglist" id="log-list"></div>
+  </section>
+
+  <!-- 백업 -->
+  <section class="view" id="v-backup">
+    <div class="top"><button class="ghost back" data-home>←</button><h1>백업</h1></div>
+    <p class="sub">기록은 이 폰(브라우저)에만 저장돼요. 폰을 바꾸거나 앱을 지우기 전에 파일로 받아 두세요.</p>
+    <div class="stack">
+      <button class="wide" id="btn-export">파일로 내보내기</button>
+      <button class="wide" id="btn-import">파일에서 불러오기</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+    </div>
+  </section>
+</main>
+
+<div class="stamp" id="stamp"><div></div></div>
+<div class="toast" id="toast"><span></span><button>되돌리기</button></div>
+
+<script>
+const KEY = "checkpoint.v1";
+const DAY = 864e5;
+const SITUATION_LIMIT = 30; // 상황 카드는 이 날짜가 지나도록 안 오면 저절로 도착
+
+let db = load();
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.items)) return d; } catch (e) {}
+  return { items: [] };
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function show(id) {
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + id));
+  scrollTo(0, 0);
+  if (id === "home") renderHome();
+}
+document.querySelectorAll("[data-home]").forEach(b => b.onclick = () => show("home"));
+
+/* ---------- 들어온 것 정리 ---------- */
+function parseIncoming(title, text, url) {
+  title = (title || "").trim(); text = (text || "").trim(); url = (url || "").trim();
+  if (!url) { const m = text.match(/https?:\/\/\S+/); if (m) url = m[0]; }
+  if (url) text = text.replace(url, "").trim();
+  let t = title || text.split("\n")[0].slice(0, 80);
+  if (!t && url) { try { t = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { t = url; } }
+  if (title && text === title) text = "";
+  return { title: t || "(제목 없음)", text: text.slice(0, 400), url };
+}
+function cardHTML(it) {
+  let h = `<div class="t">${esc(it.title)}</div>`;
+  if (it.text && it.text !== it.title) h += `<div class="x">${esc(it.text)}</div>`;
+  if (it.url) h += `<div style="margin-top:6px"><a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.url.length > 70 ? it.url.slice(0, 70) + "…" : it.url)}</a></div>`;
+  return h;
+}
+
+/* ---------- 검문 ---------- */
+let pending = null, whenSel = null;
+
+// "이유"가 아니라 "습관"인 대답들
+const LAZY = [
+  [/^(그냥|걍)/, "‘그냥’은 이유가 아니에요."],
+  [/나중에\s*(보|읽|봐|볼|읽|확인|참고)/, "‘나중에 보려고’는 이유가 아니라 습관이에요. 보고 나서 뭘 할 건데요?"],
+  [/언젠가|혹시\s*(몰라|모르|필요)/, "‘언젠가, 혹시’로 쌓은 건 거의 다시 안 열어요. 실제로 쓸 장면이 있어요?"],
+  [/^(좋아서|좋은\s*글|좋은\s*정보|좋네|괜찮아서|재밌어서|재미있어서|흥미로워서|신기해서)/, "좋은 건 알겠어요. 그래서 어디에 쓰나요?"],
+  [/^(유용|도움|참고|정보|필요)/, "무엇에 유용한지, 누구에게 필요한지 구체적으로 적어 주세요."],
+  [/^(저장|보관|기록|킵|keep)/i, "저장하려는 이유를 물었어요. 무엇을 하려고요?"],
+];
+const EXAMPLES = [
+  "예: 주말에 이 레시피로 저녁 해 먹으려고",
+  "예: 다음 주 발표 자료에 그래프로 넣으려고",
+  "예: 엄마 생신 선물 후보로 비교하려고",
+  "예: 이사 가기 전에 체크리스트로 쓰려고",
+  "예: 운동 루틴 짤 때 순서 참고하려고",
+];
+function checkWhy(v) {
+  v = v.trim();
+  if (!v) return { ok: false, msg: "" };
+  for (const [re, msg] of LAZY) if (re.test(v) && v.length < 18) return { ok: false, msg };
+  if (v.replace(/\s/g, "").length < 6) return { ok: false, msg: "조금 더 구체적으로. 무엇을 하려고 저장해요?" };
+  return { ok: true, msg: "" };
+}
+
+function at(d, h) { const x = new Date(d); x.setHours(h, 0, 0, 0); return x.getTime(); }
+function whenOptions() {
+  const now = new Date();
+  const tonight = now.getHours() < 20 ? at(now, 21) : null;
+  const tomorrow = at(Date.now() + DAY, 9);
+  const sat = new Date(now); sat.setDate(now.getDate() + ((6 - now.getDay() + 7) % 7 || 7)); // 다가오는 토요일
+  return [
+    tonight && { key: "tonight", label: "오늘 밤", at: tonight },
+    { key: "tomorrow", label: "내일 아침", at: tomorrow },
+    { key: "weekend", label: "이번 주말", at: at(sat, 10) },
+    { key: "nextweek", label: "다음 주", at: at(Date.now() + 7 * DAY, 9) },
+    { key: "month", label: "한 달 뒤", at: at(Date.now() + 30 * DAY, 9) },
+    { key: "date", label: "날짜 고르기" },
+    { key: "sit", label: "어떤 상황이 오면…" },
+  ].filter(Boolean);
+}
+function openGate(inc) {
+  pending = inc; whenSel = null;
+  $("#in-card").innerHTML = cardHTML(inc);
+  $("#why").value = ""; $("#why-warn").textContent = ""; $("#when-warn").textContent = "";
+  $("#why").placeholder = EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)];
+  $("#when-extra").innerHTML = "";
+  $("#when-chips").innerHTML = whenOptions().map(o => `<button data-k="${o.key}">${o.label}</button>`).join("");
+  updateGate();
+  show("gate");
+}
+$("#when-chips").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const o = whenOptions().find(x => x.key === b.dataset.k);
+  whenSel = { ...o };
+  $("#when-chips").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  const ex = $("#when-extra");
+  if (o.key === "date") {
+    const min = new Date(Date.now() + DAY).toISOString().slice(0, 10);
+    ex.innerHTML = `<input type="date" id="when-date" min="${min}">`;
+    $("#when-date").oninput = updateGate;
+  } else if (o.key === "sit") {
+    ex.innerHTML = `<input id="when-sit" maxlength="40" placeholder="예: 다음에 장 보러 갈 때">
+      <div class="sub" style="margin:6px 0 0">그 상황이 오면 홈에서 ‘지금이 그때’를 누르세요. ${SITUATION_LIMIT}일 안에 안 오면 저절로 꺼내 드려요.</div>`;
+    $("#when-sit").oninput = updateGate;
+    $("#when-sit").focus();
+  } else ex.innerHTML = "";
+  updateGate();
+};
+function resolvedWhen() {
+  if (!whenSel) return null;
+  if (whenSel.key === "date") {
+    const v = $("#when-date")?.value; if (!v) return null;
+    const [y, m, d] = v.split("-").map(Number);
+    const ts = new Date(y, m - 1, d, 9).getTime();
+    return { type: "time", at: ts, label: `${m}월 ${d}일` };
+  }
+  if (whenSel.key === "sit") {
+    const v = ($("#when-sit")?.value || "").trim(); if (v.length < 3) return null;
+    return { type: "sit", at: Date.now() + SITUATION_LIMIT * DAY, label: v };
+  }
+  return { type: "time", at: whenSel.at, label: whenSel.label };
+}
+function updateGate() {
+  const c = checkWhy($("#why").value);
+  $("#why-warn").textContent = c.msg;
+  const w = resolvedWhen();
+  $("#btn-pass").disabled = !(c.ok && w);
+}
+$("#why").oninput = updateGate;
+
+function stamp(kind, then) {
+  const s = $("#stamp"), d = s.firstElementChild;
+  d.className = kind === "pass" ? "pass" : "rej";
+  d.textContent = kind === "pass" ? "통과" : "반려";
+  d.style.animation = "none"; void d.offsetWidth; d.style.animation = "";
+  s.classList.add("on");
+  if (navigator.vibrate) navigator.vibrate(kind === "pass" ? 30 : [20, 40, 20]);
+  setTimeout(() => { s.classList.remove("on"); then(); }, 750);
+}
+
+$("#btn-pass").onclick = () => {
+  const w = resolvedWhen(); const why = $("#why").value.trim();
+  if (!w || !checkWhy(why).ok) return;
+  const it = { id: uid(), ...pending, why, when: w, created: Date.now(), postponed: 0, status: "wait" };
+  db.items.unshift(it); save();
+  stamp("pass", () => showPassed(it));
+};
+$("#btn-drop").onclick = () => {
+  const it = { id: uid(), ...pending, why: $("#why").value.trim(), created: Date.now(), status: "drop", doneAt: Date.now(), dropStage: "gate" };
+  db.items.unshift(it); save();
+  stamp("rej", () => { show("home"); toast("안 쌓았어요. 잘했어요.", () => { db.items = db.items.filter(x => x !== it); save(); openGate(pending); }); });
+};
+
+function whenText(w) {
+  if (w.type === "sit") return `‘${w.label}’ 그때 꺼내 볼게요`;
+  const d = new Date(w.at);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${"일월화수목금토"[d.getDay()]}) ${d.getHours()}시에 다시 꺼내 드려요`;
+}
+let lastPassed = null;
+function showPassed(it) {
+  lastPassed = it;
+  $("#p-why").textContent = it.why;
+  $("#p-when").textContent = whenText(it.when);
+  $("#p-cal-wrap").style.display = it.when.type === "time" ? "" : "none";
+  show("passed");
+}
+function gcalUrl(it) {
+  const f = ts => new Date(ts).toISOString().replace(/[-:]|\.\d{3}/g, "");
+  const app = location.origin + location.pathname + "?open=" + it.id;
+  const details = `저장한 이유: ${it.why}\n${it.url ? "원문: " + it.url + "\n" : ""}검문소에서 열기: ${app}`;
+  const p = new URLSearchParams({ action: "TEMPLATE", text: "🚧 " + it.title, dates: f(it.when.at) + "/" + f(it.when.at + 15 * 60e3), details });
+  return "https://calendar.google.com/calendar/render?" + p;
+}
+$("#btn-cal").onclick = () => { if (lastPassed) window.open(gcalUrl(lastPassed), "_blank"); };
+
+/* ---------- 홈 ---------- */
+function ago(ts) {
+  const d = Math.floor((Date.now() - ts) / DAY);
+  return d <= 0 ? "오늘" : d === 1 ? "어제" : d + "일 전";
+}
+function until(ts) {
+  const ms = ts - Date.now();
+  if (ms < 3600e3) return "곧";
+  if (ms < DAY) return Math.round(ms / 3600e3) + "시간 뒤";
+  return Math.ceil(ms / DAY) + "일 뒤";
+}
+const isDue = it => it.status === "wait" && it.when.at <= Date.now();
+function renderHome() {
+  const all = db.items;
+  $("#s-drop").textContent = all.filter(x => x.status === "drop").length;
+  $("#s-wait").textContent = all.filter(x => x.status === "wait").length;
+  $("#s-used").textContent = all.filter(x => x.status === "used").length;
+  const due = all.filter(isDue).sort((a, b) => a.when.at - b.when.at);
+  const sit = all.filter(x => x.status === "wait" && x.when.type === "sit" && !isDue(x));
+  const wait = all.filter(x => x.status === "wait" && x.when.type === "time" && !isDue(x)).sort((a, b) => a.when.at - b.when.at);
+  const item = (x, cls, meta) => `<button class="item card ${cls}" data-id="${x.id}">
+      <div class="t">${esc(x.title)}</div><div class="why">${esc(x.why)}</div><div class="meta">${meta}</div></button>`;
+  $("#due-wrap").innerHTML = due.length ? `<div class="sec">🔔 도착했어요 <small>${due.length}개</small></div>` +
+    due.map(x => item(x, "due", `${ago(x.created)} 저장 · ${x.when.type === "sit" ? SITUATION_LIMIT + "일 동안 그 상황이 안 왔어요" : "약속한 때가 됐어요"}`)).join("") : "";
+  $("#sit-wrap").innerHTML = sit.length ? `<div class="sec">🧭 상황이 오면 <small>그때가 오면 눌러요</small></div>` +
+    sit.map(x => item(x, "sit", `‘${esc(x.when.label)}’ · ${ago(x.created)} 저장`)).join("") : "";
+  $("#wait-wrap").innerHTML = `<div class="sec">⏳ 기다리는 중</div>` + (wait.length
+    ? wait.map(x => item(x, "", `${until(x.when.at)} 도착 · ${ago(x.created)} 저장`)).join("")
+    : `<div class="empty">기다리는 게 없어요.<br>꼭 필요한 것만 통과시키세요.</div>`);
+  // 익숙해지면(기록 5개 넘으면) 사용법은 접는다
+  $("#how").style.display = $("#how-sec").style.display = all.length > 5 ? "none" : "";
+}
+document.querySelector("#v-home").addEventListener("click", e => {
+  const b = e.target.closest(".item[data-id]"); if (b) openDue(b.dataset.id);
+});
+
+/* ---------- 도착 ---------- */
+let cur = null;
+function openDue(id) {
+  cur = db.items.find(x => x.id === id); if (!cur) return show("home");
+  const early = !isDue(cur);
+  $("#d-head").textContent = cur.when.type === "sit" && early ? "지금이 그때?" : early ? "미리 꺼내 보기" : "도착했어요";
+  $("#d-ago").textContent = `${ago(cur.created)}의 내가 이렇게 말했어요`;
+  $("#d-why").textContent = cur.why;
+  $("#d-card").innerHTML = cardHTML(cur);
+  $("#d-note").value = "";
+  const later = $("#d-later");
+  if (early) later.innerHTML = "";
+  else if (cur.postponed >= 1) later.innerHTML = `<p class="sub" style="margin:0;text-align:center">미루기는 한 번뿐이에요. 이번엔 쓰거나 버려야 해요.</p>`;
+  else later.innerHTML = `<div class="row"><button data-p="1">내일로 미루기</button><button data-p="7">다음 주로 미루기</button></div><p class="sub" style="margin:6px 0 0;text-align:center">미루기는 딱 한 번만 돼요.</p>`;
+  show("due");
+}
+$("#d-later").onclick = e => {
+  const b = e.target.closest("button[data-p]"); if (!b) return;
+  cur.postponed = (cur.postponed || 0) + 1;
+  cur.when = { ...cur.when, type: "time", at: at(Date.now() + Number(b.dataset.p) * DAY, 9) };
+  save(); show("home"); toast("미뤘어요. 다음엔 미룰 수 없어요.");
+};
+$("#btn-used").onclick = () => {
+  cur.status = "used"; cur.doneAt = Date.now(); cur.note = $("#d-note").value.trim(); save();
+  stamp("pass", () => { show("home"); toast("써먹었어요! 저장한 보람이 있네요."); });
+};
+$("#btn-ddrop").onclick = () => {
+  const it = cur, prev = { status: it.status };
+  it.status = "drop"; it.doneAt = Date.now(); it.dropStage = "later"; save();
+  show("home"); toast("버렸어요. 쌓아 두는 것보다 나아요.", () => { it.status = prev.status; delete it.dropStage; save(); renderHome(); });
+};
+
+/* ---------- 기록 ---------- */
+let logTab = "drop";
+function renderLog() {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === logTab));
+  const list = db.items.filter(x => x.status === logTab).sort((a, b) => b.doneAt - a.doneAt);
+  const fmt = ts => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  $("#log-list").innerHTML = list.length ? list.map(x => `<div class="item card">
+      <div class="t">${esc(x.title)}</div>
+      ${logTab === "used" ? `<div class="why">${esc(x.note || x.why)}</div>` : x.why ? `<div class="why muted">${esc(x.why)}</div>` : ""}
+      <div class="meta">${fmt(x.doneAt)} · ${logTab === "drop" ? (x.dropStage === "gate" ? "검문소에서 반려" : "꺼내 보고 버림") : `${Math.max(0, Math.round((x.doneAt - x.created) / DAY))}일 만에 씀`}</div>
+    </div>`).join("")
+    : `<div class="empty">${logTab === "drop" ? "아직 안 쌓은 게 없어요." : "아직 써먹은 게 없어요."}</div>`;
+}
+document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) { logTab = b.dataset.tab; renderLog(); } };
+$("#btn-log").onclick = () => { show("log"); renderLog(); };
+
+/* ---------- 붙여넣기 ---------- */
+$("#btn-paste").onclick = () => { $("#paste-text").value = ""; show("paste"); $("#paste-text").focus(); };
+$("#btn-clip").onclick = async () => {
+  try { $("#paste-text").value = await navigator.clipboard.readText(); }
+  catch (e) { toast("클립보드를 못 읽었어요. 직접 붙여넣어 주세요."); }
+};
+$("#btn-paste-go").onclick = () => {
+  const v = $("#paste-text").value.trim(); if (!v) return;
+  openGate(parseIncoming("", v, ""));
+};
+
+/* ---------- 백업 ---------- */
+$("#btn-backup").onclick = () => show("backup");
+$("#btn-export").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(db)], { type: "application/json" }));
+  a.download = `검문소-백업-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+};
+$("#btn-import").onclick = () => $("#import-file").click();
+$("#import-file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.items)) throw 0;
+    const have = new Set(db.items.map(x => x.id));
+    db.items = db.items.concat(d.items.filter(x => !have.has(x.id))); save();
+    show("home"); toast(`불러왔어요.`);
+  } catch (err) { toast("백업 파일이 아니에요."); }
+  e.target.value = "";
+};
+
+/* ---------- 토스트 ---------- */
+let toastTimer;
+function toast(msg, undo) {
+  const t = $("#toast");
+  t.firstElementChild.textContent = msg;
+  const b = t.lastElementChild;
+  b.style.display = undo ? "" : "none";
+  b.onclick = () => { t.classList.remove("on"); undo && undo(); };
+  t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), undo ? 5000 : 2500);
+}
+
+/* ---------- 시작: 공유로 들어왔으면 바로 검문 ---------- */
+(function start() {
+  const q = new URLSearchParams(location.search);
+  if (q.has("title") || q.has("text") || q.has("url")) {
+    history.replaceState(null, "", location.pathname);
+    const inc = parseIncoming(q.get("title"), q.get("text"), q.get("url"));
+    return openGate(inc);
+  }
+  if (q.has("open")) {
+    const id = q.get("open");
+    history.replaceState(null, "", location.pathname);
+    if (db.items.some(x => x.id === id && x.status === "wait")) return openDue(id);
+  }
+  show("home");
+})();
+document.addEventListener("visibilitychange", () => { if (!document.hidden && $("#v-home").classList.contains("on")) renderHome(); });
+setInterval(() => { if ($("#v-home").classList.contains("on")) renderHome(); }, 60e3);
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
