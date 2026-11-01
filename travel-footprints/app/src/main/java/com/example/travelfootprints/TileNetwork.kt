@@ -23,7 +23,7 @@ object TileNetwork {
    .cache(Cache(File(context.cacheDir,"map-http"),128L*1024*1024))
    .addInterceptor { chain ->
     chain.proceed(chain.request().newBuilder()
-     .header("User-Agent","TravelFootprints/0.17 (Android; com.example.travelfootprints)")
+     .header("User-Agent","TravelFootprints/0.18 (Android; com.example.travelfootprints)")
      .build())
    }.build()
   // OkHttp honors Cache-Control, Expires, ETag and Last-Modified from the tile server.
@@ -58,10 +58,10 @@ object TileNetwork {
     layer is SymbolLayer && layer.id in hiddenLayers -> layer.setProperties(PropertyFactory.visibility(Property.NONE))
     layer is SymbolLayer && layer.id.startsWith("label_country") -> layer.setProperties(PropertyFactory.textField(countryName))
     layer is SymbolLayer && !layer.id.contains("shield") -> layer.setProperties(PropertyFactory.textField(placeName), PropertyFactory.textPadding(8f))
-    layer is BackgroundLayer -> layer.setProperties(PropertyFactory.backgroundColor("#FAF8F1"))
-    layer is FillLayer && layer.id == "water" -> layer.setProperties(PropertyFactory.fillColor("#CFE3EC"))
-    layer is FillLayer && layer.id == "park" -> layer.setProperties(PropertyFactory.fillColor("#E3EFDD"))
-    layer is LineLayer && layer.id == "waterway" -> layer.setProperties(PropertyFactory.lineColor("#BFD9E6"))
+    layer is BackgroundLayer -> layer.setProperties(PropertyFactory.backgroundColor("#DCEFCB"))
+    layer is FillLayer && layer.id == "water" -> layer.setProperties(PropertyFactory.fillColor("#BFE3F2"))
+    layer is FillLayer && layer.id == "park" -> layer.setProperties(PropertyFactory.fillColor("#C8E6B6"))
+    layer is LineLayer && layer.id == "waterway" -> layer.setProperties(PropertyFactory.lineColor("#A9D6EC"))
    }
   }
  }
