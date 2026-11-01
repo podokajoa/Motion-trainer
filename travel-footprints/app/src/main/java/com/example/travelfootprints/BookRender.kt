@@ -30,33 +30,22 @@ class BookRender(private val captions: Map<Long, Caption>, private val loader: (
   val fill = Paint().apply { color = Color.parseColor("#E6E1D4") }
   c.drawRect(r, fill)
   val bmp = p?.let { loader(it) }
-  if (bmp != null) drawCover(c, bmp, r)
-  p?.let { captions[it.id] }?.let { overlay(c, it, r) }
+  val src = if (bmp != null) drawCover(c, bmp, r) else null
+  val cap = p?.let { captions[it.id] } ?: return
+  if (src != null && bmp != null) {
+   // the photo is cropped to fill the box: where the whole photo would sit, so text keeps its place on the picture
+   val k = r.width() / src.width()
+   val whole = RectF(r.left - src.left * k, r.top - src.top * k, r.left + (bmp.width - src.left) * k, r.top + (bmp.height - src.top) * k)
+   CaptionDraw.draw(c, cap, whole, r)
+  } else CaptionDraw.draw(c, cap, r, r)
  }
 
- private fun drawCover(c: Canvas, bmp: Bitmap, r: RectF) {
+ private fun drawCover(c: Canvas, bmp: Bitmap, r: RectF): Rect {
   val rw = r.width() / r.height(); val bw = bmp.width.toFloat() / bmp.height
   val src = if (bw > rw) { val w = (bmp.height * rw).toInt(); val x = (bmp.width - w) / 2; Rect(x, 0, x + w, bmp.height) }
    else { val h = (bmp.width / rw).toInt(); val y = (bmp.height - h) / 2; Rect(0, y, bmp.width, y + h) }
   c.drawBitmap(bmp, src, r, Paint(Paint.FILTER_BITMAP_FLAG))
- }
-
- /** The user's line of text on top of a photo; same look as on the phone. */
- private fun overlay(c: Canvas, cap: Caption, r: RectF) {
-  if (cap.isEmpty()) return
-  val factor = floatArrayOf(0.065f, 0.095f, 0.14f)[cap.size.coerceIn(0, 2)]
-  val black = cap.tone == 1
-  val paint = tp(r.width() * factor, if (black) Color.BLACK else Color.WHITE, true)
-  paint.setShadowLayer(paint.textSize * 0.2f, 0f, paint.textSize * 0.06f, if (black) Color.argb(170, 255, 255, 255) else Color.argb(180, 0, 0, 0))
-  val w = (r.width() * 0.84f).toInt()
-  val l = StaticLayout.Builder.obtain(cap.text, 0, cap.text.length, paint, w).setAlignment(Layout.Alignment.ALIGN_CENTER).setLineSpacing(0f, 1.1f).build()
-  val x = r.left + (r.width() - w) / 2f
-  val y = when (cap.pos) {
-   0 -> r.top + r.height() * 0.08f
-   1 -> r.top + (r.height() - l.height) / 2f
-   else -> r.bottom - l.height - r.height() * 0.08f
-  }
-  c.save(); c.clipRect(r); c.translate(x, y); l.draw(c); c.restore()
+  return src
  }
 
  /** Draws wrapped text inside [r]; whatever does not fit is cut off. Returns nothing, the preview shows it. */

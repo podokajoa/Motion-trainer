@@ -8,8 +8,12 @@ data class DayNote(val a: String = "", val b: String = "", val c: String = "") {
  fun text(): String = listOf(a, b, c).map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n\n")
 }
 
-/** A line of text laid over a photo. [pos] 0 top / 1 middle / 2 bottom, [tone] 0 white / 1 black, [size] 0 small / 1 normal / 2 big. */
-data class Caption(val text: String = "", val pos: Int = 2, val tone: Int = 0, val size: Int = 1) {
+/**
+ * A line of text laid over a photo. [x],[y] are where the middle of the text sits, as fractions of the
+ * whole photo; [size] is the letter height as a fraction of the photo width; [tone] 0 white / 1 black;
+ * [align] 0 centered / 1 left (matters for several lines).
+ */
+data class Caption(val text: String = "", val x: Float = 0.5f, val y: Float = 0.82f, val size: Float = 0.06f, val tone: Int = 0, val align: Int = 0) {
  fun isEmpty() = text.isBlank()
 }
 
@@ -65,7 +69,7 @@ object Book {
    b.notes.forEach { (day, note) -> if (!note.isEmpty()) n.put(day.toString(), JSONObject().put("a", note.a).put("b", note.b).put("c", note.c)) }
    o.put("notes", n)
    val cp = JSONObject()
-   b.captions.forEach { (id, c) -> if (!c.isEmpty()) cp.put(id.toString(), JSONObject().put("t", c.text).put("p", c.pos).put("c", c.tone).put("s", c.size)) }
+   b.captions.forEach { (id, c) -> if (!c.isEmpty()) cp.put(id.toString(), JSONObject().put("t", c.text).put("x", c.x.toDouble()).put("y", c.y.toDouble()).put("s", c.size.toDouble()).put("c", c.tone).put("a", c.align)) }
    o.put("captions", cp)
    root.put(key, o)
   }
@@ -79,9 +83,14 @@ object Book {
    val o = root.getJSONObject(key); val b = TripBook()
    o.optJSONArray("stars")?.let { a -> for (i in 0 until a.length()) b.stars.add(a.getLong(i)) }
    o.optJSONObject("notes")?.let { n -> n.keys().forEach { d -> n.getJSONObject(d).let { x -> b.notes[d.toInt()] = DayNote(x.optString("a"), x.optString("b"), x.optString("c")) } } }
-   o.optJSONObject("captions")?.let { cp -> cp.keys().forEach { id -> cp.getJSONObject(id).let { x -> b.captions[id.toLong()] = Caption(x.optString("t"), x.optInt("p", 2), x.optInt("c", 0), x.optInt("s", 1)) } } }
+   o.optJSONObject("captions")?.let { cp -> cp.keys().forEach { id -> cp.getJSONObject(id).let { x -> b.captions[id.toLong()] = readCaption(x) } } }
    out[key] = b
   }
   return out
  }
+
+ /** Reads a caption; the first version stored position/size as small whole numbers (top/middle/bottom, small/normal/big). */
+ private fun readCaption(x: JSONObject): Caption =
+  if (x.has("x")) Caption(x.optString("t"), x.optDouble("x", 0.5).toFloat(), x.optDouble("y", 0.82).toFloat(), x.optDouble("s", 0.06).toFloat(), x.optInt("c", 0), x.optInt("a", 0))
+  else Caption(x.optString("t"), 0.5f, floatArrayOf(0.1f, 0.5f, 0.86f)[x.optInt("p", 2).coerceIn(0, 2)], floatArrayOf(0.04f, 0.065f, 0.11f)[x.optInt("s", 1).coerceIn(0, 2)], x.optInt("c", 0), 0)
 }

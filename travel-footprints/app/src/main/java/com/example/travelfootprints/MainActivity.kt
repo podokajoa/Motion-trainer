@@ -553,7 +553,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun fetchRouteStyle(): String? {
   routeStyleJson?.let { return it }
   return try {
-   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.23 (Android; com.example.travelfootprints)").build()
+   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.24 (Android; com.example.travelfootprints)").build()
    val body = okhttp3.OkHttpClient().newCall(req).execute().use { it.body?.string() } ?: return null
    val o = JSONObject(body); val layers = o.getJSONArray("layers"); val out = JSONArray()
    for (i in 0 until layers.length()) {
@@ -648,21 +648,21 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   frame.addView(caption, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
   frame.addView(Y2k.button(this, "× 닫기", false, 13f) { dialog.dismiss() },
    FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(28), dp(16), 0) })
-  val overlay = Y2k.text(this, "", 20f, Color.WHITE, true)
-  frame.addView(overlay, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+  val layer = CaptionLayer(this)
+  frame.addView(layer, FrameLayout.LayoutParams(-1, -1))
   frame.addView(Y2k.button(this, "글 달기 ✎", true, 13f) {
-   openCaptionEditor(t, photos[index]) { refreshOverlay(overlay, tripBook(t).captions[photos[index].id], 1f); albumRefresh?.invoke() }
+   openCaptionEditor(t, photos[index]) { layer.cap = tripBook(t).captions[photos[index].id]; layer.invalidate(); albumRefresh?.invoke() }
   }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(16), dp(28), 0, 0) })
   val size = max(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
   val format = SimpleDateFormat("yyyy.MM.dd (E) HH:mm", Locale.KOREA)
   fun show() {
    val p = photos[index]
-   refreshOverlay(overlay, tripBook(t).captions[p.id], 1f)
+   layer.cap = tripBook(t).captions[p.id]; layer.bw = 0; layer.bh = 0; layer.invalidate()
    caption.text = "${index + 1} / ${photos.size}" + (if (p.date > 0) "   ${format.format(Date(p.date))}" else "")
    image.setImageDrawable(null)
    thumbWorker.execute {
     val bmp = try { contentResolver.loadThumbnail(Uri.parse(p.uri), android.util.Size(size, size), null) } catch (_: Exception) { null }
-    runOnUiThread { if (photos[index] == p) { if (bmp != null) image.setImageBitmap(bmp) else image.setImageResource(android.R.drawable.ic_menu_gallery) } }
+    runOnUiThread { if (photos[index] == p) { if (bmp != null) { image.setImageBitmap(bmp); layer.bw = bmp.width; layer.bh = bmp.height; layer.invalidate() } else image.setImageResource(android.R.drawable.ic_menu_gallery) } }
    }
   }
   var downX = 0f
@@ -689,36 +689,27 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  }
 
  // ---------- text on photos ----------
- /** Puts the user's line on a [TextView] laid over a photo: position, color and size as chosen. */
- private fun refreshOverlay(tv: TextView, cap: Caption?, scale: Float) {
-  if (cap == null || cap.isEmpty()) { tv.visibility = View.GONE; return }
-  tv.visibility = View.VISIBLE
-  tv.text = cap.text
-  tv.textSize = floatArrayOf(17f, 25f, 36f)[cap.size.coerceIn(0, 2)] * scale
-  tv.gravity = Gravity.CENTER
-  tv.setPadding(dp(24), dp(20), dp(24), dp(20))
-  val black = cap.tone == 1
-  tv.setTextColor(if (black) Color.BLACK else Color.WHITE)
-  tv.setShadowLayer(8f, 0f, 2f, if (black) Color.argb(200, 255, 255, 255) else Color.argb(210, 0, 0, 0))
-  (tv.layoutParams as? FrameLayout.LayoutParams)?.let { it.gravity = when (cap.pos) { 0 -> Gravity.TOP; 1 -> Gravity.CENTER; else -> Gravity.BOTTOM }; it.bottomMargin = if (cap.pos == 2) dp(if (scale < 1f) 18 else 70) else 0; tv.layoutParams = it }
- }
-
  private fun openCaptionEditor(t: Trip, p: PhotoPoint, onDone: () -> Unit) {
   var cap = tripBook(t).captions[p.id] ?: Caption()
   var dialog: android.app.Dialog? = null
   dialog = windowDialog("사진에 글 달기") { body ->
    val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(12)) }
    val box = FrameLayout(this).apply { background = Y2k.frame(ink, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
-   val img = ImageView(this)
-   loadThumb(img, p.uri, 900)
+   val img = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+   val layer = CaptionLayer(this)
    box.addView(img, FrameLayout.LayoutParams(-1, -1))
-   val over = Y2k.text(this, "", 20f, Color.WHITE, true)
-   box.addView(over, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-   col.addView(box, LinearLayout.LayoutParams(-1, dp(300)))
-   fun preview() { refreshOverlay(over, cap, 0.8f) }
+   box.addView(layer, FrameLayout.LayoutParams(-1, -1))
+   col.addView(box, LinearLayout.LayoutParams(-1, dp(360)))
+   thumbWorker.execute {
+    val bmp = try { contentResolver.loadThumbnail(Uri.parse(p.uri), android.util.Size(1000, 1000), null) } catch (_: Exception) { null }
+    runOnUiThread { if (bmp != null) { img.setImageBitmap(bmp); layer.bw = bmp.width; layer.bh = bmp.height; layer.invalidate() } }
+   }
+   fun preview() { layer.cap = cap; layer.invalidate() }
+   layer.onMove = { x, y -> cap = cap.copy(x = x, y = y); preview() }
+   col.addView(Y2k.text(this, "글자를 사진 위에서 손가락으로 끌어 옮겨요", 12f, Y2k.MUTED, true).apply { setPadding(dp(2), dp(8), 0, 0) })
    val et = android.widget.EditText(this).apply {
-    setText(cap.text); textSize = 16f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = "사진 위에 올릴 한 줄"
-    background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(8), dp(10), dp(8)); maxLines = 3
+    setText(cap.text); textSize = 16f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = "사진 위에 올릴 글"
+    background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(8), dp(10), dp(8)); maxLines = 4
     inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
     addTextChangedListener(object : android.text.TextWatcher {
      override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -726,7 +717,19 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
      override fun afterTextChanged(s: android.text.Editable?) {}
     })
    }
-   col.addView(et, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+   col.addView(et, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+   // size: a slider from tiny to big (0.03 to 0.17 of the photo width)
+   val sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(12), 0, 0) }
+   sizeRow.addView(Y2k.text(this, "크기", 13f, ink, true), LinearLayout.LayoutParams(dp(64), -2))
+   sizeRow.addView(android.widget.SeekBar(this).apply {
+    max = 100; progress = (((cap.size - 0.03f) / 0.14f) * 100f).toInt().coerceIn(0, 100)
+    setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+     override fun onProgressChanged(sb: android.widget.SeekBar?, v: Int, fromUser: Boolean) { cap = cap.copy(size = 0.03f + 0.14f * v / 100f); preview() }
+     override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
+     override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
+    })
+   }, LinearLayout.LayoutParams(0, -2, 1f))
+   col.addView(sizeRow)
    fun choices(label: String, names: List<String>, get: () -> Int, set: (Int) -> Unit) {
     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, 0) }
     row.addView(Y2k.text(this, label, 13f, ink, true), LinearLayout.LayoutParams(dp(64), -2))
@@ -737,9 +740,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     }
     col.addView(row)
    }
-   choices("위치", listOf("위", "가운데", "아래"), { cap.pos }) { cap = cap.copy(pos = it) }
    choices("글자색", listOf("흰색", "검정"), { cap.tone }) { cap = cap.copy(tone = it) }
-   choices("크기", listOf("작게", "보통", "크게"), { cap.size }) { cap = cap.copy(size = it) }
+   choices("정렬", listOf("가운데", "왼쪽"), { cap.align }) { cap = cap.copy(align = it) }
    val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(16), 0, 0) }
    actions.addView(Y2k.button(this, "지우기", false, 14f) {
     tripBook(t).captions.remove(p.id); saveBook(); dialog?.dismiss(); onDone()
