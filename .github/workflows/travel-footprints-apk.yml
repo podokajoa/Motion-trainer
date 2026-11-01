@@ -39,7 +39,11 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ -n "$DEBUG_KEYSTORE_B64" ]; then
-            echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            KS="$RUNNER_TEMP/debug.keystore"
+            echo "$DEBUG_KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$KS"
+            cp "$KS" ~/.android/debug.keystore
+            keytool -list -v -keystore "$KS" -storepass android | grep -E 'SHA(1|256):' || true
+            echo "TF_DEBUG_KEYSTORE=$KS" >> "$GITHUB_ENV"
             echo "SIGNING=home-pc" >> "$GITHUB_ENV"
           else
             echo "::warning::DEBUG_KEYSTORE_B64 Secret이 없어 임시 키로 서명합니다. 이 APK는 기존 앱 위에 업데이트로 설치되지 않습니다."

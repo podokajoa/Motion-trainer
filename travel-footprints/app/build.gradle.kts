@@ -1,6 +1,10 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android { namespace = "com.example.travelfootprints"; compileSdk = 35
  defaultConfig { applicationId = "com.example.travelfootprints"; minSdk = 29; targetSdk = 35; versionCode = 16; versionName = "0.16"; manifestPlaceholders["appLabel"] = "여행 발자국" }
+ // CI에서는 집 PC의 debug.keystore를 명시적으로 지정한다(TF_DEBUG_KEYSTORE). 없으면 기본 debug 키.
+ System.getenv("TF_DEBUG_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { path ->
+  signingConfigs.getByName("debug") { storeFile = file(path); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
+ }
  buildFeatures { viewBinding = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
