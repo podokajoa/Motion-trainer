@@ -34,6 +34,12 @@ import org.maplibre.android.maps.OnMapReadyCallback
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.widget.NestedScrollView
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.style.sources.GeoJsonSource
 
 class MainActivity : ComponentActivity(), OnMapReadyCallback {
  // Production scans the local gallery and reads the existing points.json cache.
@@ -41,7 +47,13 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private lateinit var mapView: MapView
  private lateinit var status: TextView
  private lateinit var gallery: LinearLayout
- private lateinit var bottomScroll: ScrollView
+ private lateinit var bottomScroll: NestedScrollView
+ private lateinit var sheet: BottomSheetBehavior<NestedScrollView>
+ private lateinit var header: LinearLayout
+ private lateinit var selection: LinearLayout
+ private val geoWorker = Executors.newSingleThreadExecutor()
+ private val thumbWorker = Executors.newFixedThreadPool(2)
+ private val geoFailed = mutableSetOf<String>()
  private lateinit var summary: TextView
  private lateinit var mapPanel: FrameLayout
  private var map: MapLibreMap? = null
@@ -69,54 +81,76 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   selectedYear = savedInstanceState?.getInt("year", 0)?.takeIf { it != 0 }
   selectedRegion = savedInstanceState?.getString("region") ?: "all"
   val green = Color.rgb(48,111,83)
-  val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(252,249,242)) }
-  val header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22),dp(19),dp(22),dp(14)) }
-  header.addView(TextView(this).apply {
-   text="MY TRAVEL JOURNAL"; textSize=10f; letterSpacing=0.20f
-   setTextColor(Color.rgb(111,153,131)); setTypeface(null,Typeface.BOLD)
-  })
-  val heading = TextView(this).apply { text = "여행 발자국"; textSize = 28f; setTextColor(Color.rgb(37,72,59)); setTypeface(null,Typeface.BOLD); setPadding(0,dp(2),0,0) }
-  if(demoMode) heading.text="여행 발자국 · TEST"
-  summary = TextView(this).apply { text = "사진이 기억하는 나의 여행"; textSize = 12f; setTextColor(Color.rgb(104,122,110)); setPadding(0,dp(5),0,dp(15)) }
-  yearsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(5),dp(4),dp(5),dp(4)); background = rounded(Color.rgb(241,241,230),25) }
-  val yearScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(yearsRow) }
-  regionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
-  header.addView(heading); header.addView(summary); header.addView(yearScroll); header.addView(regionRow)
-  root.addView(header)
+  // v0.17: the map fills the screen; filters float on top and the records sit
+  // in a bottom sheet the user can drag up, instead of squeezing the map.
+  val root = CoordinatorLayout(this).apply { setBackgroundColor(Color.rgb(252,249,242)) }
   mapView = MapView(this)
   mapPanel = FrameLayout(this)
   mapPanel.addView(mapView,FrameLayout.LayoutParams(-1,-1))
+  root.addView(mapPanel,CoordinatorLayout.LayoutParams(-1,-1))
+  header = LinearLayout(this).apply {
+   orientation = LinearLayout.VERTICAL; setPadding(dp(18),dp(12),dp(18),dp(12)); elevation = dp(4).toFloat()
+   background = GradientDrawable().apply {
+    setColor(Color.argb(244,252,249,242))
+    cornerRadii = floatArrayOf(0f,0f,0f,0f,dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat(),dp(24).toFloat())
+   }
+  }
+  val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+  val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+  val heading = TextView(this).apply { text = "여행 발자국"; textSize = 22f; setTextColor(Color.rgb(37,72,59)); setTypeface(null,Typeface.BOLD) }
+  if(demoMode) heading.text="여행 발자국 · TEST"
+  summary = TextView(this).apply { text = "사진이 기억하는 나의 여행"; textSize = 11f; setTextColor(Color.rgb(104,122,110)); setPadding(0,dp(2),0,0) }
+  titles.addView(heading); titles.addView(summary)
+  titleRow.addView(titles,LinearLayout.LayoutParams(0,-2,1f))
   val scan = TextView(this).apply {
-   text = if(demoMode) "↻ 예시 위치로 이동" else "↻ 사진 다시 분석"; textSize = 12f; setTextColor(green); gravity = Gravity.CENTER
-   setPadding(dp(13),dp(10),dp(13),dp(10)); background = rounded(Color.rgb(255,252,244),24)
-   elevation = dp(3).toFloat(); setOnClickListener { if(demoMode) focusPhotosOnMap() else requestScan() }
+   text = if(demoMode) "↻ 예시 위치" else "↻ 다시 분석"; textSize = 11f; setTextColor(green); gravity = Gravity.CENTER
+   setPadding(dp(11),dp(8),dp(11),dp(8)); background = rounded(Color.rgb(237,245,232),20)
+   setOnClickListener { if(demoMode) focusPhotosOnMap() else requestScan() }
   }
-  mapPanel.addView(scan,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.END).apply { setMargins(0,dp(12),dp(14),0) })
-  root.addView(mapPanel,LinearLayout.LayoutParams(-1,0,1f))
-  val copyright = TextView(this).apply {
-   text = "© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors"; textSize = 10f; setTextColor(green)
-   setPadding(dp(14),dp(5),dp(10),dp(5))
-   setOnClickListener { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("https://www.openstreetmap.org/copyright"))) }
-  }
-  root.addView(copyright)
+  titleRow.addView(scan)
+  yearsRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4),dp(3),dp(4),dp(3)); background = rounded(Color.rgb(241,241,230),22) }
+  val yearScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(yearsRow) }
+  regionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
+  header.addView(titleRow)
+  header.addView(yearScroll,LinearLayout.LayoutParams(-2,-2).apply { topMargin = dp(10) })
+  header.addView(regionRow)
+  root.addView(header,CoordinatorLayout.LayoutParams(-1,-2).apply { gravity = Gravity.TOP })
   val bottom = LinearLayout(this).apply {
-   orientation = LinearLayout.VERTICAL; setPadding(dp(18),dp(15),dp(18),dp(13))
-   background = rounded(Color.rgb(255,253,247),28); elevation = dp(8).toFloat()
+   orientation = LinearLayout.VERTICAL; setPadding(dp(18),dp(10),dp(18),dp(24))
   }
   val grip = View(this).apply { background = rounded(Color.rgb(207,207,201),8) }
-  bottom.addView(grip,LinearLayout.LayoutParams(dp(34),dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(12) })
-  status = TextView(this).apply { text = "사진 GPS를 지도에 기록해요"; textSize = 12f; setTextColor(Color.rgb(93,106,99)); maxLines = 3 }
+  bottom.addView(grip,LinearLayout.LayoutParams(dp(40),dp(5)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(12) })
+  selection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+  bottom.addView(selection)
+  status = TextView(this).apply { text = "사진 GPS를 지도에 기록해요"; textSize = 11f; setTextColor(Color.rgb(93,106,99)); maxLines = 3 }
   gallery = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
   bottom.addView(gallery)
-  bottom.addView(status,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
-  bottomScroll=ScrollView(this).apply { isFillViewport=false; addView(bottom) }
-  root.addView(bottomScroll,LinearLayout.LayoutParams(-1,dp(295)))
+  bottom.addView(status,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(10) })
+  bottom.addView(TextView(this).apply {
+   text = "© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors"; textSize = 10f; setTextColor(green)
+   setPadding(0,dp(8),0,0)
+   setOnClickListener { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse("https://www.openstreetmap.org/copyright"))) }
+  })
+  bottomScroll = NestedScrollView(this).apply {
+   isFillViewport = true; addView(bottom); elevation = dp(10).toFloat()
+   background = GradientDrawable().apply {
+    setColor(Color.rgb(255,253,247))
+    cornerRadii = floatArrayOf(dp(26).toFloat(),dp(26).toFloat(),dp(26).toFloat(),dp(26).toFloat(),0f,0f,0f,0f)
+   }
+  }
+  sheet = BottomSheetBehavior<NestedScrollView>().apply {
+   isFitToContents = false; peekHeight = dp(250); halfExpandedRatio = 0.55f; isHideable = false
+   state = BottomSheetBehavior.STATE_COLLAPSED
+  }
+  root.addView(bottomScroll,CoordinatorLayout.LayoutParams(-1,-1).apply { behavior = sheet })
   setContentView(root)
   androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
    val bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
    view.setPadding(bars.left,bars.top,bars.right,bars.bottom)
    insets
   }
+  // Fully expanded, the sheet stops under the filters so they stay usable.
+  header.addOnLayoutChangeListener { _,_,top,_,bottomY,_,_,_,_ -> sheet.expandedOffset = bottomY }
   mapView.onCreate(savedInstanceState); mapView.getMapAsync(this)
   loadDecisions()
   loadPlaceNames()
@@ -152,35 +186,156 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   status.text="가상 GPS 위치 ${points.size}개 · 실제 갤러리 분석 없음 · 기존 앱과 별도 설치"
   render()
  }
- private fun requestOnlinePlace(candidate:TravelCandidate) {
-  if(!resolvingPlaces.add(candidate.key)) return
-  // The user explicitly taps this button: ONE representative coordinate is sent to
-  // the device's geocoding provider. The photos and complete GPS index stay local.
-  Toast.makeText(this,"대표 위치 1곳의 지역명 조회 중…",Toast.LENGTH_SHORT).show()
-  worker.execute {
-   var result:String?=null
-   try {
-    if(Geocoder.isPresent()) {
+ private fun center(photos:List<PhotoPoint>):Pair<Double,Double> =
+  photos.map { it.lat }.sorted()[photos.size/2] to photos.map { it.lng }.sorted()[photos.size/2]
+ private fun placeFor(lat:Double,lng:Double):String? = placeNames[PlaceNames.key(lat,lng)]
+ /**
+  * Looks up short place names for record cards. Only one representative
+  * coordinate per card goes to the phone's geocoder; photos never leave the phone.
+  * Results are cached in places.json so each spot is looked up once.
+  */
+ private fun requestPlaces(spots:List<Pair<Double,Double>>) {
+  if(demoMode || !Geocoder.isPresent()) return
+  val todo=spots.map { PlaceNames.key(it.first,it.second) to it }.distinctBy { it.first }
+   .filter { (k,_) -> !placeNames.containsKey(k) && k !in resolvingPlaces && k !in geoFailed }
+  if(todo.isEmpty()) return
+  todo.forEach { resolvingPlaces.add(it.first) }
+  geoWorker.execute {
+   val results=todo.map { (k,ll) ->
+    val label=try {
      @Suppress("DEPRECATION")
-     val address=Geocoder(this,Locale.KOREAN).getFromLocation(candidate.latitude,candidate.longitude,1)?.firstOrNull()
-     if(address!=null) {
-      val country=address.countryCode?.let { Locale("",it).getDisplayCountry(Locale.KOREAN) } ?: address.countryName
-      val city=address.locality ?: address.subAdminArea ?: address.adminArea
-      val detail=address.subLocality ?: address.thoroughfare
-      result=listOfNotNull(country,city,detail).filter { it.isNotBlank() }.distinct().joinToString(" · ").ifBlank { null }
+     Geocoder(this,Locale.KOREAN).getFromLocation(ll.first,ll.second,1)?.firstOrNull()?.let { a ->
+      PlaceNames.label(a.countryCode,a.countryName,a.adminArea,a.locality,a.subAdminArea,a.subLocality,a.thoroughfare)
      }
-    }
-   } catch (_:Exception) { }
-   val value=result
+    } catch(_:Exception) { null }
+    k to label
+   }
    runOnUiThread {
-    resolvingPlaces.remove(candidate.key)
-    if(value!=null) {
-     placeNames[candidate.key]=value
-     try { savePlaceNames() } catch (_:Exception) { }
-     render()
-    } else Toast.makeText(this,"지역명을 찾지 못했어. 연결 상태를 확인해줘.",Toast.LENGTH_LONG).show()
+    results.forEach { (k,v) -> resolvingPlaces.remove(k); if(v!=null) placeNames[k]=v else geoFailed.add(k) }
+    if(results.any { it.second!=null }) {
+     try { savePlaceNames() } catch(_:Exception) { }
+     val y=bottomScroll.scrollY; render(); bottomScroll.post { bottomScroll.scrollTo(0,y) }
+    }
    }
   }
+ }
+ private fun loadThumb(view:ImageView,uri:String,size:Int) {
+  view.tag=uri
+  thumbWorker.execute {
+   val bmp=try { contentResolver.loadThumbnail(Uri.parse(uri),android.util.Size(size,size),null) } catch(e:Exception) {
+    Log.w("TravelFootprintsMap","thumbnail failed for $uri: ${e.javaClass.simpleName}"); null
+   }
+   runOnUiThread {
+    if(view.tag!=uri) return@runOnUiThread
+    if(bmp!=null) view.setImageBitmap(bmp) else {
+     // Missing or unreadable photo (e.g. deleted from the gallery): show an icon instead of an empty box.
+     view.scaleType=ImageView.ScaleType.CENTER; view.setImageResource(android.R.drawable.ic_menu_gallery)
+    }
+   }
+  }
+ }
+ private fun handleMapTap(g:MapLibreMap,coordinate:LatLng):Boolean {
+  val pixel=g.projection.toScreenLocation(coordinate)
+  val box=android.graphics.RectF(pixel.x-dp(24),pixel.y-dp(24),pixel.x+dp(24),pixel.y+dp(24))
+  val cluster=g.queryRenderedFeatures(box,"photo-clusters").firstOrNull()
+  val source=g.style?.getSourceAs<GeoJsonSource>("photos")
+  if(cluster!=null && source!=null) {
+   val expansion=try { source.getClusterExpansionZoom(cluster) } catch(_:Exception) { 99 }
+   if(expansion<=14) {
+    g.animateCamera(CameraUpdateFactory.newLatLngZoom(coordinate,expansion.toDouble()))
+   } else {
+    // Photos taken at (almost) the same spot never split apart: list them instead of zooming forever.
+    val count=cluster.getNumberProperty("point_count")?.toLong() ?: 50L
+    val leaves=try { source.getClusterLeaves(cluster,count.coerceAtMost(300L),0L).features().orEmpty() } catch(_:Exception) { emptyList() }
+    val uris=leaves.mapNotNull { it.getStringProperty("uri") }.toSet()
+    val photos=points.filter { it.uri in uris }.sortedByDescending { it.date }
+    if(photos.isNotEmpty()) showSelection(placeFor(coordinate.latitude,coordinate.longitude) ?: "이 자리의 사진",photos)
+    requestPlaces(listOf(coordinate.latitude to coordinate.longitude))
+   }
+   return true
+  }
+  val hits=g.queryRenderedFeatures(box,"photo-points")
+  val uris=hits.mapNotNull { it.getStringProperty("uri") }.toSet()
+  if(uris.isEmpty()) return false
+  val photos=points.filter { it.uri in uris }.sortedByDescending { it.date }
+  showSelection(placeFor(coordinate.latitude,coordinate.longitude) ?: "이 자리의 사진",photos)
+  requestPlaces(listOf(coordinate.latitude to coordinate.longitude))
+  return true
+ }
+ /** Moves the map so these photos fit between the filters and the sheet. */
+ private fun showOnMap(photos:List<PhotoPoint>) {
+  val g=map ?: return
+  if(photos.isEmpty()) return
+  val distinct=photos.map { LatLng(it.lat,it.lng) }.distinctBy { "%.5f,%.5f".format(Locale.US,it.latitude,it.longitude) }
+  val top=header.height+dp(30); val bottomPad=dp(250)+dp(30)
+  if(distinct.size<2) g.animateCamera(CameraUpdateFactory.newLatLngZoom(distinct.first(),13.0))
+  else {
+   val bounds=LatLngBounds.Builder().includes(distinct).build()
+   g.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds,dp(40),top,dp(40),bottomPad))
+  }
+  sheet.state=BottomSheetBehavior.STATE_COLLAPSED
+ }
+ /** A strip of photos at the top of the sheet: a tapped spot, record or trip. */
+ private fun showSelection(title:String,photos:List<PhotoPoint>) {
+  selection.removeAllViews()
+  val titleRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
+  titleRow.addView(TextView(this).apply {
+   text="$title · ${photos.size}장"; textSize=16f; setTypeface(null,Typeface.BOLD); setTextColor(Color.rgb(37,72,59))
+   maxLines=2
+  },LinearLayout.LayoutParams(0,-2,1f))
+  titleRow.addView(TextView(this).apply {
+   text="닫기"; textSize=12f; setTextColor(Color.rgb(0,82,61)); setPadding(dp(12),dp(6),dp(4),dp(6))
+   setOnClickListener { selection.visibility=View.GONE; selection.removeAllViews() }
+  })
+  selection.addView(titleRow)
+  val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setPadding(0,dp(10),0,dp(14)) }
+  val shown=photos.take(60)
+  shown.forEachIndexed { i,p ->
+   val img=ImageView(this).apply {
+    scaleType=ImageView.ScaleType.CENTER_CROP; background=rounded(Color.rgb(219,234,224),12); clipToOutline=true
+    setOnClickListener { openViewer(shown,i) }
+   }
+   loadThumb(img,p.uri,dp(110))
+   row.addView(img,LinearLayout.LayoutParams(dp(104),dp(104)).apply { rightMargin=dp(8) })
+  }
+  selection.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false; addView(row) })
+  if(photos.size>shown.size) selection.addView(TextView(this).apply { text="최근 ${shown.size}장만 보여요"; textSize=10f; setTextColor(Color.rgb(101,115,106)) })
+  selection.addView(View(this).apply { setBackgroundColor(Color.rgb(231,236,226)) },LinearLayout.LayoutParams(-1,dp(1)).apply { bottomMargin=dp(12) })
+  selection.visibility=View.VISIBLE
+  bottomScroll.scrollTo(0,0)
+ }
+ /** Full-screen viewer inside the app; tap the left/right half for previous/next. */
+ private fun openViewer(photos:List<PhotoPoint>,startIndex:Int) {
+  var index=startIndex
+  val dialog=android.app.Dialog(this,android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+  val frame=FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+  val image=ImageView(this).apply { scaleType=ImageView.ScaleType.FIT_CENTER }
+  frame.addView(image,FrameLayout.LayoutParams(-1,-1))
+  val caption=TextView(this).apply { textSize=13f; setTextColor(Color.WHITE); setPadding(dp(18),dp(18),dp(18),dp(18)); setShadowLayer(4f,0f,0f,Color.BLACK) }
+  frame.addView(caption,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
+  val close=TextView(this).apply { text="✕"; textSize=22f; setTextColor(Color.WHITE); setPadding(dp(18),dp(14),dp(18),dp(14)); setOnClickListener { dialog.dismiss() } }
+  frame.addView(close,FrameLayout.LayoutParams(-2,-2,Gravity.TOP or Gravity.END))
+  val size=maxOf(resources.displayMetrics.widthPixels,resources.displayMetrics.heightPixels)
+  val format=SimpleDateFormat("yyyy.M.d HH:mm",Locale.KOREA)
+  fun show() {
+   val p=photos[index]
+   image.setImageDrawable(null)
+   caption.text="${index+1} / ${photos.size}" + (if(p.date>0) "  ·  ${format.format(Date(p.date))}" else "")
+   thumbWorker.execute {
+    val bmp=try { contentResolver.loadThumbnail(Uri.parse(p.uri),android.util.Size(size,size),null) } catch(_:Exception) { null }
+    runOnUiThread { if(photos[index]==p) { if(bmp!=null) image.setImageBitmap(bmp) else image.setImageResource(android.R.drawable.ic_menu_gallery) } }
+   }
+  }
+  image.setOnTouchListener { v,e ->
+   if(e.action==android.view.MotionEvent.ACTION_UP) {
+    if(e.x<v.width/2f) { if(index>0) { index--; show() } } else { if(index<photos.size-1) { index++; show() } }
+    v.performClick()
+   }
+   true
+  }
+  dialog.setContentView(frame)
+  show()
+  dialog.show()
  }
  private fun hasImageAccess(): Boolean = ContextCompat.checkSelfPermission(this,(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE))==PackageManager.PERMISSION_GRANTED
  private fun hasLocationAccess(): Boolean = ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_MEDIA_LOCATION)==PackageManager.PERMISSION_GRANTED
@@ -339,24 +494,16 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   // Place the camera at a recorded location before the map style draws.
   // A newly opened map should not visibly fly in from an unrelated continent.
   if(points.isNotEmpty() && !cameraInitialized) focusPhotosOnMap()
-  g.addOnMapClickListener { coordinate ->
-   val pixel=g.projection.toScreenLocation(coordinate)
-   val clusters=g.queryRenderedFeatures(android.graphics.RectF(pixel.x-22,pixel.y-22,pixel.x+22,pixel.y+22),"photo-clusters")
-   if(clusters.isNotEmpty()) {
-    g.animateCamera(CameraUpdateFactory.newLatLngZoom(coordinate,(g.cameraPosition.zoom+2).coerceAtMost(15.0)))
-    return@addOnMapClickListener true
-   }
-   val hits=g.queryRenderedFeatures(android.graphics.RectF(pixel.x-18,pixel.y-18,pixel.x+18,pixel.y+18),"photo-points")
-   val uri=hits.firstOrNull()?.getStringProperty("uri")
-   if(uri!=null) try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse(uri)).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch(_:Exception) { Toast.makeText(this,"사진을 열 수 없어요",Toast.LENGTH_SHORT).show() }
-   uri!=null
-  }
+  g.addOnMapClickListener { coordinate -> handleMapTap(g,coordinate) }
   g.setPrefetchZoomDelta(0)
   // The compass sat under the top-right scan button and showed as a dark half circle.
   // A travel map does not need rotation, so keep north up and hide the compass.
   g.uiSettings.isCompassEnabled=false
   g.uiSettings.isRotateGesturesEnabled=false
   g.uiSettings.isTiltGesturesEnabled=false
+  // The sheet covers the bottom-left corner; attribution text lives inside the sheet.
+  g.uiSettings.isLogoEnabled=false
+  g.uiSettings.isAttributionEnabled=false
   g.setStyle(org.maplibre.android.maps.Style.Builder().fromUri(TileNetwork.STYLE_URL)) { style ->
    TileNetwork.koreanize(style)
    Log.i("TravelFootprintsMap","style loaded; rendering ${points.size} cached coordinates")
@@ -450,7 +597,9 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     textSize=11f; setTextColor(Color.rgb(101,115,106)); setPadding(0,dp(5),0,0)
    })
    val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setPadding(0,dp(11),0,0) }
-   groups.take(12).forEachIndexed { index, group ->
+   val shownGroups=groups.take(12)
+   requestPlaces(shownGroups.map { center(it.photos) })
+   shownGroups.forEachIndexed { index, group ->
     val p=group.cover
     val item=LinearLayout(this).apply {
      orientation=LinearLayout.VERTICAL; setPadding(dp(8),dp(8),dp(8),dp(9))
@@ -458,17 +607,16 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     }
     val preview=ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; background=rounded(Color.rgb(219,234,224),12); clipToOutline=true }
     item.addView(preview,LinearLayout.LayoutParams(-1,dp(114)))
-    try { preview.setImageBitmap(contentResolver.loadThumbnail(Uri.parse(p.uri),android.util.Size(dp(150),dp(125)),null)) } catch (e:Exception) {
-     // Missing or unreadable photo (e.g. deleted from the gallery): show an icon instead of an empty box.
-     Log.w("TravelFootprintsMap","thumbnail failed for ${p.uri}: ${e.javaClass.simpleName}")
-     preview.scaleType=ImageView.ScaleType.CENTER
-     preview.setImageResource(android.R.drawable.ic_menu_gallery)
-    }
+    loadThumb(preview,p.uri,dp(150))
+    val (cLat,cLng)=center(group.photos)
     val dateFormat=SimpleDateFormat("M.d",Locale.KOREA)
     val date="${dateFormat.format(Date(group.start))}–${dateFormat.format(Date(group.end))}"
-    item.addView(TextView(this).apply { text="기록 ${index+1}"; textSize=13f; setTypeface(null,Typeface.BOLD); setTextColor(Color.rgb(37,72,59)); setPadding(dp(3),dp(8),0,0) })
+    item.addView(TextView(this).apply { text=placeFor(cLat,cLng) ?: "기록 ${index+1}"; textSize=13f; maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END; setTypeface(null,Typeface.BOLD); setTextColor(Color.rgb(37,72,59)); setPadding(dp(3),dp(8),0,0) })
     item.addView(TextView(this).apply { text="$date  ·  ${group.photos.size}장"; textSize=10f; setTextColor(Color.rgb(98,122,108)); setPadding(dp(3),dp(3),0,0) })
-    item.setOnClickListener { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse(p.uri)).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch (_:Exception) { Toast.makeText(this,"사진을 열 수 없어요",Toast.LENGTH_SHORT).show() } }
+    item.setOnClickListener {
+     showOnMap(group.photos)
+     showSelection("${placeFor(cLat,cLng) ?: "기록 ${index+1}"} · $date",group.photos.asReversed())
+    }
     row.addView(item,LinearLayout.LayoutParams(dp(157),-2).apply { rightMargin=dp(11) })
    }
    gallery.addView(HorizontalScrollView(this).apply {
@@ -502,6 +650,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    }
   }
   if(shown.isEmpty()) return
+  requestPlaces(shown.filter { !placeNames.containsKey(it.key) }.take(12).map { it.latitude to it.longitude })
   val likely=shown.filter { decisions[it.key]==true || (decisions[it.key]==null && it.guess==TravelGuess.LIKELY_TRIP) }
   val review=shown.filter { decisions[it.key]==null && it.guess==TravelGuess.REVIEW }
   val routine=shown.filter { decisions[it.key]==false || (decisions[it.key]==null && it.guess==TravelGuess.LIKELY_ROUTINE) }
@@ -529,7 +678,11 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    }
    card.addView(TextView(this).apply { text="${name} · GPS 사진 ${candidate.photos.size}장 · ${candidate.dayCount}일"; textSize=12f; setTypeface(null,Typeface.BOLD); setTextColor(Color.rgb(18,72,49)) })
    val coarse=CoarsePlaceLabel.forPoint(candidate.latitude,candidate.longitude)
-   val place=placeNames[candidate.key] ?: if(coarse!=null) "$coarse · 정확한 지역 미확인" else "국가·지역 미확인"
+   val place=placeNames[candidate.key] ?: placeFor(candidate.latitude,candidate.longitude) ?: when {
+    resolvingPlaces.contains(PlaceNames.key(candidate.latitude,candidate.longitude)) -> "지역 이름 찾는 중…"
+    coarse!=null -> coarse
+    else -> "지역 미확인"
+   }
    card.addView(TextView(this).apply {
     text=place; textSize=13f; setTypeface(null,Typeface.BOLD)
     setTextColor(Color.rgb(23,76,57)); setPadding(0,dp(5),0,0)
@@ -538,15 +691,9 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     text="지도에서 위치 보기"; textSize=11f; setTextColor(Color.rgb(0,82,61))
     setPadding(0,dp(6),0,dp(5))
     setOnClickListener {
-     map?.animateCamera(CameraUpdateFactory.newLatLngZoom(
-      org.maplibre.android.geometry.LatLng(candidate.latitude,candidate.longitude),11.0))
-     bottomScroll.smoothScrollTo(0,0)
+     showOnMap(candidate.photos)
+     showSelection(place,candidate.photos.asReversed())
     }
-   })
-   if(!placeNames.containsKey(candidate.key)) card.addView(TextView(this).apply {
-    text=if(resolvingPlaces.contains(candidate.key)) "위치 조회 중…" else "정확한 지역명 조회 (대표 GPS 좌표 1개 전송)"
-    textSize=11f; setTextColor(Color.rgb(0,82,61)); setPadding(0,dp(6),0,dp(4))
-    setOnClickListener { requestOnlinePlace(candidate) }
    })
    card.addView(TextView(this).apply { text=candidate.reason; textSize=11f; setTextColor(Color.rgb(88,104,94)); setPadding(0,dp(5),0,dp(7)) })
    val actions=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
@@ -578,7 +725,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  override fun onPause(){mapView.onPause();super.onPause()}
  override fun onStop(){mapView.onStop();super.onStop()}
  override fun onLowMemory(){super.onLowMemory();mapView.onLowMemory()}
- override fun onDestroy(){mapView.onDestroy();worker.shutdown();super.onDestroy()}
+ override fun onDestroy(){mapView.onDestroy();worker.shutdown();geoWorker.shutdown();thumbWorker.shutdown();super.onDestroy()}
  override fun onSaveInstanceState(outState:Bundle){super.onSaveInstanceState(outState);mapView.onSaveInstanceState(outState);outState.putInt("year",selectedYear ?: 0);outState.putString("region",selectedRegion)}
 }
 
