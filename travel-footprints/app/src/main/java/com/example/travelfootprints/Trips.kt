@@ -2,6 +2,7 @@ package com.example.travelfootprints
 
 import java.util.Calendar
 import java.util.TimeZone
+import kotlin.math.max
 
 /** One trip in the album: one or more classifier candidates merged together. */
 data class Trip(val key: String, val photos: List<PhotoPoint>, val lat: Double, val lng: Double, val abroad: Boolean) {
@@ -13,8 +14,14 @@ data class Trip(val key: String, val photos: List<PhotoPoint>, val lat: Double, 
 
 data class TripDay(val dayNumber: Int, val dayStart: Long, val photos: List<PhotoPoint>)
 
-/** A place visited during a trip: photos taken close together on one day. */
-data class TripStop(val lat: Double, val lng: Double, val photoCount: Int, val dayNumber: Int, val time: Long)
+/** A place visited during a trip: every photo within a few km of it, on any day. */
+data class TripStop(val lat: Double, val lng: Double, val photoCount: Int, val days: List<Int>, val time: Long)
+
+/**
+ * [stops] are in the order they were first visited; [route] is the order of visits (a place can
+ * come back, e.g. 1,2,1); [dayRoutes] is the same per day; [trail] is the photo-by-photo track.
+ */
+data class TripPlan(val stops: List<TripStop>, val route: List<Int>, val dayRoutes: Map<Int, List<Int>>, val trail: List<Pair<Double, Double>>)
 
 object Trips {
  private const val DAY_MS = 86_400_000L
@@ -73,22 +80,34 @@ object Trips {
   days(trip, zone).lastOrNull()?.dayNumber ?: 1
 
  /**
-  * The places of a trip in visiting order. Within one day, photos within [radiusKm] of an
-  * earlier stop that day join it; otherwise they start a new stop. At most [max] stops are
-  * kept (the ones with the most photos), still in visiting order.
+  * Groups a trip's photos into places. A photo joins the nearest earlier place if it is within a
+  * radius (starting at 3 km, doubled until there are at most [maxStops] places); otherwise it
+  * starts a new place. Same place on different days is one stop.
   */
- fun stops(days: List<TripDay>, radiusKm: Double = 6.0, max: Int = 14): List<TripStop> {
-  class Acc(val lat: Double, val lng: Double, val day: Int, val time: Long) { var n = 0 }
-  val all = mutableListOf<Acc>()
-  days.forEach { d ->
-   val mine = mutableListOf<Acc>()
-   d.photos.sortedBy { it.date }.forEach { ph ->
-    val near = mine.minByOrNull { TravelClassifier.distanceKm(it.lat, it.lng, ph.lat, ph.lng) }
-    val hit = near?.takeIf { TravelClassifier.distanceKm(it.lat, it.lng, ph.lat, ph.lng) <= radiusKm }
-    if (hit != null) hit.n++ else { val a = Acc(ph.lat, ph.lng, d.dayNumber, ph.date); a.n = 1; mine.add(a); all.add(a) }
+ fun plan(days: List<TripDay>, maxStops: Int = 14): TripPlan {
+  val photos = days.flatMap { d -> d.photos.sortedBy { it.date }.map { d.dayNumber to it } }
+  var radius = 3.0
+  while (true) {
+   val lats = ArrayList<Double>(); val lngs = ArrayList<Double>(); val counts = ArrayList<Int>()
+   val dayLists = ArrayList<MutableSet<Int>>(); val firstTimes = ArrayList<Long>()
+   val seq = ArrayList<Pair<Int, Int>>()
+   photos.forEach { (dn, ph) ->
+    var best = -1; var bd = Double.MAX_VALUE
+    for (i in lats.indices) { val dd = TravelClassifier.distanceKm(lats[i], lngs[i], ph.lat, ph.lng); if (dd < bd) { bd = dd; best = i } }
+    val idx = if (best >= 0 && bd <= radius) best else {
+     lats.add(ph.lat); lngs.add(ph.lng); counts.add(0); dayLists.add(linkedSetOf()); firstTimes.add(ph.date); lats.size - 1
+    }
+    counts[idx] = counts[idx] + 1; dayLists[idx].add(dn); seq.add(dn to idx)
    }
+   if (lats.size <= maxStops || radius >= 400.0) {
+    fun collapse(l: List<Int>): List<Int> { val o = ArrayList<Int>(); l.forEach { if (o.lastOrNull() != it) o.add(it) }; return o }
+    val stops = lats.indices.map { TripStop(lats[it], lngs[it], counts[it], dayLists[it].toList(), firstTimes[it]) }
+    val dayRoutes = seq.groupBy({ it.first }, { it.second }).mapValues { collapse(it.value) }
+    val step = max(1, photos.size / 200)
+    val trail = photos.filterIndexed { i, _ -> i % step == 0 || i == photos.size - 1 }.map { it.second.lat to it.second.lng }
+    return TripPlan(stops, collapse(seq.map { it.second }), dayRoutes, trail)
+   }
+   radius *= 2
   }
-  val kept = if (all.size > max) all.sortedByDescending { it.n }.take(max).sortedBy { it.time } else all
-  return kept.map { TripStop(it.lat, it.lng, it.n, it.day, it.time) }
  }
 }

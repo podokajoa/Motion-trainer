@@ -64,6 +64,7 @@ import kotlin.math.min
 class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private val ink = Y2k.INK
  private fun dp(v: Int) = Y2k.dp(v)
+ private fun dpf(v: Float) = Y2k.dpf(v)
 
  private lateinit var homeList: RecyclerView
  private lateinit var mapView: MapView
@@ -409,8 +410,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun openTrip(t: Trip) {
   openTrip = t
   val days = Trips.days(t)
-  val stops = Trips.stops(days)
-  requestPlaces(stops.map { it.lat to it.lng })
+  val plan = Trips.plan(days)
+  requestPlaces(plan.stops.map { it.lat to it.lng })
   val rows = mutableListOf<AlbumRow>(AlbumRow.Cover)
   var i = 0
   days.forEach { d -> rows.add(AlbumRow.Day(d)); d.photos.forEach { rows.add(AlbumRow.Photo(it, i++)) } }
@@ -435,8 +436,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    override fun onBindViewHolder(h: RecyclerView.ViewHolder, p: Int) {
     when (val r = rows[p]) {
      is AlbumRow.Photo -> { val iv = h.itemView as ImageView; loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(ordered, r.index) } }
-     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(r.day, stops)) }
-     AlbumRow.Cover -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(albumCover(t, days, stops) { pos -> grid.scrollToPositionWithOffset(dayPositions[pos], 0) }) }
+     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(r.day, plan)) }
+     AlbumRow.Cover -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(albumCover(t, days, plan) { pos -> grid.scrollToPositionWithOffset(dayPositions[pos], 0) }) }
     }
    }
   }
@@ -452,7 +453,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
 
  private fun closeTrip() { albumPanel.visibility = View.GONE; albumPanel.removeAllViews(); openTrip = null; albumRefresh = null }
 
- private fun albumCover(t: Trip, days: List<TripDay>, stops: List<TripStop>, jump: (Int) -> Unit): View = LinearLayout(this).apply {
+ private fun albumCover(t: Trip, days: List<TripDay>, plan: TripPlan, jump: (Int) -> Unit): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(2), dp(2), dp(4))
   val top = FrameLayout(context)
   val img = photoBox().apply { background = Y2k.frame(ink, ink, 0, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
@@ -465,20 +466,30 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   titleRow.addView(Y2k.text(context, tripTitle(t), 24f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
   titleRow.addView(Y2k.text(context, "${Trips.dayCount(t)}일 · 사진 ${"%,d".format(t.photos.size)}장", 12f, Y2k.MUTED, true))
   addView(titleRow)
-  addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${stopNames(stops).size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
+  addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${plan.stops.size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
-  if (stops.size >= 2) {
+  if (plan.stops.isNotEmpty()) {
    addView(Y2k.text(context, "▶ 여행 경로", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(4), 0, dp(6)) })
-   addView(Y2k.RouteView(context, stops.map { it.lat to it.lng }).apply { background = null }.let { rv ->
-    FrameLayout(context).apply { background = Y2k.frame(Y2k.PAPER, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)); addView(rv, FrameLayout.LayoutParams(-1, -1)) }
-   }, LinearLayout.LayoutParams(-1, dp(200)))
-   addView(Y2k.text(context, "▶ 방문한 순서", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(14), 0, dp(6)) })
-   stops.forEachIndexed { i, s ->
+   val mapBox = FrameLayout(context).apply { background = Y2k.frame(Y2k.PAPER, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
+   val cached = routeBitmaps.get(t.key)
+   when {
+    cached != null -> mapBox.addView(ImageView(context).apply { setImageBitmap(cached); scaleType = ImageView.ScaleType.FIT_XY }, FrameLayout.LayoutParams(-1, -1))
+    t.key in routeFailed -> mapBox.addView(Y2k.RouteView(context, plan.stops.map { it.lat to it.lng }), FrameLayout.LayoutParams(-1, -1))
+    else -> {
+     mapBox.addView(Y2k.text(context, "지도 불러오는 중…", 13f, Y2k.MUTED, true).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(-1, -1))
+     startRouteSnapshot(t, plan)
+    }
+   }
+   if (cached != null) mapBox.addView(Y2k.text(context, "© OpenStreetMap · OpenFreeMap", 9f, ink, false).apply { setBackgroundColor(Color.argb(190, 255, 255, 255)); setPadding(dp(4), dp(1), dp(4), dp(1)) },
+    FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
+   addView(mapBox, LinearLayout.LayoutParams(-1, dp(230)))
+   addView(Y2k.text(context, "▶ 방문한 곳", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(14), 0, dp(6)) })
+   plan.stops.forEachIndexed { i, s ->
     val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(3), dp(4), dp(3)) }
     row.addView(Y2k.text(context, "${i + 1}", 12f, ink, true).apply { gravity = Gravity.CENTER; background = Y2k.frame(if (i == 0) Y2k.YELLOW else Color.WHITE, ink, 2, 0) },
      LinearLayout.LayoutParams(dp(26), dp(26)).apply { rightMargin = dp(10) })
     row.addView(Y2k.text(context, stopName(s), 14f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
-    row.addView(Y2k.text(context, "${s.dayNumber}일차 · ${s.photoCount}장", 12f, Y2k.MUTED, true))
+    row.addView(Y2k.text(context, "${s.days.joinToString("·")}일차 · ${s.photoCount}장", 12f, Y2k.MUTED, true))
     addView(row)
    }
    addView(View(context), LinearLayout.LayoutParams(-1, dp(8)))
@@ -492,17 +503,98 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   }
  }
 
- private fun dayHeader(d: TripDay, stops: List<TripStop>): View = LinearLayout(this).apply {
+ private fun dayHeader(d: TripDay, plan: TripPlan): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(6), dp(14), dp(6), dp(8))
   val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
   top.addView(Y2k.text(context, "▶ ${d.dayNumber}일차 — ${SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(d.dayStart))}", 14f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
   top.addView(Y2k.text(context, "${d.photos.size}장", 12f, Y2k.MUTED, true))
   addView(top)
-  val where = stopNames(stops.filter { it.dayNumber == d.dayNumber })
+  val where = stopNames((plan.dayRoutes[d.dayNumber] ?: emptyList()).map { plan.stops[it] })
   if (where.isNotEmpty()) addView(Y2k.text(context, where.joinToString(" → "), 13f, Y2k.MUTED, false).apply { setPadding(dp(14), dp(5), 0, 0) })
  }
 
- private fun stopName(s: TripStop) = placeFor(s.lat, s.lng) ?: CoarsePlaceLabel.forPoint(s.lat, s.lng)?.removeSuffix(" 부근") ?: "이름 찾는 중"
+ private fun stopName(s: TripStop): String {
+  val n = placeFor(s.lat, s.lng) ?: CoarsePlaceLabel.forPoint(s.lat, s.lng)?.removeSuffix(" 부근") ?: return "이름 찾는 중"
+  // The geocoder only knows the country out at sea or on a ferry.
+  return if (n == "대한민국") "이동 중 (바다·길)" else n
+ }
+
+ // ---------- route map picture ----------
+ private val routeBitmaps = LruCache<String, Bitmap>(8)
+ private val routeFailed = mutableSetOf<String>()
+ private val routeLoading = mutableSetOf<String>()
+ private var routeSnapshotter: org.maplibre.android.snapshotter.MapSnapshotter? = null
+ private var routeStyleJson: String? = null
+
+ /** The base map as JSON without any labels (we draw our own numbers), in the app's colors. */
+ private fun fetchRouteStyle(): String? {
+  routeStyleJson?.let { return it }
+  return try {
+   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.20 (Android; com.example.travelfootprints)").build()
+   val body = okhttp3.OkHttpClient().newCall(req).execute().use { it.body?.string() } ?: return null
+   val o = JSONObject(body); val layers = o.getJSONArray("layers"); val out = JSONArray()
+   for (i in 0 until layers.length()) {
+    val l = layers.getJSONObject(i)
+    if (l.optString("type") == "symbol") continue
+    val paint = l.optJSONObject("paint") ?: JSONObject().also { l.put("paint", it) }
+    when {
+     l.optString("type") == "background" -> paint.put("background-color", "#DCEFCB")
+     l.optString("id") == "water" -> paint.put("fill-color", "#BFE3F2")
+     l.optString("id") == "park" -> paint.put("fill-color", "#C8E6B6")
+     l.optString("id") == "waterway" -> paint.put("line-color", "#A9D6EC")
+    }
+    out.put(l)
+   }
+   o.put("layers", out)
+   o.toString().also { routeStyleJson = it }
+  } catch (_: Exception) { null }
+ }
+
+ /** Draws the trip's real photo-by-photo track and numbered places on a still map picture. */
+ private fun startRouteSnapshot(t: Trip, plan: TripPlan) {
+  if (!routeLoading.add(t.key)) return
+  fun fail() { routeLoading.remove(t.key); routeFailed.add(t.key); runOnUiThread { albumRefresh?.invoke() } }
+  thumbWorker.execute {
+   val json = fetchRouteStyle()
+   runOnUiThread {
+    if (json == null) { fail(); return@runOnUiThread }
+    try {
+     val w = resources.displayMetrics.widthPixels - dp(60); val h = dp(226)
+     val pts = plan.trail + plan.stops.map { it.lat to it.lng }
+     val minLat = pts.minOf { it.first }; val maxLat = pts.maxOf { it.first }
+     val minLng = pts.minOf { it.second }; val maxLng = pts.maxOf { it.second }
+     val padLat = max((maxLat - minLat) * 0.18, 0.012); val padLng = max((maxLng - minLng) * 0.18, 0.012)
+     val bounds = LatLngBounds.from((maxLat + padLat).coerceAtMost(85.0), maxLng + padLng, (minLat - padLat).coerceAtLeast(-85.0), minLng - padLng)
+     val opts = org.maplibre.android.snapshotter.MapSnapshotter.Options(w, h)
+      .withStyleBuilder(Style.Builder().fromJson(json)).withRegion(bounds).withPixelRatio(1f).withLogo(false)
+     val snap = org.maplibre.android.snapshotter.MapSnapshotter(this, opts)
+     routeSnapshotter = snap
+     snap.start({ shot ->
+      try {
+       val bmp = shot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
+       val c = Canvas(bmp)
+       val line = Paint().apply { style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND; isAntiAlias = true }
+       val path = android.graphics.Path()
+       plan.trail.forEachIndexed { i, ll -> val q = shot.pixelForLatLng(LatLng(ll.first, ll.second)); if (i == 0) path.moveTo(q.x, q.y) else path.lineTo(q.x, q.y) }
+       line.color = Color.WHITE; line.strokeWidth = dpf(7f); c.drawPath(path, line)
+       line.color = Y2k.BLUE; line.strokeWidth = dpf(3.5f); c.drawPath(path, line)
+       val fill = Paint(); val num = Paint().apply { color = ink; textAlign = Paint.Align.CENTER; isAntiAlias = true; typeface = Y2k.bold; textSize = dpf(12f) }
+       val r = dpf(11f)
+       plan.stops.forEachIndexed { i, s ->
+        val q = shot.pixelForLatLng(LatLng(s.lat, s.lng))
+        fill.color = ink; c.drawRect(q.x - r - 2f, q.y - r - 2f, q.x + r + 2f, q.y + r + 2f, fill)
+        fill.color = if (i == 0) Y2k.YELLOW else Color.WHITE; c.drawRect(q.x - r, q.y - r, q.x + r, q.y + r, fill)
+        c.drawText((i + 1).toString(), q.x, q.y + dpf(4.5f), num)
+       }
+       routeBitmaps.put(t.key, bmp)
+       routeLoading.remove(t.key)
+       albumRefresh?.invoke()
+      } catch (_: Exception) { fail() }
+     }, { _ -> fail() })
+    } catch (_: Throwable) { fail() }
+   }
+  }
+ }
  /** Names in visiting order, without repeating the same name back to back. */
  private fun stopNames(stops: List<TripStop>): List<String> {
   val out = mutableListOf<String>()
