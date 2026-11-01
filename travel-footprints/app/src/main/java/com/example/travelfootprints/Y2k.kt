@@ -180,4 +180,40 @@ object Y2k {
    canvas.drawBitmap(b, null, dst, paint)
   }
  }
+
+ /** A small hand-drawn style route: numbered square stops joined by a dashed line. */
+ class RouteView(context: Context, private val points: List<Pair<Double, Double>>) : View(context) {
+  private val line = Paint().apply { color = BLUE; style = Paint.Style.STROKE; strokeWidth = dpf(3f); isAntiAlias = false
+   pathEffect = android.graphics.DashPathEffect(floatArrayOf(dpf(8f), dpf(6f)), 0f) }
+  private val fill = Paint()
+  private val num = Paint().apply { color = INK; textAlign = Paint.Align.CENTER; isAntiAlias = true }
+  override fun onDraw(canvas: Canvas) {
+   fill.color = PAPER; canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
+   // faint grid, like graph paper
+   fill.color = Color.argb(40, 14, 26, 36)
+   var gx = dpf(20f); while (gx < width) { canvas.drawRect(gx, 0f, gx + 1f, height.toFloat(), fill); gx += dpf(20f) }
+   var gy = dpf(20f); while (gy < height) { canvas.drawRect(0f, gy, width.toFloat(), gy + 1f, fill); gy += dpf(20f) }
+   if (points.isEmpty()) return
+   val pad = dpf(26f)
+   val meanLat = points.map { it.first }.average()
+   val k = Math.cos(Math.toRadians(meanLat))
+   val xs = points.map { it.second * k }; val ys = points.map { -it.first }
+   val minX = xs.min(); val maxX = xs.max(); val minY = ys.min(); val maxY = ys.max()
+   val spanX = (maxX - minX).coerceAtLeast(1e-6); val spanY = (maxY - minY).coerceAtLeast(1e-6)
+   val aw = width - 2 * pad; val ah = height - 2 * pad
+   val scale = minOf(aw / spanX, ah / spanY).toFloat().let { if (points.size == 1 || (maxX - minX) + (maxY - minY) < 1e-4) 0f else it }
+   val ox = pad + (aw - (spanX * scale).toFloat()) / 2f; val oy = pad + (ah - (spanY * scale).toFloat()) / 2f
+   val pts = points.indices.map { i -> Pair(ox + ((xs[i] - minX) * scale).toFloat(), oy + ((ys[i] - minY) * scale).toFloat()) }
+   val path = android.graphics.Path()
+   pts.forEachIndexed { i, q -> if (i == 0) path.moveTo(q.first, q.second) else path.lineTo(q.first, q.second) }
+   canvas.drawPath(path, line)
+   val r = dpf(11f)
+   num.typeface = bold; num.textSize = dpf(12f)
+   pts.forEachIndexed { i, q ->
+    fill.color = INK; canvas.drawRect(q.first - r - 2f, q.second - r - 2f, q.first + r + 2f, q.second + r + 2f, fill)
+    fill.color = if (i == 0) YELLOW else Color.WHITE; canvas.drawRect(q.first - r, q.second - r, q.first + r, q.second + r, fill)
+    canvas.drawText((i + 1).toString(), q.first, q.second + dpf(4.5f), num)
+   }
+  }
+ }
 }
