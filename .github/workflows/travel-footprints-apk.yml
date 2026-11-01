@@ -57,6 +57,13 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           SIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$SIGNER" verify --print-certs "$APK" | head -5 || true
+          # 폰에 깔린 앱(집 PC debug.keystore)의 인증서 SHA-256
+          EXPECTED=8709d29d158868838a15e8b02141894be06312c63e5c4968554536af671c8278
+          ACTUAL=$("$SIGNER" verify --print-certs "$APK" | grep -m1 'SHA-256' | awk '{print $NF}')
+          if [ "$SIGNING" = "home-pc" ] && [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Secret의 서명키가 집 PC 키와 다릅니다 ($ACTUAL). 이 APK는 폰의 기존 앱 위에 설치되지 않으므로 링크를 올리지 않습니다."
+            exit 1
+          fi
           cp "$APK" ../travel-footprints.apk
 
       - uses: actions/upload-artifact@v4
