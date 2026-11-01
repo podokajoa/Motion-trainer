@@ -434,13 +434,20 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
      addView(Y2k.text(this@MainActivity, "☆", 24f, Color.WHITE, false).apply {
       typeface = android.graphics.Typeface.DEFAULT; setShadowLayer(4f, 0f, 0f, ink); setPadding(dp(8), dp(4), dp(8), dp(10))
      }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END))
+     addView(Y2k.text(this@MainActivity, "", 11f, Color.WHITE, true).apply {
+      maxLines = 2; gravity = Gravity.CENTER; setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(dp(6), 0, dp(6), dp(8))
+      ellipsize = android.text.TextUtils.TruncateAt.END; visibility = View.GONE
+     }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
      layoutParams = RecyclerView.LayoutParams(-1, cell)
     } else FrameLayout(this@MainActivity).apply { layoutParams = RecyclerView.LayoutParams(-1, -2) }) {}
    override fun onBindViewHolder(h: RecyclerView.ViewHolder, p: Int) {
     when (val r = rows[p]) {
      is AlbumRow.Photo -> {
       val fl = h.itemView as FrameLayout; val iv = fl.getChildAt(0) as ImageView; val st = fl.getChildAt(1) as TextView
-      loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(ordered, r.index) }
+      val cap = fl.getChildAt(2) as TextView
+      val c0 = tripBook(t).captions[r.p.id]
+      if (c0 != null && !c0.isEmpty()) { cap.text = c0.text; cap.visibility = View.VISIBLE } else cap.visibility = View.GONE
+      loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(t, ordered, r.index) }
       fun paintStar() { val on = r.p.id in tripBook(t).stars; st.text = if (on) "★" else "☆"; st.setTextColor(if (on) Y2k.YELLOW else Color.WHITE) }
       paintStar(); st.setOnClickListener { toggleStar(t, r.p.id); paintStar() }
      }
@@ -546,7 +553,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun fetchRouteStyle(): String? {
   routeStyleJson?.let { return it }
   return try {
-   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.22 (Android; com.example.travelfootprints)").build()
+   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.23 (Android; com.example.travelfootprints)").build()
    val body = okhttp3.OkHttpClient().newCall(req).execute().use { it.body?.string() } ?: return null
    val o = JSONObject(body); val layers = o.getJSONArray("layers"); val out = JSONArray()
    for (i in 0 until layers.length()) {
@@ -631,7 +638,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  }
 
  /** Full-screen viewer; swipe or tap the left/right edge to move between photos. */
- private fun openViewer(photos: List<PhotoPoint>, startIndex: Int) {
+ private fun openViewer(t: Trip, photos: List<PhotoPoint>, startIndex: Int) {
   var index = startIndex
   val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
   val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
@@ -641,10 +648,16 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   frame.addView(caption, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
   frame.addView(Y2k.button(this, "× 닫기", false, 13f) { dialog.dismiss() },
    FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(28), dp(16), 0) })
+  val overlay = Y2k.text(this, "", 20f, Color.WHITE, true)
+  frame.addView(overlay, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+  frame.addView(Y2k.button(this, "글 달기 ✎", true, 13f) {
+   openCaptionEditor(t, photos[index]) { refreshOverlay(overlay, tripBook(t).captions[photos[index].id], 1f); albumRefresh?.invoke() }
+  }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(16), dp(28), 0, 0) })
   val size = max(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
   val format = SimpleDateFormat("yyyy.MM.dd (E) HH:mm", Locale.KOREA)
   fun show() {
    val p = photos[index]
+   refreshOverlay(overlay, tripBook(t).captions[p.id], 1f)
    caption.text = "${index + 1} / ${photos.size}" + (if (p.date > 0) "   ${format.format(Date(p.date))}" else "")
    image.setImageDrawable(null)
    thumbWorker.execute {
@@ -673,6 +686,73 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   }
   dialog.setContentView(frame)
   show(); dialog.show()
+ }
+
+ // ---------- text on photos ----------
+ /** Puts the user's line on a [TextView] laid over a photo: position, color and size as chosen. */
+ private fun refreshOverlay(tv: TextView, cap: Caption?, scale: Float) {
+  if (cap == null || cap.isEmpty()) { tv.visibility = View.GONE; return }
+  tv.visibility = View.VISIBLE
+  tv.text = cap.text
+  tv.textSize = floatArrayOf(17f, 25f, 36f)[cap.size.coerceIn(0, 2)] * scale
+  tv.gravity = Gravity.CENTER
+  tv.setPadding(dp(24), dp(20), dp(24), dp(20))
+  val black = cap.tone == 1
+  tv.setTextColor(if (black) Color.BLACK else Color.WHITE)
+  tv.setShadowLayer(8f, 0f, 2f, if (black) Color.argb(200, 255, 255, 255) else Color.argb(210, 0, 0, 0))
+  (tv.layoutParams as? FrameLayout.LayoutParams)?.let { it.gravity = when (cap.pos) { 0 -> Gravity.TOP; 1 -> Gravity.CENTER; else -> Gravity.BOTTOM }; it.bottomMargin = if (cap.pos == 2) dp(if (scale < 1f) 18 else 70) else 0; tv.layoutParams = it }
+ }
+
+ private fun openCaptionEditor(t: Trip, p: PhotoPoint, onDone: () -> Unit) {
+  var cap = tripBook(t).captions[p.id] ?: Caption()
+  var dialog: android.app.Dialog? = null
+  dialog = windowDialog("사진에 글 달기") { body ->
+   val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(12)) }
+   val box = FrameLayout(this).apply { background = Y2k.frame(ink, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
+   val img = ImageView(this)
+   loadThumb(img, p.uri, 900)
+   box.addView(img, FrameLayout.LayoutParams(-1, -1))
+   val over = Y2k.text(this, "", 20f, Color.WHITE, true)
+   box.addView(over, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+   col.addView(box, LinearLayout.LayoutParams(-1, dp(300)))
+   fun preview() { refreshOverlay(over, cap, 0.8f) }
+   val et = android.widget.EditText(this).apply {
+    setText(cap.text); textSize = 16f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = "사진 위에 올릴 한 줄"
+    background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(8), dp(10), dp(8)); maxLines = 3
+    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    addTextChangedListener(object : android.text.TextWatcher {
+     override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+     override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { cap = cap.copy(text = s?.toString() ?: ""); preview() }
+     override fun afterTextChanged(s: android.text.Editable?) {}
+    })
+   }
+   col.addView(et, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+   fun choices(label: String, names: List<String>, get: () -> Int, set: (Int) -> Unit) {
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, 0) }
+    row.addView(Y2k.text(this, label, 13f, ink, true), LinearLayout.LayoutParams(dp(64), -2))
+    val btns = ArrayList<TextView>()
+    names.forEachIndexed { i, n ->
+     val b = Y2k.button(this, n, i == get(), 13f) { set(i); btns.forEachIndexed { j, v -> v.background = Y2k.frame(if (j == i) Y2k.YELLOW else Y2k.GRAY, ink, 2, 2) }; preview() }
+     btns.add(b); row.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(6) })
+    }
+    col.addView(row)
+   }
+   choices("위치", listOf("위", "가운데", "아래"), { cap.pos }) { cap = cap.copy(pos = it) }
+   choices("글자색", listOf("흰색", "검정"), { cap.tone }) { cap = cap.copy(tone = it) }
+   choices("크기", listOf("작게", "보통", "크게"), { cap.size }) { cap = cap.copy(size = it) }
+   val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(16), 0, 0) }
+   actions.addView(Y2k.button(this, "지우기", false, 14f) {
+    tripBook(t).captions.remove(p.id); saveBook(); dialog?.dismiss(); onDone()
+   }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+   actions.addView(Y2k.button(this, "저장", true, 14f) {
+    if (cap.isEmpty()) tripBook(t).captions.remove(p.id) else tripBook(t).captions[p.id] = cap
+    saveBook(); dialog?.dismiss(); onDone()
+   }, LinearLayout.LayoutParams(0, -2, 1f))
+   col.addView(actions)
+   preview()
+   body.addView(android.widget.ScrollView(this).apply { addView(col) }, FrameLayout.LayoutParams(-1, -1))
+  }
+  dialog.show()
  }
 
  // ---------- book (photo book / essay) ----------
@@ -737,10 +817,10 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    book)
  }
 
- private fun renderPage(pages: List<BookPage>, i: Int, scale: Float, maxPx: Int, used: MutableList<Bitmap>): Bitmap {
+ private fun renderPage(pages: List<BookPage>, i: Int, scale: Float, maxPx: Int, used: MutableList<Bitmap>, captions: Map<Long, Caption>): Bitmap {
   val bmp = Bitmap.createBitmap((BookRender.W * scale).toInt(), (BookRender.H * scale).toInt(), Bitmap.Config.ARGB_8888)
   val c = Canvas(bmp); c.scale(scale, scale)
-  BookRender { p -> decodePhoto(p, maxPx)?.also { used.add(it) } }.draw(c, pages[i], i + 1, pages.size)
+  BookRender(captions) { p -> decodePhoto(p, maxPx)?.also { used.add(it) } }.draw(c, pages[i], i + 1, pages.size)
   return bmp
  }
 
@@ -762,7 +842,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    list.addView(iv, LinearLayout.LayoutParams(widthPx, (widthPx * BookRender.H / BookRender.W).toInt()).apply { bottomMargin = dp(12); gravity = Gravity.CENTER_HORIZONTAL })
    thumbWorker.execute {
     val used = mutableListOf<Bitmap>()
-    val bmp = try { renderPage(pages, i, 1.6f, 900, used) } catch (_: Throwable) { null }
+    val bmp = try { renderPage(pages, i, 1.6f, 900, used, tripBook(t).captions) } catch (_: Throwable) { null }
     used.forEach { it.recycle() }
     runOnUiThread { if (bmp != null) iv.setImageBitmap(bmp) }
    }
@@ -778,7 +858,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     pages.indices.forEach { i ->
      val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(BookRender.W.toInt(), BookRender.H.toInt(), i + 1).create())
      val used = mutableListOf<Bitmap>()
-     BookRender { p -> decodePhoto(p, 1400)?.also { used.add(it) } }.draw(page.canvas, pages[i], i + 1, pages.size)
+     BookRender(tripBook(t).captions) { p -> decodePhoto(p, 1400)?.also { used.add(it) } }.draw(page.canvas, pages[i], i + 1, pages.size)
      doc.finishPage(page)
      used.forEach { it.recycle() }
     }
