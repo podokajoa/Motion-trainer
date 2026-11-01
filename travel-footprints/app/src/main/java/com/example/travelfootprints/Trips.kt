@@ -21,7 +21,7 @@ data class TripStop(val lat: Double, val lng: Double, val photoCount: Int, val d
  * [stops] are in the order they were first visited; [route] is the order of visits (a place can
  * come back, e.g. 1,2,1); [dayRoutes] is the same per day; [trail] is the photo-by-photo track.
  */
-data class TripPlan(val stops: List<TripStop>, val route: List<Int>, val dayRoutes: Map<Int, List<Int>>, val trail: List<Pair<Double, Double>>)
+data class TripPlan(val stops: List<TripStop>, val route: List<Int>, val dayRoutes: Map<Int, List<Int>>, val trail: List<Pair<Double, Double>>, val dots: List<Pair<Double, Double>>)
 
 object Trips {
  private const val DAY_MS = 86_400_000L
@@ -103,9 +103,29 @@ object Trips {
     fun collapse(l: List<Int>): List<Int> { val o = ArrayList<Int>(); l.forEach { if (o.lastOrNull() != it) o.add(it) }; return o }
     val stops = lats.indices.map { TripStop(lats[it], lngs[it], counts[it], dayLists[it].toList(), firstTimes[it]) }
     val dayRoutes = seq.groupBy({ it.first }, { it.second }).mapValues { collapse(it.value) }
-    val step = max(1, photos.size / 200)
-    val trail = photos.filterIndexed { i, _ -> i % step == 0 || i == photos.size - 1 }.map { it.second.lat to it.second.lng }
-    return TripPlan(stops, collapse(seq.map { it.second }), dayRoutes, trail)
+    val (trail, dots) = finePath(photos.map { it.second })
+    return TripPlan(stops, collapse(seq.map { it.second }), dayRoutes, trail, dots)
+   }
+   radius *= 2
+  }
+ }
+
+ /**
+  * The drawn track: photos within ~0.5 km count as one spot, and the line goes spot to spot in
+  * visiting order (no zigzag between photos taken at the same place). Returns the line and the spots.
+  */
+ private fun finePath(photos: List<PhotoPoint>): Pair<List<Pair<Double, Double>>, List<Pair<Double, Double>>> {
+  var radius = 0.5
+  while (true) {
+   val lats = ArrayList<Double>(); val lngs = ArrayList<Double>(); val seq = ArrayList<Int>()
+   photos.forEach { ph ->
+    var best = -1; var bd = Double.MAX_VALUE
+    for (i in lats.indices) { val dd = TravelClassifier.distanceKm(lats[i], lngs[i], ph.lat, ph.lng); if (dd < bd) { bd = dd; best = i } }
+    val idx = if (best >= 0 && bd <= radius) best else { lats.add(ph.lat); lngs.add(ph.lng); lats.size - 1 }
+    if (seq.lastOrNull() != idx) seq.add(idx)
+   }
+   if (lats.size <= 250 || radius >= 400.0) {
+    return seq.map { lats[it] to lngs[it] } to lats.indices.map { lats[it] to lngs[it] }
    }
    radius *= 2
   }
