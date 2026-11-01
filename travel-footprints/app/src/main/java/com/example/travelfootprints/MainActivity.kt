@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    }
   })
   mapView.onCreate(savedInstanceState); mapView.getMapAsync(this)
-  loadDecisions(); loadPlaceNames(); loadCache()
+  loadDecisions(); loadPlaceNames(); loadBook(); loadCache()
   (homeList.adapter as HomeAdapter).submit()
  }
 
@@ -429,14 +429,22 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    override fun getItemCount() = rows.size
    override fun getItemViewType(p: Int) = if (rows[p] is AlbumRow.Photo) 2 else 0
    override fun onCreateViewHolder(parent: ViewGroup, type: Int): RecyclerView.ViewHolder = object : RecyclerView.ViewHolder(
-    if (type == 2) ImageView(this@MainActivity).apply {
-     scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(ink); setPadding(dp(2), dp(2), dp(2), dp(2))
+    if (type == 2) FrameLayout(this@MainActivity).apply {
+     addView(ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(ink); setPadding(dp(2), dp(2), dp(2), dp(2)) }, FrameLayout.LayoutParams(-1, -1))
+     addView(Y2k.text(this@MainActivity, "☆", 24f, Color.WHITE, false).apply {
+      typeface = android.graphics.Typeface.DEFAULT; setShadowLayer(4f, 0f, 0f, ink); setPadding(dp(8), dp(4), dp(8), dp(10))
+     }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END))
      layoutParams = RecyclerView.LayoutParams(-1, cell)
     } else FrameLayout(this@MainActivity).apply { layoutParams = RecyclerView.LayoutParams(-1, -2) }) {}
    override fun onBindViewHolder(h: RecyclerView.ViewHolder, p: Int) {
     when (val r = rows[p]) {
-     is AlbumRow.Photo -> { val iv = h.itemView as ImageView; loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(ordered, r.index) } }
-     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(r.day, plan)) }
+     is AlbumRow.Photo -> {
+      val fl = h.itemView as FrameLayout; val iv = fl.getChildAt(0) as ImageView; val st = fl.getChildAt(1) as TextView
+      loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(ordered, r.index) }
+      fun paintStar() { val on = r.p.id in tripBook(t).stars; st.text = if (on) "★" else "☆"; st.setTextColor(if (on) Y2k.YELLOW else Color.WHITE) }
+      paintStar(); st.setOnClickListener { toggleStar(t, r.p.id); paintStar() }
+     }
+     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(t, r.day, plan)) }
      AlbumRow.Cover -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(albumCover(t, days, plan) { pos -> grid.scrollToPositionWithOffset(dayPositions[pos], 0) }) }
     }
    }
@@ -468,6 +476,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   addView(titleRow)
   addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${plan.stops.size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+  addView(Y2k.button(context, "책 만들기 ▶  (사진 고르기 · 글 · PDF)", true, 14f) { openBookPreview(t, days, plan) },
+   LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12); rightMargin = dp(4) })
   if (plan.stops.isNotEmpty()) {
    addView(Y2k.text(context, "▶ 여행 경로", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(4), 0, dp(6)) })
    val mapBox = FrameLayout(context).apply { background = Y2k.frame(Y2k.PAPER, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
@@ -503,7 +513,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   }
  }
 
- private fun dayHeader(d: TripDay, plan: TripPlan): View = LinearLayout(this).apply {
+ private fun dayHeader(t: Trip, d: TripDay, plan: TripPlan): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(6), dp(14), dp(6), dp(8))
   val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
   top.addView(Y2k.text(context, "▶ ${d.dayNumber}일차 — ${SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(d.dayStart))}", 14f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
@@ -511,6 +521,12 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   addView(top)
   val where = stopNames((plan.dayRoutes[d.dayNumber] ?: emptyList()).map { plan.stops[it] })
   if (where.isNotEmpty()) addView(Y2k.text(context, where.joinToString(" → "), 13f, Y2k.MUTED, false).apply { setPadding(dp(14), dp(5), 0, 0) })
+  val hasNote = tripBook(t).notes[d.dayNumber]?.isEmpty() == false
+  val starCount = d.photos.count { it.id in tripBook(t).stars }
+  val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(8), 0, 0) }
+  row.addView(Y2k.button(context, if (hasNote) "글 고치기 ✎" else "글 쓰기 ✎", hasNote, 12f) { openNoteEditor(t, d) })
+  row.addView(Y2k.text(context, if (starCount > 0) "  ★ ${starCount}장 선택" else "  사진 오른쪽 위 ☆로 고르기", 12f, Y2k.MUTED, true))
+  addView(row)
  }
 
  private fun stopName(s: TripStop): String {
@@ -530,7 +546,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun fetchRouteStyle(): String? {
   routeStyleJson?.let { return it }
   return try {
-   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.21 (Android; com.example.travelfootprints)").build()
+   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.22 (Android; com.example.travelfootprints)").build()
    val body = okhttp3.OkHttpClient().newCall(req).execute().use { it.body?.string() } ?: return null
    val o = JSONObject(body); val layers = o.getJSONArray("layers"); val out = JSONArray()
    for (i in 0 until layers.length()) {
@@ -657,6 +673,127 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   }
   dialog.setContentView(frame)
   show(); dialog.show()
+ }
+
+ // ---------- book (photo book / essay) ----------
+ private val exportWorker = Executors.newSingleThreadExecutor()
+
+ private fun windowDialog(title: String, fill: (FrameLayout) -> Unit): android.app.Dialog {
+  val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+  val w = Y2k.window(this, title, onBack = { dialog.dismiss() }, onClose = { dialog.dismiss() })
+  fill(w.body)
+  val frame = FrameLayout(this)
+  frame.addView(Y2k.SkyView(this), FrameLayout.LayoutParams(-1, -1))
+  frame.addView(w.root, FrameLayout.LayoutParams(-1, -1).apply { setMargins(dp(8), dp(28), dp(8), dp(8)) })
+  dialog.setContentView(frame)
+  dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+  return dialog
+ }
+
+ private fun openNoteEditor(t: Trip, d: TripDay) {
+  val old = tripBook(t).notes[d.dayNumber] ?: DayNote()
+  val questions = listOf("이날 가장 기억나는 순간은?" to old.a, "예상과 달랐던 건?" to old.b, "나중에 다시 기억하고 싶은 건?" to old.c)
+  val fields = ArrayList<android.widget.EditText>()
+  var dialog: android.app.Dialog? = null
+  dialog = windowDialog("${d.dayNumber}일차 글쓰기") { body ->
+   val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(12)) }
+   col.addView(Y2k.text(this, "AI가 대신 쓰지 않아요. 떠오르는 대로, 내 말투로 적어 주세요. 이 글이 책 그날 페이지에 들어가요.", 12f, Y2k.MUTED, true).apply { setPadding(0, 0, 0, dp(10)) })
+   questions.forEach { (q, v) ->
+    col.addView(Y2k.text(this, "▶ $q", 14f, ink, true).apply { setPadding(0, dp(8), 0, dp(6)) })
+    val et = android.widget.EditText(this).apply {
+     setText(v); textSize = 15f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = "여기에 적기"
+     background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(8), dp(10), dp(8)); minLines = 3; gravity = Gravity.TOP or Gravity.START
+     inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    }
+    fields.add(et); col.addView(et, LinearLayout.LayoutParams(-1, -2))
+   }
+   col.addView(Y2k.button(this, "저장", true, 15f) {
+    val note = DayNote(fields[0].text.toString(), fields[1].text.toString(), fields[2].text.toString())
+    if (note.isEmpty()) tripBook(t).notes.remove(d.dayNumber) else tripBook(t).notes[d.dayNumber] = note
+    saveBook(); dialog?.dismiss(); albumRefresh?.invoke()
+   }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+   body.addView(android.widget.ScrollView(this).apply { addView(col) }, FrameLayout.LayoutParams(-1, -1))
+  }
+  dialog.show()
+ }
+
+ /** Decodes a photo (rotation applied) no larger than [maxPx] on its long side. */
+ private fun decodePhoto(p: PhotoPoint, maxPx: Int): Bitmap? = try {
+  val src = android.graphics.ImageDecoder.createSource(contentResolver, Uri.parse(p.uri))
+  android.graphics.ImageDecoder.decodeBitmap(src) { dec, info, _ ->
+   dec.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+   val big = max(info.size.width, info.size.height)
+   if (big > maxPx) { val k = maxPx.toFloat() / big; dec.setTargetSize((info.size.width * k).toInt().coerceAtLeast(1), (info.size.height * k).toInt().coerceAtLeast(1)) }
+  }
+ } catch (_: Exception) { null }
+
+ private fun bookPages(t: Trip, days: List<TripDay>, plan: TripPlan): List<BookPage> {
+  val book = tripBook(t)
+  val dayFmt = SimpleDateFormat("M월 d일 (E)", Locale.KOREA)
+  val cover = t.photos.filter { it.id in book.stars }.minByOrNull { it.date } ?: t.cover
+  return Book.pages(tripTitle(t), dateRange(t.start, t.end), "${Trips.dayCount(t)}일", cover, days,
+   { d -> "DAY ${d.dayNumber} · ${dayFmt.format(Date(d.dayStart))}" },
+   { d -> stopNames((plan.dayRoutes[d.dayNumber] ?: emptyList()).map { plan.stops[it] }).filter { !it.startsWith("이름 찾는") && !it.startsWith("이동 중") }.joinToString(" · ") },
+   book)
+ }
+
+ private fun renderPage(pages: List<BookPage>, i: Int, scale: Float, maxPx: Int, used: MutableList<Bitmap>): Bitmap {
+  val bmp = Bitmap.createBitmap((BookRender.W * scale).toInt(), (BookRender.H * scale).toInt(), Bitmap.Config.ARGB_8888)
+  val c = Canvas(bmp); c.scale(scale, scale)
+  BookRender { p -> decodePhoto(p, maxPx)?.also { used.add(it) } }.draw(c, pages[i], i + 1, pages.size)
+  return bmp
+ }
+
+ private fun openBookPreview(t: Trip, days: List<TripDay>, plan: TripPlan) {
+  val pages = bookPages(t, days, plan)
+  val starred = tripBook(t).stars.count { id -> t.photos.any { it.id == id } }
+  val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(8)) }
+  val dialog = windowDialog("책 미리보기 — ${tripTitle(t)}") { body ->
+   val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+   col.addView(Y2k.text(this, "A5 세로 ${pages.size}쪽 · " + (if (starred > 0) "★ ${starred}장 선택" else "★이 없어서 날짜마다 3장씩 자동으로 넣었어요") + "\n위치(GPS) 정보는 책에 들어가지 않아요.", 12f, Y2k.MUTED, true).apply { setPadding(dp(6), dp(4), dp(6), dp(8)) })
+   col.addView(android.widget.ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+   col.addView(Y2k.button(this, "PDF로 저장", true, 15f) { exportBookPdf(t, pages) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+   body.addView(col, FrameLayout.LayoutParams(-1, -1))
+  }
+  dialog.show()
+  val widthPx = resources.displayMetrics.widthPixels - dp(56)
+  pages.indices.forEach { i ->
+   val iv = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; background = Y2k.frame(Color.WHITE, ink, 2, 3); setPadding(dp(2), dp(2), dp(5), dp(5)) }
+   list.addView(iv, LinearLayout.LayoutParams(widthPx, (widthPx * BookRender.H / BookRender.W).toInt()).apply { bottomMargin = dp(12); gravity = Gravity.CENTER_HORIZONTAL })
+   thumbWorker.execute {
+    val used = mutableListOf<Bitmap>()
+    val bmp = try { renderPage(pages, i, 1.6f, 900, used) } catch (_: Throwable) { null }
+    used.forEach { it.recycle() }
+    runOnUiThread { if (bmp != null) iv.setImageBitmap(bmp) }
+   }
+  }
+ }
+
+ private fun exportBookPdf(t: Trip, pages: List<BookPage>) {
+  Toast.makeText(this, "PDF 만드는 중… 잠시만요", Toast.LENGTH_SHORT).show()
+  exportWorker.execute {
+   var msg: String
+   try {
+    val doc = android.graphics.pdf.PdfDocument()
+    pages.indices.forEach { i ->
+     val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(BookRender.W.toInt(), BookRender.H.toInt(), i + 1).create())
+     val used = mutableListOf<Bitmap>()
+     BookRender { p -> decodePhoto(p, 1400)?.also { used.add(it) } }.draw(page.canvas, pages[i], i + 1, pages.size)
+     doc.finishPage(page)
+     used.forEach { it.recycle() }
+    }
+    val name = tripTitle(t).replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_") + "_여행책"
+    val values = android.content.ContentValues().apply {
+     put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.pdf"); put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+     put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/여행발자국")
+    }
+    val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IllegalStateException("저장 위치를 못 만들었어요")
+    contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) } ?: throw IllegalStateException("파일 열기 실패")
+    doc.close()
+    msg = "저장했어요: 다운로드/여행발자국/$name.pdf"
+   } catch (e: Throwable) { msg = "PDF 저장 실패: ${e.message}" }
+   runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+  }
  }
 
  // ---------- map ----------
@@ -826,6 +963,21 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   val o = JSONObject(); decisions.forEach { (k, v) -> o.put(k, v) }
   openFileOutput("trip_decisions.json", MODE_PRIVATE).bufferedWriter().use { it.write(o.toString()) }
  }
+ private val bookStore = mutableMapOf<String, TripBook>()
+ private fun tripBook(t: Trip) = bookStore.getOrPut(t.key) { TripBook() }
+ private fun loadBook() {
+  try { bookStore.putAll(Book.fromJson(openFileInput("book.json").bufferedReader().use { it.readText() })) } catch (_: Exception) { }
+ }
+ private fun saveBook() {
+  try { openFileOutput("book.json", MODE_PRIVATE).bufferedWriter().use { it.write(Book.toJson(bookStore)) } }
+  catch (_: Exception) { Toast.makeText(this, "저장 실패", Toast.LENGTH_SHORT).show() }
+ }
+ private fun toggleStar(t: Trip, id: Long) {
+  val s = tripBook(t).stars
+  if (!s.add(id)) s.remove(id)
+  saveBook()
+ }
+
  private fun loadPlaceNames() {
   try { val o = JSONObject(openFileInput("places.json").bufferedReader().use { it.readText() }); o.keys().forEach { k -> placeNames[k] = o.getString(k) } } catch (_: Exception) { }
  }
@@ -852,7 +1004,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun exportBackup(uri: Uri) {
   try {
    val backup = JSONObject().put("app", "travel-footprints").put("version", 1)
-   listOf("points.json", "trip_decisions.json", "places.json").forEach { name ->
+   listOf("points.json", "trip_decisions.json", "places.json", "book.json").forEach { name ->
     val text = try { openFileInput(name).bufferedReader().use { it.readText() } } catch (_: Exception) { null }
     if (text != null) backup.put(name, text)
    }
@@ -865,11 +1017,11 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    val backup = JSONObject(contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: throw IllegalStateException("파일 열기 실패"))
    if (backup.optString("app") != "travel-footprints" || !backup.has("points.json")) throw IllegalArgumentException("여행 발자국 백업 파일이 아니에요")
    JSONArray(backup.getString("points.json"))
-   listOf("points.json", "trip_decisions.json", "places.json").forEach { name ->
+   listOf("points.json", "trip_decisions.json", "places.json", "book.json").forEach { name ->
     if (backup.has(name)) openFileOutput(name, MODE_PRIVATE).bufferedWriter().use { it.write(backup.getString(name)) }
    }
-   points.clear(); decisions.clear(); placeNames.clear()
-   loadDecisions(); loadPlaceNames(); loadCache()
+   points.clear(); decisions.clear(); placeNames.clear(); bookStore.clear()
+   loadDecisions(); loadPlaceNames(); loadBook(); loadCache()
    Toast.makeText(this, "백업 불러오기 완료", Toast.LENGTH_LONG).show()
   } catch (e: Exception) { Toast.makeText(this, "불러오기 실패: ${e.message}", Toast.LENGTH_LONG).show() }
  }
