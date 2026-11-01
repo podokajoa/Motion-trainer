@@ -38,13 +38,15 @@ class TripsTest {
   assertEquals(2, days[0].photos.size)
   assertEquals(3, Trips.dayCount(trip, utc))
  }
- @Test fun stopsSplitByDistanceWithinADay() {
+ @Test fun samePlaceOnDifferentDaysIsOneStop() {
   val trip = Trip("t", listOf(
    p(1, 10 * day + 1000, 37.50, 127.00), p(2, 10 * day + 2000, 37.51, 127.00),
-   p(3, 10 * day + 3000, 35.10, 129.00), p(4, 11 * day + 1000, 35.10, 129.00)), 37.5, 127.0, false)
-  val stops = Trips.stops(Trips.days(trip, utc))
-  assertEquals(3, stops.size)
-  assertEquals(listOf(2, 1, 1), stops.map { it.photoCount })
-  assertEquals(listOf(1, 1, 2), stops.map { it.dayNumber })
+   p(3, 11 * day + 3000, 35.10, 129.00), p(4, 12 * day + 1000, 37.50, 127.01)), 37.5, 127.0, false)
+  val plan = Trips.plan(Trips.days(trip, utc))
+  assertEquals(2, plan.stops.size)
+  assertEquals(listOf(3, 1), plan.stops.map { it.photoCount })
+  assertEquals(listOf(listOf(1, 3), listOf(2)), plan.stops.map { it.days })
+  assertEquals(listOf(0, 1, 0), plan.route)
+  assertEquals(listOf(0), plan.dayRoutes[1])
  }
 }

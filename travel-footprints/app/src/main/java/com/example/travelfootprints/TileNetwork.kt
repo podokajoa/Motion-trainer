@@ -23,7 +23,7 @@ object TileNetwork {
    .cache(Cache(File(context.cacheDir,"map-http"),128L*1024*1024))
    .addInterceptor { chain ->
     chain.proceed(chain.request().newBuilder()
-     .header("User-Agent","TravelFootprints/0.19 (Android; com.example.travelfootprints)")
+     .header("User-Agent","TravelFootprints/0.20 (Android; com.example.travelfootprints)")
      .build())
    }.build()
   // OkHttp honors Cache-Control, Expires, ETag and Last-Modified from the tile server.
