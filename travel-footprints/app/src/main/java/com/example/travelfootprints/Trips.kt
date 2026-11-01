@@ -13,6 +13,9 @@ data class Trip(val key: String, val photos: List<PhotoPoint>, val lat: Double, 
 
 data class TripDay(val dayNumber: Int, val dayStart: Long, val photos: List<PhotoPoint>)
 
+/** A place visited during a trip: photos taken close together on one day. */
+data class TripStop(val lat: Double, val lng: Double, val photoCount: Int, val dayNumber: Int, val time: Long)
+
 object Trips {
  private const val DAY_MS = 86_400_000L
 
@@ -68,4 +71,24 @@ object Trips {
 
  fun dayCount(trip: Trip, zone: TimeZone = TimeZone.getDefault()): Int =
   days(trip, zone).lastOrNull()?.dayNumber ?: 1
+
+ /**
+  * The places of a trip in visiting order. Within one day, photos within [radiusKm] of an
+  * earlier stop that day join it; otherwise they start a new stop. At most [max] stops are
+  * kept (the ones with the most photos), still in visiting order.
+  */
+ fun stops(days: List<TripDay>, radiusKm: Double = 6.0, max: Int = 14): List<TripStop> {
+  class Acc(val lat: Double, val lng: Double, val day: Int, val time: Long) { var n = 0 }
+  val all = mutableListOf<Acc>()
+  days.forEach { d ->
+   val mine = mutableListOf<Acc>()
+   d.photos.sortedBy { it.date }.forEach { ph ->
+    val near = mine.minByOrNull { TravelClassifier.distanceKm(it.lat, it.lng, ph.lat, ph.lng) }
+    val hit = near?.takeIf { TravelClassifier.distanceKm(it.lat, it.lng, ph.lat, ph.lng) <= radiusKm }
+    if (hit != null) hit.n++ else { val a = Acc(ph.lat, ph.lng, d.dayNumber, ph.date); a.n = 1; mine.add(a); all.add(a) }
+   }
+  }
+  val kept = if (all.size > max) all.sortedByDescending { it.n }.take(max).sortedBy { it.time } else all
+  return kept.map { TripStop(it.lat, it.lng, it.n, it.day, it.time) }
+ }
 }

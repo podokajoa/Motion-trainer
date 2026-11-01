@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private lateinit var navMap: TextView
  private var map: MapLibreMap? = null
  private var openTrip: Trip? = null
+ private var albumRefresh: (() -> Unit)? = null
  private var showAbroad = false
 
  private val points = mutableListOf<PhotoPoint>()
@@ -201,6 +202,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  }
 
  private fun refresh() {
+  albumRefresh?.invoke()
   (homeList.adapter as HomeAdapter).submit()
   if (mapWindow.visibility == View.VISIBLE) { renderMapYears(); updateMapPins() }
  }
@@ -407,6 +409,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun openTrip(t: Trip) {
   openTrip = t
   val days = Trips.days(t)
+  val stops = Trips.stops(days)
+  requestPlaces(stops.map { it.lat to it.lng })
   val rows = mutableListOf<AlbumRow>(AlbumRow.Cover)
   var i = 0
   days.forEach { d -> rows.add(AlbumRow.Day(d)); d.photos.forEach { rows.add(AlbumRow.Photo(it, i++)) } }
@@ -431,11 +435,12 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    override fun onBindViewHolder(h: RecyclerView.ViewHolder, p: Int) {
     when (val r = rows[p]) {
      is AlbumRow.Photo -> { val iv = h.itemView as ImageView; loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(ordered, r.index) } }
-     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(r.day)) }
-     AlbumRow.Cover -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(albumCover(t, days) { pos -> grid.scrollToPositionWithOffset(dayPositions[pos], 0) }) }
+     is AlbumRow.Day -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(dayHeader(r.day, stops)) }
+     AlbumRow.Cover -> { val box = h.itemView as FrameLayout; box.removeAllViews(); box.addView(albumCover(t, days, stops) { pos -> grid.scrollToPositionWithOffset(dayPositions[pos], 0) }) }
     }
    }
   }
+  albumRefresh = { list.adapter?.notifyDataSetChanged() }
   inset.addView(list, FrameLayout.LayoutParams(-1, -1))
   w.body.addView(inset, FrameLayout.LayoutParams(-1, -1))
 
@@ -445,9 +450,9 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   albumPanel.visibility = View.VISIBLE
  }
 
- private fun closeTrip() { albumPanel.visibility = View.GONE; albumPanel.removeAllViews(); openTrip = null }
+ private fun closeTrip() { albumPanel.visibility = View.GONE; albumPanel.removeAllViews(); openTrip = null; albumRefresh = null }
 
- private fun albumCover(t: Trip, days: List<TripDay>, jump: (Int) -> Unit): View = LinearLayout(this).apply {
+ private fun albumCover(t: Trip, days: List<TripDay>, stops: List<TripStop>, jump: (Int) -> Unit): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(2), dp(2), dp(4))
   val top = FrameLayout(context)
   val img = photoBox().apply { background = Y2k.frame(ink, ink, 0, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
@@ -460,6 +465,24 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   titleRow.addView(Y2k.text(context, tripTitle(t), 24f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
   titleRow.addView(Y2k.text(context, "${Trips.dayCount(t)}일 · 사진 ${"%,d".format(t.photos.size)}장", 12f, Y2k.MUTED, true))
   addView(titleRow)
+  addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${stopNames(stops).size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
+   LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+  if (stops.size >= 2) {
+   addView(Y2k.text(context, "▶ 여행 경로", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(4), 0, dp(6)) })
+   addView(Y2k.RouteView(context, stops.map { it.lat to it.lng }).apply { background = null }.let { rv ->
+    FrameLayout(context).apply { background = Y2k.frame(Y2k.PAPER, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)); addView(rv, FrameLayout.LayoutParams(-1, -1)) }
+   }, LinearLayout.LayoutParams(-1, dp(200)))
+   addView(Y2k.text(context, "▶ 방문한 순서", 14f, ink, true), LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(4), dp(14), 0, dp(6)) })
+   stops.forEachIndexed { i, s ->
+    val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(3), dp(4), dp(3)) }
+    row.addView(Y2k.text(context, "${i + 1}", 12f, ink, true).apply { gravity = Gravity.CENTER; background = Y2k.frame(if (i == 0) Y2k.YELLOW else Color.WHITE, ink, 2, 0) },
+     LinearLayout.LayoutParams(dp(26), dp(26)).apply { rightMargin = dp(10) })
+    row.addView(Y2k.text(context, stopName(s), 14f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
+    row.addView(Y2k.text(context, "${s.dayNumber}일차 · ${s.photoCount}장", 12f, Y2k.MUTED, true))
+    addView(row)
+   }
+   addView(View(context), LinearLayout.LayoutParams(-1, dp(8)))
+  }
   if (days.size > 1) {
    val chips = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(6)) }
    days.forEachIndexed { i, d ->
@@ -469,10 +492,32 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   }
  }
 
- private fun dayHeader(d: TripDay): View = LinearLayout(this).apply {
-  orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(6), dp(14), dp(6), dp(8))
-  addView(Y2k.text(context, "▶ ${d.dayNumber}일차 — ${SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(d.dayStart))}", 14f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
-  addView(Y2k.text(context, "${d.photos.size}장", 12f, Y2k.MUTED, true))
+ private fun dayHeader(d: TripDay, stops: List<TripStop>): View = LinearLayout(this).apply {
+  orientation = LinearLayout.VERTICAL; setPadding(dp(6), dp(14), dp(6), dp(8))
+  val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+  top.addView(Y2k.text(context, "▶ ${d.dayNumber}일차 — ${SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(d.dayStart))}", 14f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+  top.addView(Y2k.text(context, "${d.photos.size}장", 12f, Y2k.MUTED, true))
+  addView(top)
+  val where = stopNames(stops.filter { it.dayNumber == d.dayNumber })
+  if (where.isNotEmpty()) addView(Y2k.text(context, where.joinToString(" → "), 13f, Y2k.MUTED, false).apply { setPadding(dp(14), dp(5), 0, 0) })
+ }
+
+ private fun stopName(s: TripStop) = placeFor(s.lat, s.lng) ?: CoarsePlaceLabel.forPoint(s.lat, s.lng)?.removeSuffix(" 부근") ?: "이름 찾는 중"
+ /** Names in visiting order, without repeating the same name back to back. */
+ private fun stopNames(stops: List<TripStop>): List<String> {
+  val out = mutableListOf<String>()
+  stops.forEach { val n = stopName(it); if (out.lastOrNull() != n) out.add(n) }
+  return out
+ }
+
+ private fun statRow(items: List<Pair<String, String>>): View = LinearLayout(this).apply {
+  orientation = LinearLayout.HORIZONTAL
+  items.forEachIndexed { i, (big, small) ->
+   val box = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; background = Y2k.frame(Y2k.GRAY, ink, 2, 0); setPadding(dp(4), dp(10), dp(4), dp(10)) }
+   box.addView(Y2k.text(context, big, 18f, ink, true).apply { gravity = Gravity.CENTER; maxLines = 1 })
+   box.addView(Y2k.text(context, small, 11f, Y2k.MUTED, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0) })
+   addView(box, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i > 0) leftMargin = dp(6) })
+  }
  }
 
  /** Full-screen viewer; swipe or tap the left/right edge to move between photos. */
