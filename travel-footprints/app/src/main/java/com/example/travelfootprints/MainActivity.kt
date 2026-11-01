@@ -530,7 +530,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun fetchRouteStyle(): String? {
   routeStyleJson?.let { return it }
   return try {
-   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.20 (Android; com.example.travelfootprints)").build()
+   val req = okhttp3.Request.Builder().url(TileNetwork.STYLE_URL).header("User-Agent", "TravelFootprints/0.21 (Android; com.example.travelfootprints)").build()
    val body = okhttp3.OkHttpClient().newCall(req).execute().use { it.body?.string() } ?: return null
    val o = JSONObject(body); val layers = o.getJSONArray("layers"); val out = JSONArray()
    for (i in 0 until layers.length()) {
@@ -560,7 +560,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     if (json == null) { fail(); return@runOnUiThread }
     try {
      val w = resources.displayMetrics.widthPixels - dp(60); val h = dp(226)
-     val pts = plan.trail + plan.stops.map { it.lat to it.lng }
+     val pts = plan.trail + plan.dots + plan.stops.map { it.lat to it.lng }
      val minLat = pts.minOf { it.first }; val maxLat = pts.maxOf { it.first }
      val minLng = pts.minOf { it.second }; val maxLng = pts.maxOf { it.second }
      val padLat = max((maxLat - minLat) * 0.18, 0.012); val padLng = max((maxLng - minLng) * 0.18, 0.012)
@@ -576,8 +576,10 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
        val line = Paint().apply { style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND; isAntiAlias = true }
        val path = android.graphics.Path()
        plan.trail.forEachIndexed { i, ll -> val q = shot.pixelForLatLng(LatLng(ll.first, ll.second)); if (i == 0) path.moveTo(q.x, q.y) else path.lineTo(q.x, q.y) }
-       line.color = Color.WHITE; line.strokeWidth = dpf(7f); c.drawPath(path, line)
-       line.color = Y2k.BLUE; line.strokeWidth = dpf(3.5f); c.drawPath(path, line)
+       line.color = Color.argb(200, 255, 255, 255); line.strokeWidth = dpf(5f); c.drawPath(path, line)
+       line.color = Y2k.BLUE; line.strokeWidth = dpf(2.5f); c.drawPath(path, line)
+       val dot = Paint(); val dr = dpf(3f)
+       plan.dots.forEach { ll -> val q = shot.pixelForLatLng(LatLng(ll.first, ll.second)); dot.color = ink; c.drawRect(q.x - dr - 1f, q.y - dr - 1f, q.x + dr + 1f, q.y + dr + 1f, dot); dot.color = Color.WHITE; c.drawRect(q.x - dr, q.y - dr, q.x + dr, q.y + dr, dot) }
        val fill = Paint(); val num = Paint().apply { color = ink; textAlign = Paint.Align.CENTER; isAntiAlias = true; typeface = Y2k.bold; textSize = dpf(12f) }
        val r = dpf(11f)
        plan.stops.forEachIndexed { i, s ->
@@ -672,7 +674,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    style.addSource(GeoJsonSource("trips"))
    style.addLayer(SymbolLayer("trip-pin", "trips").withProperties(
     PropertyFactory.iconImage(Expression.get("icon")),
-    PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
+    PropertyFactory.iconAllowOverlap(false), PropertyFactory.iconIgnorePlacement(false), PropertyFactory.iconPadding(6f),
     PropertyFactory.symbolSortKey(Expression.get("order"))))
    updateMapPins()
    if (mapWindow.visibility == View.VISIBLE) fitTrips()
@@ -681,7 +683,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    val px = g.projection.toScreenLocation(ll)
    val r = dp(34).toFloat()
    val hit = g.queryRenderedFeatures(android.graphics.RectF(px.x - r, px.y - r, px.x + r, px.y + r), "trip-pin")
-    .maxByOrNull { it.getNumberProperty("order")?.toDouble() ?: 0.0 }
+    .minByOrNull { it.getNumberProperty("order")?.toDouble() ?: 0.0 }
    val key = hit?.getStringProperty("key")
    val trip = trips.firstOrNull { it.key == key }
    if (trip != null) { openTrip(trip); true } else false
@@ -708,7 +710,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    Feature.fromGeometry(Point.fromLngLat(t.lng, t.lat)).apply {
     addStringProperty("key", t.key)
     addStringProperty("icon", pinId(t))
-    addNumberProperty("order", shown.size - i) // newest on top
+    addNumberProperty("order", i) // newest first: wins when pins collide
    }
   }
   style.getSourceAs<GeoJsonSource>("trips")?.setGeoJson(FeatureCollection.fromFeatures(features))
