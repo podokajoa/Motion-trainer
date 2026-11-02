@@ -58,3 +58,12 @@
 - 설치: 폰에서 https://github.com/podokajoa/Motion-trainer/releases/download/travel-footprints-latest/travel-footprints.apk 를 받아 설치
 - APK는 GitHub Actions가 main에 올라올 때마다 자동으로 만들어요. 기존 앱을 지우지 않고 업데이트하려면 저장소 Secret `DEBUG_KEYSTORE_B64`(집 PC `debug.keystore`의 base64)가 필요해요.
 - 사진과 분석 기록은 폰 안에만 저장돼요.
+
+## 삼자대면 (gpt-chat/)
+미나 · Claude · GPT 셋이 단톡방처럼 대화하는 화면이에요. 폰 웹앱이 아니라 **내 PC에서만** 돌아가요.
+
+- Claude는 Claude Code CLI(`claude -p --resume`), GPT는 Codex CLI(`codex exec resume`)로 각자 자기 대화를 이어 가요. 새 메시지만 넘겨도 둘 다 앞의 대화를 기억해요.
+- API 키 없이 Claude 구독과 ChatGPT 구독 로그인으로 돌아가요.
+- 누가 답할지(둘 다 / Claude만 / GPT만) 고를 수 있고, "둘이 토론시키기"를 누르면 Claude와 GPT가 두 번씩 주고받아요.
+- 실행: 윈도우에서 `start.bat` 더블클릭 → 브라우저에 http://localhost:3939 이 열려요. 처음 한 번은 터미널에서 `codex login`, `claude`(로그인)를 해 두어야 해요.
+- 대화 내용은 PC의 `gpt-chat/chat-state.json`에만 저장돼요.
