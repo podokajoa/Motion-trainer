@@ -110,6 +110,7 @@
           <option value="normal">보통 (3초마다, 최대 20장)</option>
           <option value="dense">촘촘하게 (1.5초마다, 최대 40장)</option>
         </select></label>
+      <button id="draw" title="입력창에 적은 내용을 GPT가 그림으로 그려요 (Claude는 화면 시안을 코드로 만들어 줘요)">🎨 GPT가 그리기</button>
       <button id="debate" title="Claude와 GPT가 두 번씩 주고받아요">둘이 토론시키기</button>
     </div>
     <div id="chosen"></div>
@@ -128,6 +129,7 @@
   const log = document.getElementById('log');
   const typingEl = document.getElementById('typing');
   const text = document.getElementById('text');
+  const drawBtn = document.getElementById('draw');
   const sendBtn = document.getElementById('send');
   const debateBtn = document.getElementById('debate');
   const titleEl = document.getElementById('title');
@@ -156,11 +158,29 @@
       tag.textContent = NAMES[m.who];
       el.appendChild(tag);
     }
+    // ```html 코드 블록은 안전하게 격리한 작은 화면(iframe)으로 그림처럼 보여 준다.
+    const htmls = [];
+    const plain = m.text.replace(/```html\s*([\s\S]*?)```/g, (_, code) => { htmls.push(code); return '(화면 시안 ↓)'; });
     const body = document.createElement('span');
     // **굵게** 만 표시하고 나머지는 글자 그대로
-    body.innerHTML = m.text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    body.innerHTML = plain.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     el.appendChild(body);
+    htmls.forEach((code) => {
+      const fr = document.createElement('iframe');
+      fr.setAttribute('sandbox', '');
+      fr.style.cssText = 'display:block;width:360px;max-width:100%;height:640px;border:1px solid var(--line);border-radius:14px;background:#fff;margin:8px 0';
+      fr.srcdoc = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:">' + code;
+      el.appendChild(fr);
+      const d = document.createElement('details');
+      const sm = document.createElement('summary');
+      sm.textContent = '코드 보기';
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'white-space:pre-wrap;font-size:12px';
+      pre.textContent = code;
+      d.appendChild(sm); d.appendChild(pre);
+      el.appendChild(d);
+    });
     const vids = {};
     (m.files || []).forEach((f) => {
       if (f.video) {
@@ -202,7 +222,7 @@
 
   function setBusy(b) {
     busy = b;
-    sendBtn.disabled = debateBtn.disabled = b;
+    sendBtn.disabled = debateBtn.disabled = drawBtn.disabled = b;
   }
 
   function setTyping(t) {
@@ -470,6 +490,13 @@
   for (const k in sel) sel[k].addEventListener('change', () => post('/api/models', { [k]: sel[k].value, room: active }));
   es.addEventListener('models', (e) => showModels(JSON.parse(e.data)));
 
+  drawBtn.addEventListener('click', async () => {
+    const v = text.value.trim();
+    if (!v) { alert('무엇을 그릴지 입력창에 적은 뒤 눌러 주세요.'); return; }
+    const r = await fetch('/api/draw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: v, room: active }) });
+    if (r.ok) { text.value = ''; autosize(); }
+    else { try { alert((await r.json()).error || '보내지 못했어요.'); } catch (_) {} }
+  });
   debateBtn.addEventListener('click', () => post('/api/debate', { rounds: 2, room: active }));
 </script>
 </body>
