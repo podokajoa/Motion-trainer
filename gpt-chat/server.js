@@ -111,8 +111,8 @@ function fileNotes(m, me) {
   (m.files || []).forEach((f) => { if (f.video) (vids[f.video] = vids[f.video] || []).push(f); });
   const notes = Object.keys(vids).map((name) => {
     const fr = vids[name];
-    const head = `(미나가 영상 "${name}"(길이 약 ${fr[0].dur}초)을 올렸어. 소리는 들을 수 없어서, 같은 간격으로 뽑은 장면 사진 ${fr.length}장을 시간 순서로 보내. ` +
-      `장면은 ${fr.map((f) => f.t + '초').join(', ')} 지점이야. 사진으로 보이는 것만 말하고, 소리나 장면 사이는 모른다고 해.`;
+    const head = `(미나가 영상 "${name}"(길이 약 ${fr[0].dur}초)을 올렸어. 소리는 들을 수 없어서, 영상에서 뽑은 장면 사진 ${fr.length}장을 시간 순서로 보내. ` +
+      `장면은 ${fr.map((f) => f.t + '초').join(', ')} 지점이야(간격이 다르면 화면이 바뀐 순간 위주로 뽑은 거야). 사진으로 보이는 것만 말하고, 장면 사이나 소리는 모른다고 해.`;
     return me === 'claude'
       ? head + ` Read 도구로 ${fr.map((f) => 'uploads/' + f.file).join(' , ')} 를 차례로 열어서 봐.)`
       : head + ' 첨부 이미지로 같이 보냈어.)';
