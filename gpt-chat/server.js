@@ -7,6 +7,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { freshProject, normalizeProject, parseProposal, applyUpdate, projectContext } = require('./project-state');
+const { parsePrLink, fetchPrStatus } = require('./github-status');
 
 const PORT = Number(process.env.PORT) || 3939;
 const DIR = __dirname;
@@ -38,10 +40,11 @@ function freshRoom() {
   };
 }
 
-let state = { rooms: [], models: { claude: '', gpt: '' } }; // models ''이면 각 CLI의 기본 모델
+let state = { rooms: [], models: { claude: '', gpt: '' }, project: freshProject() }; // 모델 ''이면 CLI 기본 모델
 try {
   const old = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   state.models = Object.assign(state.models, old.models);
+  state.project = normalizeProject(old.project);
   if (Array.isArray(old.rooms)) state.rooms = old.rooms;
   else if (Array.isArray(old.messages) && old.messages.length) {
     // 방이 없던 예전 저장 형식: 지금까지 대화를 방 하나로 옮긴다.
@@ -57,8 +60,43 @@ const roomInfo = (r) => ({ id: r.id, title: r.title, t: r.t, count: r.messages.l
 const roomList = () => state.rooms.map(roomInfo).sort((a, b) => b.t - a.t);
 
 function save() {
-  try { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 1)); } catch (_) {}
+  const temp = STATE_FILE + '.tmp';
+  try {
+    fs.writeFileSync(temp, JSON.stringify(state, null, 1));
+    fs.renameSync(temp, STATE_FILE);
+    return true;
+  } catch (e) {
+    console.error('대화·프로젝트 저장 실패:', e.message);
+    return false;
+  }
 }
+
+let checkingGithub = false;
+async function syncGithub() {
+  if (checkingGithub || !state.project.currentTask) return;
+  const evidence = state.project.currentTask.evidence;
+  if (!evidence) return;
+  checkingGithub = true;
+  try {
+    const result = await fetchPrStatus(evidence);
+    // 기다리는 동안 다른 작업이 등록됐으면 오래된 조회 결과는 버린다.
+    if (result && state.project.currentTask && state.project.currentTask.evidence === evidence) {
+      state.project.github = result;
+      save();
+      broadcast('project', state.project);
+    }
+  } catch (_) {
+    // 비공개 저장소·오프라인·API 호출 제한 시 '확인 불가'를 명시한다.
+    const target = parsePrLink(evidence);
+    if (target && state.project.currentTask && state.project.currentTask.evidence === evidence) {
+      state.project.github = { url: target.url, status: 'unavailable', checks: 'unknown', checkedAt: Date.now() };
+      save();
+      broadcast('project', state.project);
+    }
+  } finally { checkingGithub = false; }
+}
+const githubTimer = setInterval(syncGithub, 10 * 60 * 1000);
+githubTimer.unref();
 
 // ---------- 실시간 화면 갱신 (SSE) ----------
 const clients = new Set();
@@ -94,12 +132,14 @@ function intro(me) {
   return [
     `너는 ${NAMES[me]}야. 지금 미나, ${other}와 셋이 그룹채팅 중이야.`,
     '이 방은 미나가 자기 PC에서 돌리는 "삼자대면" 앱이야. Claude는 Claude Code CLI, GPT는 Codex CLI로 연결돼 있고,',
-    '각자 모델은 미나가 화면 위쪽 메뉴에서 바꿀 수 있어. 앞선 다른 대화나 프로젝트 기억은 없으니 모르는 건 모른다고 해.',
+    '각자 모델은 미나가 화면 위쪽 메뉴에서 바꿀 수 있어. 다른 방의 프로젝트 확정 사항은 아래 공동 진행판을 참고해.',
     '규칙:',
     '- 한국어로, 단톡방에서 말하듯 짧게(보통 2~6줄) 답해.',
     `- ${other}의 말에 동의하면 동의하고, 생각이 다르면 분명하게 말해. 서로 띄워 주기만 하지 마.`,
     '- 이름표나 "[Claude]" 같은 접두어는 붙이지 마. 네 말만 써.',
-    '- 파일을 고치거나 명령을 실행하지 말고 대화만 해.',
+    '- 이 채팅은 읽기 전용이므로 실행하지 않은 코딩·PR·테스트를 완료했다고 주장하지 마.',
+    me === 'claude' ? '- 너는 주 실행 담당자야. 구현 방안과 구체적인 다음 작업·완료 조건을 제시해. 코드 수정은 별도 실행 환경에서 명시적 요청이 있을 때만 해.' : '- 너는 독립 검토자야. Claude 안의 빈틈·위험·사용성을 검토하고 개선안을 하나로 좁혀. 실행 담당 역할을 빼앗지 마.',
+    '- 같은 주장 반복은 피하고, 한 번의 회의에 실행 가능한 다음 행동 하나만 제안해.',
     '- 앱 화면이나 시안을 보여 달라고 하면, 폰 크기(가로 360px)로 보이는 완결된 HTML 한 덩어리를 ```html 코드 블록으로 써. 스크립트와 바깥 주소는 쓰지 마. 대화창이 그 코드를 그림처럼 보여 줘.',
     '- 미나가 사진이나 글자 파일을 올리면 직접 보고 그 내용에 대해 말해. 못 열면 못 열었다고 솔직히 말해.',
     '',
@@ -141,10 +181,13 @@ function newsFor(room, me) {
 }
 
 // 규칙이 바뀐 뒤에도 예전 방의 Claude·GPT가 알 수 있게, 이어 가는 대화에 한 번만 덧붙인다.
-const RULES_VER = 2;
+const RULES_VER = 3;
 function rulesUpdate() {
   return [
-    '(알림: 이 방 규칙이 바뀌었어. 앞서 "대화만 해"라고 한 건 그대로지만, 아래는 이제 돼.',
+    '(알림: 삼자대면이 토론 중심에서 실행 관리 중심으로 바뀌었어.',
+    '- 아래 공동 진행판은 모든 방이 공유하고, 확정된 결정·실행 담당·완료 조건을 담아. 미나 승인 없이 회의 초안을 확정 사실처럼 말하지 마.',
+    '- Claude는 실행 방안을, GPT는 독립 검토를 맡아. 같은 얘기 반복 대신 다음 행동 하나로 좁혀.',
+    '- 이 채팅 자체는 읽기 전용이야. 실제 코드 수정·PR·빌드·실기기 테스트 여부를 구분해.',
     '- 미나가 사진, 글자 파일, 영상에서 뽑은 장면 사진을 올리면 직접 보고 그 내용에 대해 말해.',
     '- 앱 화면이나 시안을 보여 달라고 하면, 폰 크기(가로 360px)로 보이는 완결된 HTML 한 덩어리를 ```html 코드 블록으로 써. 스크립트와 바깥 주소는 쓰지 마. 대화창이 그 코드를 그림처럼 보여 줘.',
     '- GPT는 미나가 🎨 버튼을 누르면 그림을 그릴 수 있고, 그림은 대화창에 올라와.)',
@@ -161,6 +204,7 @@ function buildPrompt(room, me) {
     return `[${NAMES[m.who]}${m.who === me ? '(너)' : ''}] ${m.text}${notes ? '\n' + notes : ''}`;
   }).join('\n\n');
   return (fresh ? intro(me) : (p.rules || 0) < RULES_VER ? rulesUpdate() : '') +
+    projectContext(state.project) + '\n\n' +
     '새로 올라온 메시지:\n\n' + (lines || '(새 메시지 없음)') +
     `\n\n이어서 ${NAMES[me]}로서 네 답만 써.`;
 }
@@ -289,10 +333,45 @@ async function turn(room, who) {
   } else {
     addMessage(room, who, `${NAMES[who]} 응답 실패:\n${String(r.error).trim().slice(0, 1500)}`, { system: true });
   }
+  return r.ok;
+}
+
+// 한 라운드가 끝나면 AI들의 의견을 한 장의 실행 초안으로 만든다.
+// 초안은 사용자가 '채택'을 누르기 전까지 확정된 프로젝트 정보에 반영되지 않는다.
+async function summarizeMeeting(room) {
+  const recent = room.messages.filter((m) => !m.system).slice(-12)
+    .map((m) => `[${NAMES[m.who]}] ${String(m.text || '').slice(0, 1800)}`).join('\n\n');
+  const prompt = [
+    '너는 삼자대면의 중립 회의 기록 담당자야. 아래 기록만 이용하고 새로운 사실을 만들지 마.',
+    '회의 결론이 없다면 결정은 빈 문자열로, 실행 과제가 불분명하면 nextTask는 null로 둬.',
+    '서로 반복하거나 동의한 말은 빼고, 미나가 지금 해야 할 일이 최소가 되도록 다음 작업 하나만 골라.',
+    '실제 구현·PR·빌드·폰 테스트가 수행됐다는 증거가 없으면 완료라고 쓰지 마.',
+    '오직 JSON 객체 하나만 출력해. 마크다운 금지. 다음 스키마를 정확히 사용해:',
+    '{"summary":"회의 결과 한두 문장","decision":"미나의 승인이 필요한 제안 한 문장 또는 빈 문자열","nextTask":{"title":"하나의 실행 작업","owner":"claude","doneWhen":"관찰 가능한 완료 기준","status":"todo","evidence":""},"risk":"가장 중요한 위험 하나"}',
+    '현재 확정 상태:', projectContext(state.project),
+    '이번 논의:', recent,
+  ].join('\n\n');
+  const outfile = `summary-${room.id}-${Date.now()}.txt`;
+  const args = ['exec', '--skip-git-repo-check', '-s', 'read-only', '-o', outfile, '-'];
+  if (state.models.gpt) args.splice(1, 0, '-m', state.models.gpt);
+  const result = await run(CODEX_CMD, args, prompt);
+  let output = '';
+  try { output = fs.readFileSync(path.join(DIR, outfile), 'utf8'); } catch (_) {}
+  try { fs.unlinkSync(path.join(DIR, outfile)); } catch (_) {}
+  const proposal = result.code === 0 ? parseProposal(output, room.id) : null;
+  if (!proposal) {
+    addMessage(room, 'gpt', '회의 요약을 자동으로 만들지 못했어. 원래 대화는 그대로 보존됐어.', { system: true });
+    return;
+  }
+  state.project.pending = proposal;
+  save();
+  broadcast('project', state.project);
+  addMessage(room, 'mina', '회의 요약 초안이 준비됐어. 위의 공동 진행판에서 확인하고 채택하거나 버릴 수 있어.', { system: true, note: true });
 }
 
 // 방마다 따로 바쁘다: 한 방에서 답을 기다리는 동안 다른 방에서 대화할 수 있다.
 const busyRooms = new Set();
+let meetingBusy = false; // 대화방이 달라도 회의 초안은 전역 한 장이므로 겹치지 않게 한다.
 async function withBusy(room, fn) {
   if (busyRooms.has(room.id)) return false;
   busyRooms.add(room.id);
@@ -359,6 +438,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.write(`event: rooms\ndata: ${JSON.stringify(roomList())}\n\n`);
+    res.write(`event: project\ndata: ${JSON.stringify(state.project)}\n\n`);
     clients.add(res);
     const ping = setInterval(() => res.write(': ping\n\n'), 20000);
     req.on('close', () => { clearInterval(ping); clients.delete(res); });
@@ -367,6 +447,25 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/rooms') {
     return json(res, 200, roomList());
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/project') {
+    return json(res, 200, state.project);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/project') {
+    const body = await readBody(req);
+    const result = applyUpdate(state.project, body.action, body);
+    if (result.error) return json(res, 409, { error: result.error });
+    const previous = state.project;
+    state.project = result.project;
+    if (!save()) {
+      state.project = previous;
+      return json(res, 500, { error: '진행사항 파일을 저장하지 못했어. 저장 공간·권한을 확인해 줘.' });
+    }
+    broadcast('project', state.project);
+    if (body.action === 'approve' || body.action === 'task') void syncGithub();
+    return json(res, 200, { ok: true, project: state.project });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/room') {
@@ -456,15 +555,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/debate') {
-    const { rounds, room: roomId } = await readBody(req);
+    const { room: roomId } = await readBody(req);
     const room = getRoom(roomId);
     if (!room) return json(res, 404, { error: '대화방을 찾을 수 없어요.' });
-    const n = Math.min(Math.max(Number(rounds) || 2, 1), 4);
     if (busyRooms.has(room.id)) return json(res, 409, { error: 'busy' });
+    if (meetingBusy) return json(res, 409, { error: '다른 방에서 회의 결론을 정리 중이야. 잠시 뒤 다시 해 줘.' });
+    if (state.project.pending) return json(res, 409, { error: '아직 채택하거나 버리지 않은 회의 초안이 있어.' });
+    meetingBusy = true;
     json(res, 200, { ok: true });
-    addMessage(room, 'mina', '둘이 이 얘기로 이야기 나눠 봐. 서로의 말에 반응해 줘.');
+    addMessage(room, 'mina', '이번 논의를 반복하지 말고 서로 다른 관점에서 한 번씩 검토한 뒤, 실행할 다음 작업 하나와 완료 조건을 정리해 줘.');
     return withBusy(room, async () => {
-      for (let i = 0; i < n; i++) { await turn(room, 'claude'); await turn(room, 'gpt'); }
+      try {
+        const claudeOk = await turn(room, 'claude');
+        if (!claudeOk) return;
+        const gptOk = await turn(room, 'gpt');
+        if (!gptOk) return;
+        await summarizeMeeting(room);
+      } finally { meetingBusy = false; }
     });
   }
 
@@ -493,4 +600,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`삼자대면 준비 완료: http://localhost:${PORT}`);
   console.log('이 창을 닫으면 대화방도 꺼져요.');
+  void syncGithub();
 });
