@@ -140,6 +140,18 @@ function newsFor(room, me) {
   return room.messages.slice(p.seen).filter((m) => !m.system && (fresh || m.who !== me));
 }
 
+// 규칙이 바뀐 뒤에도 예전 방의 Claude·GPT가 알 수 있게, 이어 가는 대화에 한 번만 덧붙인다.
+const RULES_VER = 2;
+function rulesUpdate() {
+  return [
+    '(알림: 이 방 규칙이 바뀌었어. 앞서 "대화만 해"라고 한 건 그대로지만, 아래는 이제 돼.',
+    '- 미나가 사진, 글자 파일, 영상에서 뽑은 장면 사진을 올리면 직접 보고 그 내용에 대해 말해.',
+    '- 앱 화면이나 시안을 보여 달라고 하면, 폰 크기(가로 360px)로 보이는 완결된 HTML 한 덩어리를 ```html 코드 블록으로 써. 스크립트와 바깥 주소는 쓰지 마. 대화창이 그 코드를 그림처럼 보여 줘.',
+    '- GPT는 미나가 🎨 버튼을 누르면 그림을 그릴 수 있고, 그림은 대화창에 올라와.)',
+    '', '',
+  ].join('\n');
+}
+
 function buildPrompt(room, me) {
   const p = room[me];
   const fresh = !p.sid;
@@ -148,7 +160,7 @@ function buildPrompt(room, me) {
     const notes = fileNotes(m, me);
     return `[${NAMES[m.who]}${m.who === me ? '(너)' : ''}] ${m.text}${notes ? '\n' + notes : ''}`;
   }).join('\n\n');
-  return (fresh ? intro(me) : '') +
+  return (fresh ? intro(me) : (p.rules || 0) < RULES_VER ? rulesUpdate() : '') +
     '새로 올라온 메시지:\n\n' + (lines || '(새 메시지 없음)') +
     `\n\n이어서 ${NAMES[me]}로서 네 답만 써.`;
 }
@@ -269,6 +281,7 @@ async function turn(room, who) {
   setTyping(room, who, false);
   if (r.ok) {
     room[who].sid = r.sid;
+    room[who].rules = RULES_VER;
     room[who].seen = upto;
     // seen은 프롬프트를 만든 시점까지만 올린다. 그사이 상대가 쓴 말은 다음 차례에 받는다.
     // 자기 말은 buildPrompt에서 걸러진다.
