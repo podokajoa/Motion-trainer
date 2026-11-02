@@ -64,6 +64,8 @@
 
 - Claude는 Claude Code CLI(`claude -p --resume`), GPT는 Codex CLI(`codex exec resume`)로 각자 자기 대화를 이어 가요. 새 메시지만 넘겨도 둘 다 앞의 대화를 기억해요.
 - API 키 없이 Claude 구독과 ChatGPT 구독 로그인으로 돌아가요.
+- 왼쪽 목록에서 대화방을 여러 개 만들 수 있어요(방마다 Claude·GPT 기억이 따로, 제목은 첫 말로 자동). 더블클릭으로 이름 바꾸기, ✕로 지우기
+- 📎로 사진(png/jpg/gif/webp)이나 글자 파일(txt/md/csv/json 등)을 올리면 둘 다 볼 수 있어요. 붙여넣기·끌어다 놓기도 돼요
 - 누가 답할지(둘 다 / Claude만 / GPT만) 고를 수 있고, "둘이 토론시키기"를 누르면 Claude와 GPT가 두 번씩 주고받아요.
 - 실행: 윈도우에서 `start.bat` 더블클릭 → 브라우저에 http://localhost:3939 이 열려요. 처음 한 번은 터미널에서 `codex login`, `claude`(로그인)를 해 두어야 해요.
 - 대화 내용은 PC의 `gpt-chat/chat-state.json`에만 저장돼요.
