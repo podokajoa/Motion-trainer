@@ -21,7 +21,26 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; display: flex; flex-direction: column; }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; display: flex; flex-direction: row; }
+  main { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+  aside { width: 240px; flex: none; height: 100%; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  aside .top { padding: 12px; display: flex; gap: 8px; align-items: center; }
+  aside .top b { flex: 1; font-size: 15px; }
+  #rooms { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  .room { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 14px; }
+  .room:hover { background: var(--bg); }
+  .room.on { background: var(--bg); font-weight: 700; }
+  .room .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .room .sub { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .room .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mina); flex: none; }
+  .room .x { border: 0; background: none; padding: 0 4px; color: var(--muted); visibility: hidden; }
+  .room:hover .x { visibility: visible; }
+  #menu { display: none; padding: 6px 10px; }
+  @media (max-width: 700px) {
+    aside { position: fixed; z-index: 5; left: 0; top: 0; transform: translateX(-100%); transition: transform .15s; }
+    aside.open { transform: none; box-shadow: 0 0 30px rgba(0,0,0,.4); }
+    #menu { display: inline-block; }
+  }
   header { flex-wrap: wrap; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 17px; margin: 0; flex: 1; }
   header .who { font-size: 13px; color: var(--muted); }
@@ -47,17 +66,28 @@
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   .spacer { flex: 1; }
   textarea { flex: 1; resize: none; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; min-height: 46px; max-height: 160px; }
+  #attach { padding: 10px 12px; }
+  #chosen { display: flex; gap: 6px; flex-wrap: wrap; }
+  #chosen span { font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 10px; }
+  #chosen button { border: 0; background: none; padding: 0 4px; color: var(--muted); }
+  .msg img { display: block; max-width: 240px; max-height: 240px; border-radius: 10px; margin: 4px 0; }
+  .msg .file { display: inline-block; font-size: 13px; opacity: .85; margin: 2px 0; }
   #send { background: var(--mina); color: #fff; border-color: var(--mina); padding: 10px 18px; }
 </style>
 </head>
 <body>
+<aside id="side">
+  <div class="top"><b>삼자대면</b><button id="newroom">＋ 새 대화</button></div>
+  <div id="rooms"></div>
+</aside>
+<main>
 <header>
-  <h1>삼자대면</h1>
+  <button id="menu" title="대화 목록">☰</button>
+  <h1 id="title">삼자대면</h1>
   <span class="models">
     <label>Claude <select id="m-claude"><option value="">기본</option></select></label>
     <label>GPT <select id="m-gpt"><option value="">기본</option></select></label>
   </span>
-  <button id="reset" title="대화를 지우고 새로 시작">새 대화</button>
 </header>
 
 <div id="log"></div>
@@ -73,12 +103,16 @@
       <span class="spacer"></span>
       <button id="debate" title="Claude와 GPT가 두 번씩 주고받아요">둘이 토론시키기</button>
     </div>
+    <div id="chosen"></div>
     <div class="row">
+      <input type="file" id="picker" multiple hidden accept="image/*,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.log,.xml,.yml,.yaml,.kt,.java">
+      <button id="attach" title="사진·글자 파일 올리기 (붙여넣기, 끌어다 놓기도 돼요)">📎</button>
       <textarea id="text" rows="1" placeholder="메시지 입력 (Enter 보내기, Shift+Enter 줄바꿈)"></textarea>
       <button id="send">보내기</button>
     </div>
   </div>
 </footer>
+</main>
 
 <script>
   const NAMES = { mina: '미나', claude: 'Claude', gpt: 'GPT' };
@@ -87,7 +121,9 @@
   const text = document.getElementById('text');
   const sendBtn = document.getElementById('send');
   const debateBtn = document.getElementById('debate');
-  const resetBtn = document.getElementById('reset');
+  const titleEl = document.getElementById('title');
+  const sideEl = document.getElementById('side');
+  const roomsEl = document.getElementById('rooms');
   let to = 'both';
   let busy = false;
 
@@ -116,13 +152,27 @@
     body.innerHTML = m.text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     el.appendChild(body);
+    (m.files || []).forEach((f) => {
+      if (f.kind === 'image') {
+        const img = document.createElement('img');
+        img.src = '/uploads/' + encodeURIComponent(f.file);
+        img.alt = f.name;
+        el.insertBefore(img, body);
+      } else {
+        const t = document.createElement('div');
+        t.className = 'file';
+        t.textContent = '📄 ' + f.name;
+        el.insertBefore(t, body);
+      }
+    });
+    if (!m.text) body.remove();
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
   }
 
   function setBusy(b) {
     busy = b;
-    sendBtn.disabled = debateBtn.disabled = resetBtn.disabled = b;
+    sendBtn.disabled = debateBtn.disabled = b;
   }
 
   function setTyping(t) {
@@ -131,10 +181,79 @@
   }
 
   const es = new EventSource('/api/events');
-  es.addEventListener('init', (e) => { const d = JSON.parse(e.data); render(d.messages); setTyping(d.typing); setBusy(d.busy); });
-  es.addEventListener('message', (e) => add(JSON.parse(e.data)));
-  es.addEventListener('typing', (e) => setTyping(JSON.parse(e.data)));
-  es.addEventListener('busy', (e) => setBusy(JSON.parse(e.data)));
+
+  // ---- 대화방 목록 (스레드처럼 방마다 따로) ----
+  let rooms = [], active = null, loaded = null;
+  const unread = new Set();
+  try { active = localStorage.getItem('room'); } catch (_) {}
+
+  function ago(t) {
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return '방금';
+    if (m < 60) return m + '분 전';
+    if (m < 1440) return Math.round(m / 60) + '시간 전';
+    return Math.round(m / 1440) + '일 전';
+  }
+
+  function drawRooms() {
+    roomsEl.innerHTML = '';
+    rooms.forEach((r) => {
+      const el = document.createElement('div');
+      el.className = 'room' + (r.id === active ? ' on' : '');
+      const t = document.createElement('div');
+      t.className = 't';
+      t.textContent = r.title;
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = r.busy ? '답하는 중…' : ago(r.t);
+      t.appendChild(sub);
+      el.appendChild(t);
+      if (unread.has(r.id)) { const d = document.createElement('span'); d.className = 'dot'; el.appendChild(d); }
+      const x = document.createElement('button');
+      x.className = 'x'; x.textContent = '✕'; x.title = '이 대화 지우기';
+      x.onclick = async (e) => {
+        e.stopPropagation();
+        if (confirm('"' + r.title + '" 대화를 지울까요?')) await post('/api/rooms/delete', { id: r.id });
+      };
+      el.appendChild(x);
+      el.onclick = () => { openRoom(r.id); sideEl.classList.remove('open'); };
+      el.ondblclick = async () => {
+        const n = prompt('대화 이름', r.title);
+        if (n && n.trim()) await post('/api/rooms/rename', { id: r.id, title: n.trim() });
+      };
+      roomsEl.appendChild(el);
+    });
+  }
+
+  async function openRoom(id) {
+    active = id; loaded = id; unread.delete(id);
+    try { localStorage.setItem('room', id); } catch (_) {}
+    const d = await (await fetch('/api/room?id=' + encodeURIComponent(id))).json();
+    if (active !== id) return;
+    render(d.messages); setTyping(d.typing); setBusy(d.busy);
+    titleEl.textContent = d.title;
+    drawRooms();
+  }
+
+  es.addEventListener('rooms', (e) => {
+    rooms = JSON.parse(e.data);
+    const cur = rooms.find((r) => r.id === active);
+    if (!cur) { openRoom(rooms[0].id); return; }
+    if (loaded !== active) { openRoom(active); return; }
+    setBusy(cur.busy); titleEl.textContent = cur.title;
+    drawRooms();
+  });
+  es.addEventListener('message', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.room === active) add(d.msg);
+    else if (!d.msg.system) { unread.add(d.room); drawRooms(); }
+  });
+  es.addEventListener('typing', (e) => { const d = JSON.parse(e.data); if (d.room === active) setTyping(d.typing); });
+  document.getElementById('newroom').addEventListener('click', async () => {
+    const r = await fetch('/api/rooms/new', { method: 'POST' });
+    if (r.ok) { const d = await r.json(); await openRoom(d.id); sideEl.classList.remove('open'); text.focus(); }
+  });
+  document.getElementById('menu').addEventListener('click', () => sideEl.classList.toggle('open'));
   es.onerror = () => { typingEl.textContent = '서버와 연결이 끊겼어요. 검은 창(start.bat)이 켜져 있는지 확인해 주세요.'; };
 
   document.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
@@ -147,10 +266,50 @@
     return r.ok;
   }
 
+  let pending = [];
+  const chosen = document.getElementById('chosen');
+  const picker = document.getElementById('picker');
+  function drawChosen() {
+    chosen.innerHTML = '';
+    pending.forEach((f, i) => {
+      const s = document.createElement('span');
+      s.textContent = f.name;
+      const x = document.createElement('button');
+      x.textContent = '✕';
+      x.onclick = () => { pending.splice(i, 1); drawChosen(); };
+      s.appendChild(x);
+      chosen.appendChild(s);
+    });
+  }
+  function addFiles(list) {
+    for (const f of list) {
+      if (pending.length >= 4) { alert('파일은 한 번에 4개까지예요.'); break; }
+      pending.push(f);
+    }
+    drawChosen();
+  }
+  document.getElementById('attach').addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => { addFiles(picker.files); picker.value = ''; });
+  text.addEventListener('paste', (e) => {
+    const fs = [...(e.clipboardData ? e.clipboardData.files : [])];
+    if (fs.length) { e.preventDefault(); addFiles(fs.map((f) => (f.name && f.name !== 'image.png') ? f : new File([f], 'paste-' + Date.now() + '.png', { type: f.type }))); }
+  });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+  const toB64 = (f) => new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1]);
+    r.onerror = no;
+    r.readAsDataURL(f);
+  });
+
   async function send() {
     const v = text.value.trim();
-    if (!v || busy) return;
-    if (await post('/api/send', { text: v, to })) { text.value = ''; autosize(); }
+    if ((!v && !pending.length) || busy) return;
+    const files = await Promise.all(pending.map(async (f) => ({ name: f.name, data: await toB64(f) })));
+    const r = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: v, to, files, room: active }) });
+    if (r.ok) { text.value = ''; pending = []; drawChosen(); autosize(); }
+    else { try { alert((await r.json()).error || '보내지 못했어요.'); } catch (_) { alert('보내지 못했어요.'); } }
   }
 
   sendBtn.addEventListener('click', send);
@@ -175,11 +334,10 @@
     }
     showModels(d.current);
   }).catch(() => {});
-  for (const k in sel) sel[k].addEventListener('change', () => post('/api/models', { [k]: sel[k].value }));
+  for (const k in sel) sel[k].addEventListener('change', () => post('/api/models', { [k]: sel[k].value, room: active }));
   es.addEventListener('models', (e) => showModels(JSON.parse(e.data)));
 
-  debateBtn.addEventListener('click', () => post('/api/debate', { rounds: 2 }));
-  resetBtn.addEventListener('click', () => { if (confirm('지금 대화를 지우고 새로 시작할까요?')) post('/api/reset'); });
+  debateBtn.addEventListener('click', () => post('/api/debate', { rounds: 2, room: active }));
 </script>
 </body>
 </html>

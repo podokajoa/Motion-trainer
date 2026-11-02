@@ -16,22 +16,45 @@ const CLAUDE_CMD = process.env.CLAUDE_CMD || 'claude';
 const CODEX_CMD = process.env.CODEX_CMD || 'codex';
 const TIMEOUT_MS = 5 * 60 * 1000;
 
+const UPLOAD_DIR = path.join(DIR, 'uploads');
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (_) {}
+const IMG_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+const TEXT_EXT = ['txt', 'md', 'csv', 'json', 'js', 'ts', 'py', 'html', 'css', 'log', 'xml', 'yml', 'yaml', 'kt', 'java'];
+const MAX_IMG = 8 * 1024 * 1024, MAX_TEXT = 1024 * 1024, MAX_FILES = 4, TEXT_INLINE = 20000;
+
 const NAMES = { mina: '미나', claude: 'Claude', gpt: 'GPT' };
 
-function freshState() {
+const NEW_TITLE = '새 대화';
+
+// 대화방(스레드): 방마다 메시지와 Claude·GPT 세션이 따로다.
+function freshRoom() {
   return {
+    id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    title: NEW_TITLE,
+    t: Date.now(),
     messages: [],
     claude: { sid: null, seen: 0 },
     gpt: { sid: null, seen: 0 },
-    models: { claude: '', gpt: '' }, // ''이면 각 CLI의 기본 모델
   };
 }
 
-let state = freshState();
+let state = { rooms: [], models: { claude: '', gpt: '' } }; // models ''이면 각 CLI의 기본 모델
 try {
-  state = Object.assign(freshState(), JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')));
-  state.models = Object.assign({ claude: '', gpt: '' }, state.models);
+  const old = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  state.models = Object.assign(state.models, old.models);
+  if (Array.isArray(old.rooms)) state.rooms = old.rooms;
+  else if (Array.isArray(old.messages) && old.messages.length) {
+    // 방이 없던 예전 저장 형식: 지금까지 대화를 방 하나로 옮긴다.
+    const r = freshRoom();
+    Object.assign(r, { messages: old.messages, claude: old.claude || r.claude, gpt: old.gpt || r.gpt, title: '이전 대화' });
+    state.rooms = [r];
+  }
 } catch (_) {}
+if (!state.rooms.length) state.rooms.push(freshRoom());
+
+const getRoom = (id) => state.rooms.find((r) => r.id === id);
+const roomInfo = (r) => ({ id: r.id, title: r.title, t: r.t, count: r.messages.length, busy: busyRooms.has(r.id) });
+const roomList = () => state.rooms.map(roomInfo).sort((a, b) => b.t - a.t);
 
 function save() {
   try { fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 1)); } catch (_) {}
@@ -43,17 +66,25 @@ function broadcast(type, data) {
   const line = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) res.write(line);
 }
-const typing = { claude: false, gpt: false };
-function setTyping(who, on) {
-  typing[who] = on;
-  broadcast('typing', typing);
+const typingMap = {}; // 방 id → { claude, gpt }
+const typingOf = (room) => typingMap[room.id] || { claude: false, gpt: false };
+function setTyping(room, who, on) {
+  typingMap[room.id] = Object.assign(typingOf(room), { [who]: on });
+  broadcast('typing', { room: room.id, typing: typingMap[room.id] });
 }
 
-function addMessage(who, text, extra) {
+function addMessage(room, who, text, extra) {
   const msg = Object.assign({ who, text, t: Date.now() }, extra || {});
-  state.messages.push(msg);
+  room.messages.push(msg);
+  if (!msg.system) room.t = msg.t;
+  // 방 제목은 미나의 첫 말로 자동으로 정한다.
+  if (who === 'mina' && room.title === NEW_TITLE) {
+    const t = (text || (extra && extra.files && extra.files[0].name) || '').replace(/\s+/g, ' ').trim();
+    if (t) room.title = t.length > 24 ? t.slice(0, 24) + '…' : t;
+  }
   save();
-  broadcast('message', msg);
+  broadcast('message', { room: room.id, msg });
+  broadcast('rooms', roomList());
   return msg;
 }
 
@@ -69,16 +100,41 @@ function intro(me) {
     `- ${other}의 말에 동의하면 동의하고, 생각이 다르면 분명하게 말해. 서로 띄워 주기만 하지 마.`,
     '- 이름표나 "[Claude]" 같은 접두어는 붙이지 마. 네 말만 써.',
     '- 파일을 고치거나 명령을 실행하지 말고 대화만 해.',
+    '- 미나가 사진이나 글자 파일을 올리면 직접 보고 그 내용에 대해 말해. 못 열면 못 열었다고 솔직히 말해.',
     '',
   ].join('\n');
 }
 
-function buildPrompt(me) {
-  const p = state[me];
+// 메시지에 붙은 파일을 프롬프트용 글로 바꾼다. 사진은 Claude가 Read로 열고, GPT는 --image로 받는다.
+function fileNotes(m, me) {
+  return (m.files || []).map((f) => {
+    if (f.kind === 'image') {
+      return me === 'claude'
+        ? `(미나가 사진 "${f.name}"을 올렸어. Read 도구로 uploads/${f.file} 를 열어서 봐.)`
+        : `(미나가 사진 "${f.name}"을 올렸어. 첨부 이미지로 같이 보냈어.)`;
+    }
+    let body = '';
+    try { body = fs.readFileSync(path.join(UPLOAD_DIR, f.file), 'utf8'); } catch (_) {}
+    const cut = body.length > TEXT_INLINE ? body.slice(0, TEXT_INLINE) + '\n…(뒤는 길어서 생략)' : body;
+    return `(미나가 파일 "${f.name}"을 올렸어. 내용:)\n--- ${f.name} ---\n${cut}\n---`;
+  }).join('\n');
+}
+
+function newsFor(room, me) {
+  const p = room[me];
   const fresh = !p.sid;
   // 새 세션이면 지금까지 대화를 전부(자기 말 포함) 넘기고, 이어 가는 세션이면 새 메시지만 넘긴다.
-  const news = state.messages.slice(p.seen).filter((m) => !m.system && (fresh || m.who !== me));
-  const lines = news.map((m) => `[${NAMES[m.who]}${m.who === me ? '(너)' : ''}] ${m.text}`).join('\n\n');
+  return room.messages.slice(p.seen).filter((m) => !m.system && (fresh || m.who !== me));
+}
+
+function buildPrompt(room, me) {
+  const p = room[me];
+  const fresh = !p.sid;
+  const news = newsFor(room, me);
+  const lines = news.map((m) => {
+    const notes = fileNotes(m, me);
+    return `[${NAMES[m.who]}${m.who === me ? '(너)' : ''}] ${m.text}${notes ? '\n' + notes : ''}`;
+  }).join('\n\n');
   return (fresh ? intro(me) : '') +
     '새로 올라온 메시지:\n\n' + (lines || '(새 메시지 없음)') +
     `\n\n이어서 ${NAMES[me]}로서 네 답만 써.`;
@@ -105,10 +161,11 @@ function run(cmd, args, input) {
   });
 }
 
-async function askClaude(prompt) {
-  const sid = state.claude.sid;
+async function askClaude(room, prompt) {
+  const sid = room.claude.sid;
   const args = ['-p', '--output-format', 'json'];
   if (sid) args.push('--resume', sid);
+  args.push('--allowedTools', 'Read'); // 올라온 사진을 열어 볼 수 있게 (읽기만)
   if (state.models.claude) args.push('--model', state.models.claude);
   const r = await run(CLAUDE_CMD, args, prompt);
   let j = null;
@@ -119,14 +176,21 @@ async function askClaude(prompt) {
   return { ok: false, error: (j && j.result) || r.err || r.out || `종료 코드 ${r.code}` };
 }
 
-async function askGpt(prompt) {
-  const sid = state.gpt.sid;
+async function askGpt(room, prompt) {
+  const sid = room.gpt.sid;
   const lastFile = 'gpt-last.txt';
   try { fs.unlinkSync(path.join(DIR, lastFile)); } catch (_) {}
   const args = sid
     ? ['exec', 'resume', '--skip-git-repo-check', '-c', 'sandbox_mode=read-only', '--json', '-o', lastFile, sid, '-']
     : ['exec', '--skip-git-repo-check', '-s', 'read-only', '--json', '-o', lastFile, '-'];
-  if (state.models.gpt) args.splice(args.length - (sid ? 2 : 1), 0, '-m', state.models.gpt);
+  const tail = sid ? 2 : 1; // 끝의 [세션id] '-' 앞에 옵션을 끼워 넣는다
+  const extra = [];
+  if (state.models.gpt) extra.push('-m', state.models.gpt);
+  const imgs = [];
+  for (const m of newsFor(room, 'gpt')) for (const f of m.files || []) if (f.kind === 'image') imgs.push(f.file);
+  // 사진은 최근 4장까지. 경로는 gpt-chat 폴더 기준 상대 경로(공백 없음).
+  for (const f of imgs.slice(-MAX_FILES)) extra.push(`--image=uploads/${f}`);
+  args.splice(args.length - tail, 0, ...extra);
   const r = await run(CODEX_CMD, args, prompt);
   let threadId = sid;
   let lastText = '';
@@ -146,33 +210,34 @@ async function askGpt(prompt) {
 }
 
 // 한 명에게 차례를 준다. 세션이 깨졌으면 지금까지 대화를 처음부터 넘겨 새로 시작한다.
-async function turn(who) {
+async function turn(room, who) {
   const ask = who === 'claude' ? askClaude : askGpt;
-  const upto = state.messages.length;
-  setTyping(who, true);
-  let r = await ask(buildPrompt(who));
-  if (!r.ok && state[who].sid) {
-    state[who] = { sid: null, seen: 0 };
-    r = await ask(buildPrompt(who));
+  const upto = room.messages.length;
+  setTyping(room, who, true);
+  let r = await ask(room, buildPrompt(room, who));
+  if (!r.ok && room[who].sid) {
+    room[who] = { sid: null, seen: 0 };
+    r = await ask(room, buildPrompt(room, who));
   }
-  setTyping(who, false);
+  setTyping(room, who, false);
   if (r.ok) {
-    state[who].sid = r.sid;
-    state[who].seen = upto;
+    room[who].sid = r.sid;
+    room[who].seen = upto;
     // seen은 프롬프트를 만든 시점까지만 올린다. 그사이 상대가 쓴 말은 다음 차례에 받는다.
     // 자기 말은 buildPrompt에서 걸러진다.
-    addMessage(who, r.text);
+    addMessage(room, who, r.text);
   } else {
-    addMessage(who, `${NAMES[who]} 응답 실패:\n${String(r.error).trim().slice(0, 1500)}`, { system: true });
+    addMessage(room, who, `${NAMES[who]} 응답 실패:\n${String(r.error).trim().slice(0, 1500)}`, { system: true });
   }
 }
 
-let busy = false;
-async function withBusy(fn) {
-  if (busy) return false;
-  busy = true;
-  broadcast('busy', true);
-  try { await fn(); } finally { busy = false; broadcast('busy', false); }
+// 방마다 따로 바쁘다: 한 방에서 답을 기다리는 동안 다른 방에서 대화할 수 있다.
+const busyRooms = new Set();
+async function withBusy(room, fn) {
+  if (busyRooms.has(room.id)) return false;
+  busyRooms.add(room.id);
+  broadcast('rooms', roomList());
+  try { await fn(); } finally { busyRooms.delete(room.id); broadcast('rooms', roomList()); }
   return true;
 }
 
@@ -204,7 +269,7 @@ const SAFE_MODEL = /^[A-Za-z0-9._-]{0,64}$/;
 function readBody(req) {
   return new Promise((resolve) => {
     let b = '';
-    req.on('data', (d) => (b += d));
+    req.on('data', (d) => { b += d; if (b.length > 40 * 1024 * 1024) { b = ''; req.destroy(); } });
     req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch (_) { resolve({}); } });
   });
 }
@@ -222,34 +287,105 @@ const server = http.createServer(async (req, res) => {
     return fs.createReadStream(path.join(DIR, 'index.html')).pipe(res);
   }
 
+  if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
+    const name = path.basename(decodeURIComponent(url.pathname));
+    const ext = name.split('.').pop().toLowerCase();
+    const fp = path.join(UPLOAD_DIR, name);
+    if (!IMG_EXT[ext] || !fs.existsSync(fp)) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { 'Content-Type': IMG_EXT[ext] });
+    return fs.createReadStream(fp).pipe(res);
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.write(`event: init\ndata: ${JSON.stringify({ messages: state.messages, typing, busy })}\n\n`);
+    res.write(`event: rooms\ndata: ${JSON.stringify(roomList())}\n\n`);
     clients.add(res);
     const ping = setInterval(() => res.write(': ping\n\n'), 20000);
     req.on('close', () => { clearInterval(ping); clients.delete(res); });
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/rooms') {
+    return json(res, 200, roomList());
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/room') {
+    const room = getRoom(url.searchParams.get('id'));
+    if (!room) return json(res, 404, { error: 'no room' });
+    return json(res, 200, { messages: room.messages, typing: typingOf(room), busy: busyRooms.has(room.id), title: room.title });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rooms/new') {
+    const r = freshRoom();
+    state.rooms.push(r);
+    save();
+    broadcast('rooms', roomList());
+    return json(res, 200, { id: r.id });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rooms/rename') {
+    const { id, title } = await readBody(req);
+    const room = getRoom(id);
+    const t = String(title || '').trim().slice(0, 40);
+    if (!room || !t) return json(res, 400, { error: 'bad' });
+    room.title = t;
+    save();
+    broadcast('rooms', roomList());
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/rooms/delete') {
+    const { id } = await readBody(req);
+    const room = getRoom(id);
+    if (!room) return json(res, 404, { error: 'no room' });
+    if (busyRooms.has(id)) return json(res, 409, { error: 'busy' });
+    state.rooms = state.rooms.filter((r) => r.id !== id);
+    if (!state.rooms.length) state.rooms.push(freshRoom());
+    save();
+    broadcast('rooms', roomList());
+    return json(res, 200, { ok: true });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/send') {
-    const { text, to } = await readBody(req);
-    if (!text || !String(text).trim()) return json(res, 400, { error: 'empty' });
-    if (busy) return json(res, 409, { error: 'busy' });
+    const { text, to, files, room: roomId } = await readBody(req);
+    const room = getRoom(roomId);
+    if (!room) return json(res, 404, { error: '대화방을 찾을 수 없어요.' });
+    const clean = String(text || '').trim();
+    const incoming = Array.isArray(files) ? files : [];
+    if (!clean && !incoming.length) return json(res, 400, { error: 'empty' });
+    if (busyRooms.has(room.id)) return json(res, 409, { error: 'busy' });
+    if (incoming.length > MAX_FILES) return json(res, 400, { error: `파일은 한 번에 ${MAX_FILES}개까지예요.` });
+    const saved = [];
+    for (const f of incoming) {
+      const name = String((f && f.name) || 'file');
+      const ext = name.split('.').pop().toLowerCase();
+      const kind = IMG_EXT[ext] ? 'image' : TEXT_EXT.includes(ext) ? 'text' : null;
+      if (!kind) return json(res, 400, { error: `"${name}"은 열 수 없는 파일이에요. 사진(png, jpg, gif, webp)이나 글자 파일(txt, md, csv, json 등)만 돼요.` });
+      const buf = Buffer.from(String(f.data || ''), 'base64');
+      if (buf.length > (kind === 'image' ? MAX_IMG : MAX_TEXT)) return json(res, 400, { error: `"${name}"이 너무 커요. 사진은 8MB, 글자 파일은 1MB까지예요.` });
+      // 저장 이름은 영문·숫자만(명령줄에 들어가므로). 보여 줄 이름은 원래 이름.
+      const safe = name.replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 30) || 'file';
+      const file = `${Date.now()}-${saved.length}-${safe}.${ext}`;
+      fs.writeFileSync(path.join(UPLOAD_DIR, file), buf);
+      saved.push({ name, file, kind });
+    }
     json(res, 200, { ok: true });
-    addMessage('mina', String(text).trim());
+    addMessage(room, 'mina', clean, saved.length ? { files: saved } : undefined);
     const who = to === 'claude' ? ['claude'] : to === 'gpt' ? ['gpt'] : ['claude', 'gpt'];
     // 둘 다면 동시에 답한다(단톡방처럼). 서로의 답은 다음 차례에 보게 된다.
-    return withBusy(() => Promise.all(who.map(turn)));
+    return withBusy(room, () => Promise.all(who.map((w) => turn(room, w))));
   }
 
   if (req.method === 'POST' && url.pathname === '/api/debate') {
-    const { rounds } = await readBody(req);
+    const { rounds, room: roomId } = await readBody(req);
+    const room = getRoom(roomId);
+    if (!room) return json(res, 404, { error: '대화방을 찾을 수 없어요.' });
     const n = Math.min(Math.max(Number(rounds) || 2, 1), 4);
-    if (busy) return json(res, 409, { error: 'busy' });
+    if (busyRooms.has(room.id)) return json(res, 409, { error: 'busy' });
     json(res, 200, { ok: true });
-    addMessage('mina', '둘이 이 얘기로 이야기 나눠 봐. 서로의 말에 반응해 줘.');
-    return withBusy(async () => {
-      for (let i = 0; i < n; i++) { await turn('claude'); await turn('gpt'); }
+    addMessage(room, 'mina', '둘이 이 얘기로 이야기 나눠 봐. 서로의 말에 반응해 줘.');
+    return withBusy(room, async () => {
+      for (let i = 0; i < n; i++) { await turn(room, 'claude'); await turn(room, 'gpt'); }
     });
   }
 
@@ -259,25 +395,16 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api/models') {
     const body = await readBody(req);
+    const noteRoom = getRoom(body.room);
     for (const who of ['claude', 'gpt']) {
       if (typeof body[who] !== 'string' || !SAFE_MODEL.test(body[who])) continue;
       if (state.models[who] === body[who]) continue;
       state.models[who] = body[who];
-      addMessage(who, `${NAMES[who]} 모델을 ${body[who] || '기본'}(으)로 바꿨어요. 대화 기억은 그대로예요.`, { system: true, note: true });
+      if (noteRoom) addMessage(noteRoom, who, `${NAMES[who]} 모델을 ${body[who] || '기본'}(으)로 바꿨어요. 대화 기억은 그대로예요.`, { system: true, note: true });
     }
     save();
     broadcast('models', state.models);
     return json(res, 200, { ok: true, current: state.models });
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/reset') {
-    if (busy) return json(res, 409, { error: 'busy' });
-    const keep = state.models;
-    state = freshState();
-    state.models = keep;
-    save();
-    broadcast('init', { messages: [], typing, busy });
-    return json(res, 200, { ok: true });
   }
 
   res.writeHead(404);
