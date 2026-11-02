@@ -20,7 +20,7 @@ const UPLOAD_DIR = path.join(DIR, 'uploads');
 try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (_) {}
 const IMG_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const TEXT_EXT = ['txt', 'md', 'csv', 'json', 'js', 'ts', 'py', 'html', 'css', 'log', 'xml', 'yml', 'yaml', 'kt', 'java'];
-const MAX_IMG = 8 * 1024 * 1024, MAX_TEXT = 1024 * 1024, MAX_FILES = 4, TEXT_INLINE = 20000;
+const MAX_IMG = 8 * 1024 * 1024, MAX_TEXT = 1024 * 1024, MAX_FILES = 12, TEXT_INLINE = 20000;
 
 const NAMES = { mina: '미나', claude: 'Claude', gpt: 'GPT' };
 
@@ -107,7 +107,17 @@ function intro(me) {
 
 // 메시지에 붙은 파일을 프롬프트용 글로 바꾼다. 사진은 Claude가 Read로 열고, GPT는 --image로 받는다.
 function fileNotes(m, me) {
-  return (m.files || []).map((f) => {
+  const vids = {};
+  (m.files || []).forEach((f) => { if (f.video) (vids[f.video] = vids[f.video] || []).push(f); });
+  const notes = Object.keys(vids).map((name) => {
+    const fr = vids[name];
+    const head = `(미나가 영상 "${name}"(길이 약 ${fr[0].dur}초)을 올렸어. 소리는 들을 수 없어서, 같은 간격으로 뽑은 장면 사진 ${fr.length}장을 시간 순서로 보내. ` +
+      `장면은 ${fr.map((f) => f.t + '초').join(', ')} 지점이야. 사진으로 보이는 것만 말하고, 소리나 장면 사이는 모른다고 해.`;
+    return me === 'claude'
+      ? head + ` Read 도구로 ${fr.map((f) => 'uploads/' + f.file).join(' , ')} 를 차례로 열어서 봐.)`
+      : head + ' 첨부 이미지로 같이 보냈어.)';
+  });
+  const rest = (m.files || []).filter((f) => !f.video).map((f) => {
     if (f.kind === 'image') {
       return me === 'claude'
         ? `(미나가 사진 "${f.name}"을 올렸어. Read 도구로 uploads/${f.file} 를 열어서 봐.)`
@@ -117,7 +127,8 @@ function fileNotes(m, me) {
     try { body = fs.readFileSync(path.join(UPLOAD_DIR, f.file), 'utf8'); } catch (_) {}
     const cut = body.length > TEXT_INLINE ? body.slice(0, TEXT_INLINE) + '\n…(뒤는 길어서 생략)' : body;
     return `(미나가 파일 "${f.name}"을 올렸어. 내용:)\n--- ${f.name} ---\n${cut}\n---`;
-  }).join('\n');
+  });
+  return notes.concat(rest).join('\n');
 }
 
 function newsFor(room, me) {
@@ -188,7 +199,7 @@ async function askGpt(room, prompt) {
   if (state.models.gpt) extra.push('-m', state.models.gpt);
   const imgs = [];
   for (const m of newsFor(room, 'gpt')) for (const f of m.files || []) if (f.kind === 'image') imgs.push(f.file);
-  // 사진은 최근 4장까지. 경로는 gpt-chat 폴더 기준 상대 경로(공백 없음).
+  // 사진은 최근 12장까지. 경로는 gpt-chat 폴더 기준 상대 경로(공백 없음).
   for (const f of imgs.slice(-MAX_FILES)) extra.push(`--image=uploads/${f}`);
   args.splice(args.length - tail, 0, ...extra);
   const r = await run(CODEX_CMD, args, prompt);
@@ -367,7 +378,14 @@ const server = http.createServer(async (req, res) => {
       const safe = name.replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 30) || 'file';
       const file = `${Date.now()}-${saved.length}-${safe}.${ext}`;
       fs.writeFileSync(path.join(UPLOAD_DIR, file), buf);
-      saved.push({ name, file, kind });
+      const entry = { name, file, kind };
+      // 영상에서 뽑은 장면 사진이면 어느 영상의 몇 초 장면인지 함께 적어 둔다.
+      if (kind === 'image' && typeof f.video === 'string' && f.video) {
+        entry.video = f.video.slice(0, 120);
+        entry.t = Math.max(0, Number(f.t) || 0);
+        entry.dur = Math.max(0, Number(f.dur) || 0);
+      }
+      saved.push(entry);
     }
     json(res, 200, { ok: true });
     addMessage(room, 'mina', clean, saved.length ? { files: saved } : undefined);
