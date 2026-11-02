@@ -22,7 +22,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; display: flex; flex-direction: column; }
-  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header { flex-wrap: wrap; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   header h1 { font-size: 17px; margin: 0; flex: 1; }
   header .who { font-size: 13px; color: var(--muted); }
   button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
@@ -35,6 +35,9 @@
   .claude .tag { color: var(--claude-tag); }
   .gpt { align-self: flex-start; background: var(--gpt); border-bottom-left-radius: 4px; }
   .gpt .tag { color: var(--gpt-tag); }
+  .note { align-self: center; background: transparent; color: var(--muted); font-size: 13px; padding: 2px 8px; }
+  select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; max-width: 150px; }
+  .models { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
   .system { align-self: center; background: var(--err); color: var(--err-ink); font-size: 13px; max-width: 92%; }
   .empty { margin: auto; text-align: center; color: var(--muted); }
   #typing { min-height: 22px; padding: 0 16px; font-size: 13px; color: var(--muted); max-width: 820px; width: 100%; margin: 0 auto; }
@@ -50,7 +53,10 @@
 <body>
 <header>
   <h1>삼자대면</h1>
-  <span class="who">미나 · Claude · GPT</span>
+  <span class="models">
+    <label>Claude <select id="m-claude"><option value="">기본</option></select></label>
+    <label>GPT <select id="m-gpt"><option value="">기본</option></select></label>
+  </span>
   <button id="reset" title="대화를 지우고 새로 시작">새 대화</button>
 </header>
 
@@ -98,14 +104,18 @@
     const empty = log.querySelector('.empty');
     if (empty) empty.remove();
     const el = document.createElement('div');
-    el.className = 'msg ' + (m.system ? 'system' : m.who);
+    el.className = 'msg ' + (m.note ? 'note' : m.system ? 'system' : m.who);
     if (m.who !== 'mina' && !m.system) {
       const tag = document.createElement('span');
       tag.className = 'tag';
       tag.textContent = NAMES[m.who];
       el.appendChild(tag);
     }
-    el.appendChild(document.createTextNode(m.text));
+    const body = document.createElement('span');
+    // **굵게** 만 표시하고 나머지는 글자 그대로
+    body.innerHTML = m.text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    el.appendChild(body);
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
   }
@@ -149,6 +159,24 @@
   });
   function autosize() { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 160) + 'px'; }
   text.addEventListener('input', autosize);
+
+  const sel = { claude: document.getElementById('m-claude'), gpt: document.getElementById('m-gpt') };
+  function showModels(cur) { for (const k in sel) sel[k].value = cur[k] || ''; }
+  fetch('/api/models').then((r) => r.json()).then((d) => {
+    for (const k of ['claude', 'gpt']) {
+      for (const m of d[k]) {
+        const o = document.createElement('option');
+        o.value = m.id; o.textContent = m.name;
+        sel[k].appendChild(o);
+      }
+      if (d.current[k] && ![...sel[k].options].some((o) => o.value === d.current[k])) {
+        const o = document.createElement('option'); o.value = o.textContent = d.current[k]; sel[k].appendChild(o);
+      }
+    }
+    showModels(d.current);
+  }).catch(() => {});
+  for (const k in sel) sel[k].addEventListener('change', () => post('/api/models', { [k]: sel[k].value }));
+  es.addEventListener('models', (e) => showModels(JSON.parse(e.data)));
 
   debateBtn.addEventListener('click', () => post('/api/debate', { rounds: 2 }));
   resetBtn.addEventListener('click', () => { if (confirm('지금 대화를 지우고 새로 시작할까요?')) post('/api/reset'); });

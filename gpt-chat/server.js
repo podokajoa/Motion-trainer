@@ -23,12 +23,14 @@ function freshState() {
     messages: [],
     claude: { sid: null, seen: 0 },
     gpt: { sid: null, seen: 0 },
+    models: { claude: '', gpt: '' }, // ''이면 각 CLI의 기본 모델
   };
 }
 
 let state = freshState();
 try {
   state = Object.assign(freshState(), JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')));
+  state.models = Object.assign({ claude: '', gpt: '' }, state.models);
 } catch (_) {}
 
 function save() {
@@ -60,6 +62,8 @@ function intro(me) {
   const other = me === 'claude' ? 'GPT' : 'Claude';
   return [
     `너는 ${NAMES[me]}야. 지금 미나, ${other}와 셋이 그룹채팅 중이야.`,
+    '이 방은 미나가 자기 PC에서 돌리는 "삼자대면" 앱이야. Claude는 Claude Code CLI, GPT는 Codex CLI로 연결돼 있고,',
+    '각자 모델은 미나가 화면 위쪽 메뉴에서 바꿀 수 있어. 앞선 다른 대화나 프로젝트 기억은 없으니 모르는 건 모른다고 해.',
     '규칙:',
     '- 한국어로, 단톡방에서 말하듯 짧게(보통 2~6줄) 답해.',
     `- ${other}의 말에 동의하면 동의하고, 생각이 다르면 분명하게 말해. 서로 띄워 주기만 하지 마.`,
@@ -105,6 +109,7 @@ async function askClaude(prompt) {
   const sid = state.claude.sid;
   const args = ['-p', '--output-format', 'json'];
   if (sid) args.push('--resume', sid);
+  if (state.models.claude) args.push('--model', state.models.claude);
   const r = await run(CLAUDE_CMD, args, prompt);
   let j = null;
   try { j = JSON.parse(r.out.trim().split('\n').pop()); } catch (_) {}
@@ -121,6 +126,7 @@ async function askGpt(prompt) {
   const args = sid
     ? ['exec', 'resume', '--skip-git-repo-check', '-c', 'sandbox_mode=read-only', '--json', '-o', lastFile, sid, '-']
     : ['exec', '--skip-git-repo-check', '-s', 'read-only', '--json', '-o', lastFile, '-'];
+  if (state.models.gpt) args.splice(args.length - (sid ? 2 : 1), 0, '-m', state.models.gpt);
   const r = await run(CODEX_CMD, args, prompt);
   let threadId = sid;
   let lastText = '';
@@ -169,6 +175,30 @@ async function withBusy(fn) {
   try { await fn(); } finally { busy = false; broadcast('busy', false); }
   return true;
 }
+
+// ---------- 모델 목록 ----------
+const CLAUDE_MODELS = [
+  { id: 'opus', name: 'Opus (가장 똑똑함)' },
+  { id: 'sonnet', name: 'Sonnet (균형)' },
+  { id: 'haiku', name: 'Haiku (빠름)' },
+];
+let gptModels = null;
+async function listGptModels() {
+  if (gptModels) return gptModels;
+  const r = await run(CODEX_CMD, ['debug', 'models'], '');
+  try {
+    const j = JSON.parse(r.out);
+    gptModels = (j.models || [])
+      .filter((m) => m.visibility === 'list')
+      .map((m) => ({ id: m.slug, name: m.display_name || m.slug }));
+  } catch (_) {
+    return [];
+  }
+  return gptModels;
+}
+
+// 이름에는 영문·숫자·.-_ 만 허용 (명령줄에 그대로 들어가므로)
+const SAFE_MODEL = /^[A-Za-z0-9._-]{0,64}$/;
 
 // ---------- HTTP ----------
 function readBody(req) {
@@ -223,9 +253,28 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/models') {
+    return json(res, 200, { claude: CLAUDE_MODELS, gpt: await listGptModels(), current: state.models });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/models') {
+    const body = await readBody(req);
+    for (const who of ['claude', 'gpt']) {
+      if (typeof body[who] !== 'string' || !SAFE_MODEL.test(body[who])) continue;
+      if (state.models[who] === body[who]) continue;
+      state.models[who] = body[who];
+      addMessage(who, `${NAMES[who]} 모델을 ${body[who] || '기본'}(으)로 바꿨어요. 대화 기억은 그대로예요.`, { system: true, note: true });
+    }
+    save();
+    broadcast('models', state.models);
+    return json(res, 200, { ok: true, current: state.models });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/reset') {
     if (busy) return json(res, 409, { error: 'busy' });
+    const keep = state.models;
     state = freshState();
+    state.models = keep;
     save();
     broadcast('init', { messages: [], typing, busy });
     return json(res, 200, { ok: true });
