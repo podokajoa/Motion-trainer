@@ -20,7 +20,7 @@ const UPLOAD_DIR = path.join(DIR, 'uploads');
 try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (_) {}
 const IMG_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const TEXT_EXT = ['txt', 'md', 'csv', 'json', 'js', 'ts', 'py', 'html', 'css', 'log', 'xml', 'yml', 'yaml', 'kt', 'java'];
-const MAX_IMG = 8 * 1024 * 1024, MAX_TEXT = 1024 * 1024, MAX_FILES = 12, TEXT_INLINE = 20000;
+const MAX_IMG = 8 * 1024 * 1024, MAX_TEXT = 1024 * 1024, MAX_FILES = 40, TEXT_INLINE = 20000;
 
 const NAMES = { mina: '미나', claude: 'Claude', gpt: 'GPT' };
 
@@ -199,7 +199,7 @@ async function askGpt(room, prompt) {
   if (state.models.gpt) extra.push('-m', state.models.gpt);
   const imgs = [];
   for (const m of newsFor(room, 'gpt')) for (const f of m.files || []) if (f.kind === 'image') imgs.push(f.file);
-  // 사진은 최근 12장까지. 경로는 gpt-chat 폴더 기준 상대 경로(공백 없음).
+  // 사진은 최근 40장까지. 경로는 gpt-chat 폴더 기준 상대 경로(공백 없음).
   for (const f of imgs.slice(-MAX_FILES)) extra.push(`--image=uploads/${f}`);
   args.splice(args.length - tail, 0, ...extra);
   const r = await run(CODEX_CMD, args, prompt);
@@ -365,7 +365,7 @@ const server = http.createServer(async (req, res) => {
     const incoming = Array.isArray(files) ? files : [];
     if (!clean && !incoming.length) return json(res, 400, { error: 'empty' });
     if (busyRooms.has(room.id)) return json(res, 409, { error: 'busy' });
-    if (incoming.length > MAX_FILES) return json(res, 400, { error: `파일은 한 번에 ${MAX_FILES}개까지예요.` });
+    if (incoming.length > MAX_FILES) return json(res, 400, { error: `사진은 한 번에 ${MAX_FILES}장까지예요.` });
     const saved = [];
     for (const f of incoming) {
       const name = String((f && f.name) || 'file');

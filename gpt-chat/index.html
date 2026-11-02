@@ -103,6 +103,12 @@
       <button class="chip" data-to="claude" aria-pressed="false">Claude만</button>
       <button class="chip" data-to="gpt" aria-pressed="false">GPT만</button>
       <span class="spacer"></span>
+      <label style="font-size:13px;color:var(--muted)" title="영상을 올릴 때 몇 초마다 장면 사진을 뽑을지">영상 장면
+        <select id="vq">
+          <option value="sparse">적게 (7초마다, 최대 8장)</option>
+          <option value="normal" selected>보통 (3초마다, 최대 20장)</option>
+          <option value="dense">촘촘하게 (1.5초마다, 최대 40장)</option>
+        </select></label>
       <button id="debate" title="Claude와 GPT가 두 번씩 주고받아요">둘이 토론시키기</button>
     </div>
     <div id="chosen"></div>
@@ -322,7 +328,7 @@
       v.currentTime = t;
     });
   }
-  function extractFrames(file) {
+  function extractFrames(file, quality) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const fail = (m) => { URL.revokeObjectURL(url); reject(new Error(m)); };
@@ -332,8 +338,10 @@
       v.onloadedmetadata = async () => {
         const dur = v.duration;
         if (!isFinite(dur) || dur <= 0 || !v.videoWidth) return fail('영상 길이나 크기를 읽지 못했어요.');
-        const n = Math.min(8, Math.max(4, Math.round(dur / 5)));
-        const sc = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight));
+        const [step, max] = quality === 'dense' ? [1.5, 40] : quality === 'sparse' ? [7, 8] : [3, 20];
+        const n = Math.min(max, Math.max(4, Math.ceil(dur / step)));
+        // 장면이 많으면 사진을 조금 작게 해서 Claude·GPT가 읽는 양을 줄인다.
+        const sc = Math.min(1, (n > 24 ? 640 : 768) / Math.max(v.videoWidth, v.videoHeight));
         const c = document.createElement('canvas');
         c.width = Math.round(v.videoWidth * sc);
         c.height = Math.round(v.videoHeight * sc);
@@ -358,7 +366,7 @@
     const item = { video: true, name: file.name, loading: true, frames: [], dur: 0 };
     pending.push(item);
     preparing++;
-    extractFrames(file)
+    extractFrames(file, document.getElementById('vq').value)
       .then((r) => { item.frames = r.frames; item.dur = r.dur; item.loading = false; })
       .catch((e) => { alert(e.message); const i = pending.indexOf(item); if (i >= 0) pending.splice(i, 1); })
       .finally(() => { preparing--; drawChosen(); });
