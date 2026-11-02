@@ -105,8 +105,9 @@
       <span class="spacer"></span>
       <label style="font-size:13px;color:var(--muted)" title="영상을 올릴 때 몇 초마다 장면 사진을 뽑을지">영상 장면
         <select id="vq">
+          <option value="change" selected>화면 바뀐 순간 (화면 녹화 추천, 최대 30장)</option>
           <option value="sparse">적게 (7초마다, 최대 8장)</option>
-          <option value="normal" selected>보통 (3초마다, 최대 20장)</option>
+          <option value="normal">보통 (3초마다, 최대 20장)</option>
           <option value="dense">촘촘하게 (1.5초마다, 최대 40장)</option>
         </select></label>
       <button id="debate" title="Claude와 GPT가 두 번씩 주고받아요">둘이 토론시키기</button>
@@ -328,6 +329,42 @@
       v.currentTime = t;
     });
   }
+  // 화면 녹화처럼 가만히 있다가 바뀌는 영상: 촘촘히 훑어서 '화면이 바뀐 순간'만 고른다.
+  // 작은 흑백 그림으로 앞서 고른 장면과 비교해 달라진 점이 일정 비율을 넘으면 새 장면으로 친다.
+  async function pickChangeTimes(v, dur) {
+    const step = Math.max(0.4, dur / 200);
+    const w = 96, h = Math.max(1, Math.round(96 * v.videoHeight / v.videoWidth));
+    const tc = document.createElement('canvas');
+    tc.width = w; tc.height = h;
+    const tctx = tc.getContext('2d', { willReadFrequently: true });
+    const samples = [];
+    for (let t = Math.min(0.1, dur / 2); t < dur; t += step) {
+      await seekTo(v, t);
+      tctx.drawImage(v, 0, 0, w, h);
+      const d = tctx.getImageData(0, 0, w, h).data;
+      const g = new Uint8Array(w * h);
+      for (let k = 0; k < g.length; k++) g[k] = (d[k * 4] * 3 + d[k * 4 + 1] * 6 + d[k * 4 + 2]) / 10;
+      samples.push({ t, g });
+    }
+    const MAX = 30;
+    const choose = (thr) => {
+      const kept = [0];
+      let last = 0;
+      for (let i = 1; i < samples.length; i++) {
+        let diff = 0;
+        const a = samples[i].g, b = samples[last].g;
+        for (let k = 0; k < a.length; k++) if (Math.abs(a[k] - b[k]) > 25) diff++;
+        // 변화가 있거나, 변화가 없어도 6초가 지났으면 한 장 남긴다(가만히 있는 구간 확인용)
+        if (diff / a.length >= thr || samples[i].t - samples[last].t >= 6) { kept.push(i); last = i; }
+      }
+      if (samples.length - 1 !== last && samples[samples.length - 1].t - samples[last].t > 1) kept.push(samples.length - 1);
+      return kept;
+    };
+    let thr = 0.004, kept = choose(thr);
+    while (kept.length > MAX && thr < 1) { thr *= 1.6; kept = choose(thr); }
+    return kept.map((i) => samples[i].t);
+  }
+
   function extractFrames(file, quality) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -338,21 +375,26 @@
       v.onloadedmetadata = async () => {
         const dur = v.duration;
         if (!isFinite(dur) || dur <= 0 || !v.videoWidth) return fail('영상 길이나 크기를 읽지 못했어요.');
-        const [step, max] = quality === 'dense' ? [1.5, 40] : quality === 'sparse' ? [7, 8] : [3, 20];
-        const n = Math.min(max, Math.max(4, Math.ceil(dur / step)));
-        // 장면이 많으면 사진을 조금 작게 해서 Claude·GPT가 읽는 양을 줄인다.
-        const sc = Math.min(1, (n > 24 ? 640 : 768) / Math.max(v.videoWidth, v.videoHeight));
-        const c = document.createElement('canvas');
-        c.width = Math.round(v.videoWidth * sc);
-        c.height = Math.round(v.videoHeight * sc);
-        const ctx = c.getContext('2d');
         const frames = [];
         try {
-          for (let i = 0; i < n; i++) {
-            const t = dur * (i + 0.5) / n;
+          let times;
+          if (quality === 'change') times = await pickChangeTimes(v, dur);
+          else {
+            const [step, max] = quality === 'dense' ? [1.5, 40] : quality === 'sparse' ? [7, 8] : [3, 20];
+            const n = Math.min(max, Math.max(4, Math.ceil(dur / step)));
+            times = Array.from({ length: n }, (_, i) => dur * (i + 0.5) / n);
+          }
+          // 장면이 적을수록 크게 뽑는다 (폰 화면 녹화는 글자가 작아서 큰 쪽이 좋다)
+          const longSide = times.length <= 12 ? 1280 : times.length <= 24 ? 960 : 720;
+          const sc = Math.min(1, longSide / Math.max(v.videoWidth, v.videoHeight));
+          const c = document.createElement('canvas');
+          c.width = Math.round(v.videoWidth * sc);
+          c.height = Math.round(v.videoHeight * sc);
+          const ctx = c.getContext('2d');
+          for (const t of times) {
             await seekTo(v, t);
             ctx.drawImage(v, 0, 0, c.width, c.height);
-            const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.8));
+            const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.82));
             frames.push({ blob, t });
           }
         } catch (_) { return fail('영상에서 장면을 뽑지 못했어요.'); }
