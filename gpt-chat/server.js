@@ -100,6 +100,7 @@ function intro(me) {
     `- ${other}의 말에 동의하면 동의하고, 생각이 다르면 분명하게 말해. 서로 띄워 주기만 하지 마.`,
     '- 이름표나 "[Claude]" 같은 접두어는 붙이지 마. 네 말만 써.',
     '- 파일을 고치거나 명령을 실행하지 말고 대화만 해.',
+    '- 앱 화면이나 시안을 보여 달라고 하면, 폰 크기(가로 360px)로 보이는 완결된 HTML 한 덩어리를 ```html 코드 블록으로 써. 스크립트와 바깥 주소는 쓰지 마. 대화창이 그 코드를 그림처럼 보여 줘.',
     '- 미나가 사진이나 글자 파일을 올리면 직접 보고 그 내용에 대해 말해. 못 열면 못 열었다고 솔직히 말해.',
     '',
   ].join('\n');
@@ -107,11 +108,12 @@ function intro(me) {
 
 // 메시지에 붙은 파일을 프롬프트용 글로 바꾼다. 사진은 Claude가 Read로 열고, GPT는 --image로 받는다.
 function fileNotes(m, me) {
+  const w = NAMES[m.who] || '미나';
   const vids = {};
   (m.files || []).forEach((f) => { if (f.video) (vids[f.video] = vids[f.video] || []).push(f); });
   const notes = Object.keys(vids).map((name) => {
     const fr = vids[name];
-    const head = `(미나가 영상 "${name}"(길이 약 ${fr[0].dur}초)을 올렸어. 소리는 들을 수 없어서, 영상에서 뽑은 장면 사진 ${fr.length}장을 시간 순서로 보내. ` +
+    const head = `(${w}가 영상 "${name}"(길이 약 ${fr[0].dur}초)을 올렸어. 소리는 들을 수 없어서, 영상에서 뽑은 장면 사진 ${fr.length}장을 시간 순서로 보내. ` +
       `장면은 ${fr.map((f) => f.t + '초').join(', ')} 지점이야(간격이 다르면 화면이 바뀐 순간 위주로 뽑은 거야). 사진으로 보이는 것만 말하고, 장면 사이나 소리는 모른다고 해.`;
     return me === 'claude'
       ? head + ` Read 도구로 ${fr.map((f) => 'uploads/' + f.file).join(' , ')} 를 차례로 열어서 봐.)`
@@ -120,13 +122,13 @@ function fileNotes(m, me) {
   const rest = (m.files || []).filter((f) => !f.video).map((f) => {
     if (f.kind === 'image') {
       return me === 'claude'
-        ? `(미나가 사진 "${f.name}"을 올렸어. Read 도구로 uploads/${f.file} 를 열어서 봐.)`
-        : `(미나가 사진 "${f.name}"을 올렸어. 첨부 이미지로 같이 보냈어.)`;
+        ? `(${w}가 사진 "${f.name}"을 올렸어. Read 도구로 uploads/${f.file} 를 열어서 봐.)`
+        : `(${w}가 사진 "${f.name}"을 올렸어. 첨부 이미지로 같이 보냈어.)`;
     }
     let body = '';
     try { body = fs.readFileSync(path.join(UPLOAD_DIR, f.file), 'utf8'); } catch (_) {}
     const cut = body.length > TEXT_INLINE ? body.slice(0, TEXT_INLINE) + '\n…(뒤는 길어서 생략)' : body;
-    return `(미나가 파일 "${f.name}"을 올렸어. 내용:)\n--- ${f.name} ---\n${cut}\n---`;
+    return `(${w}가 파일 "${f.name}"을 올렸어. 내용:)\n--- ${f.name} ---\n${cut}\n---`;
   });
   return notes.concat(rest).join('\n');
 }
@@ -152,13 +154,13 @@ function buildPrompt(room, me) {
 }
 
 // ---------- CLI 실행 ----------
-function run(cmd, args, input) {
+function run(cmd, args, input, cwd) {
   return new Promise((resolve) => {
     let out = '', err = '';
     let child;
     try {
       // 윈도우에서 npm 전역 명령(.cmd)은 shell로 실행해야 한다. 인자에는 공백을 넣지 않는다.
-      child = spawn(cmd, args, { cwd: DIR, shell: IS_WIN, windowsHide: true });
+      child = spawn(cmd, args, { cwd: cwd || DIR, shell: IS_WIN, windowsHide: true });
     } catch (e) {
       return resolve({ code: -1, out, err: String(e) });
     }
@@ -218,6 +220,40 @@ async function askGpt(room, prompt) {
   text = text || lastText.trim();
   if (r.code === 0 && text && threadId) return { ok: true, text, sid: threadId };
   return { ok: false, error: lastError || r.err.slice(-1500) || `종료 코드 ${r.code}` };
+}
+
+// GPT에게 그림을 그리게 한다. 한 번짜리 작업이라 대화 기억과 따로 돌고, 이 요청 전용 폴더 안에만 쓸 수 있다.
+async function drawImage(room, desc) {
+  const dir = path.join(DIR, 'generated', String(Date.now()));
+  fs.mkdirSync(dir, { recursive: true });
+  const prompt = `Generate an image using your image generation tool: ${desc}\n` +
+    'Save the resulting image file in the current directory as image.png. Then reply in Korean with one short sentence describing what you drew.';
+  const args = ['exec', '--skip-git-repo-check', '-s', 'workspace-write', '--json', '-o', 'draw-last.txt'];
+  if (state.models.gpt) args.push('-m', state.models.gpt);
+  args.push('-');
+  setTyping(room, 'gpt', true);
+  const r = await run(CODEX_CMD, args, prompt, dir);
+  setTyping(room, 'gpt', false);
+  let lastError = '';
+  for (const line of r.out.split('\n')) {
+    let e;
+    try { e = JSON.parse(line); } catch (_) { continue; }
+    if (e.type === 'error' || e.type === 'turn.failed') lastError = e.message || (e.error && e.error.message) || lastError;
+  }
+  const pics = fs.readdirSync(dir)
+    .filter((n) => IMG_EXT[n.split('.').pop().toLowerCase()])
+    .map((n) => ({ n, size: fs.statSync(path.join(dir, n)).size }))
+    .sort((a, b) => b.size - a.size);
+  if (!pics.length) {
+    const why = lastError || r.err.slice(-1200) || `그림 파일이 만들어지지 않았어요 (종료 코드 ${r.code}).`;
+    return addMessage(room, 'gpt', `GPT 그림 실패:\n${String(why).trim().slice(0, 1500)}`, { system: true });
+  }
+  const ext = pics[0].n.split('.').pop().toLowerCase();
+  const file = `${Date.now()}-gpt-draw.${ext}`;
+  fs.copyFileSync(path.join(dir, pics[0].n), path.join(UPLOAD_DIR, file));
+  let caption = '';
+  try { caption = fs.readFileSync(path.join(dir, 'draw-last.txt'), 'utf8').trim(); } catch (_) {}
+  addMessage(room, 'gpt', caption || '그렸어요.', { files: [{ name: `GPT 그림.${ext}`, file, kind: 'image' }] });
 }
 
 // 한 명에게 차례를 준다. 세션이 깨졌으면 지금까지 대화를 처음부터 넘겨 새로 시작한다.
@@ -392,6 +428,18 @@ const server = http.createServer(async (req, res) => {
     const who = to === 'claude' ? ['claude'] : to === 'gpt' ? ['gpt'] : ['claude', 'gpt'];
     // 둘 다면 동시에 답한다(단톡방처럼). 서로의 답은 다음 차례에 보게 된다.
     return withBusy(room, () => Promise.all(who.map((w) => turn(room, w))));
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/draw') {
+    const { text, room: roomId } = await readBody(req);
+    const room = getRoom(roomId);
+    const desc = String(text || '').trim();
+    if (!room) return json(res, 404, { error: '대화방을 찾을 수 없어요.' });
+    if (!desc) return json(res, 400, { error: '무엇을 그릴지 입력창에 적어 주세요.' });
+    if (busyRooms.has(room.id)) return json(res, 409, { error: 'busy' });
+    json(res, 200, { ok: true });
+    addMessage(room, 'mina', `🎨 ${desc}`);
+    return withBusy(room, () => drawImage(room, desc));
   }
 
   if (req.method === 'POST' && url.pathname === '/api/debate') {
