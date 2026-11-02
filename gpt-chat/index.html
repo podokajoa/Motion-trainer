@@ -71,6 +71,8 @@
   #chosen span { font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 10px; }
   #chosen button { border: 0; background: none; padding: 0 4px; color: var(--muted); }
   .msg img { display: block; max-width: 240px; max-height: 240px; border-radius: 10px; margin: 4px 0; }
+  .strip { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .strip img { max-width: 110px; max-height: 110px; margin: 0; }
   .msg .file { display: inline-block; font-size: 13px; opacity: .85; margin: 2px 0; }
   #send { background: var(--mina); color: #fff; border-color: var(--mina); padding: 10px 18px; }
 </style>
@@ -101,11 +103,17 @@
       <button class="chip" data-to="claude" aria-pressed="false">Claude만</button>
       <button class="chip" data-to="gpt" aria-pressed="false">GPT만</button>
       <span class="spacer"></span>
+      <label style="font-size:13px;color:var(--muted)" title="영상을 올릴 때 몇 초마다 장면 사진을 뽑을지">영상 장면
+        <select id="vq">
+          <option value="sparse">적게 (7초마다, 최대 8장)</option>
+          <option value="normal" selected>보통 (3초마다, 최대 20장)</option>
+          <option value="dense">촘촘하게 (1.5초마다, 최대 40장)</option>
+        </select></label>
       <button id="debate" title="Claude와 GPT가 두 번씩 주고받아요">둘이 토론시키기</button>
     </div>
     <div id="chosen"></div>
     <div class="row">
-      <input type="file" id="picker" multiple hidden accept="image/*,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.log,.xml,.yml,.yaml,.kt,.java">
+      <input type="file" id="picker" multiple hidden accept="image/*,video/*,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.log,.xml,.yml,.yaml,.kt,.java">
       <button id="attach" title="사진·글자 파일 올리기 (붙여넣기, 끌어다 놓기도 돼요)">📎</button>
       <textarea id="text" rows="1" placeholder="메시지 입력 (Enter 보내기, Shift+Enter 줄바꿈)"></textarea>
       <button id="send">보내기</button>
@@ -152,7 +160,28 @@
     body.innerHTML = m.text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     el.appendChild(body);
+    const vids = {};
     (m.files || []).forEach((f) => {
+      if (f.video) {
+        // 영상은 장면 사진 여러 장으로 올라온다. 이름표 하나에 모아서 보여 준다.
+        let g = vids[f.video];
+        if (!g) {
+          g = vids[f.video] = document.createElement('div');
+          const l = document.createElement('div');
+          l.className = 'file';
+          l.textContent = '🎬 ' + f.video + (f.dur ? ' (' + f.dur + '초)' : '');
+          g.appendChild(l);
+          g.row = document.createElement('div');
+          g.row.className = 'strip';
+          g.appendChild(g.row);
+          el.insertBefore(g, body);
+        }
+        const im = document.createElement('img');
+        im.src = '/uploads/' + encodeURIComponent(f.file);
+        im.alt = f.name;
+        g.row.appendChild(im);
+        return;
+      }
       if (f.kind === 'image') {
         const img = document.createElement('img');
         img.src = '/uploads/' + encodeURIComponent(f.file);
@@ -273,7 +302,7 @@
     chosen.innerHTML = '';
     pending.forEach((f, i) => {
       const s = document.createElement('span');
-      s.textContent = f.name;
+      s.textContent = (f.video ? '🎬 ' : '') + f.name + (f.loading ? ' (장면 뽑는 중…)' : '');
       const x = document.createElement('button');
       x.textContent = '✕';
       x.onclick = () => { pending.splice(i, 1); drawChosen(); };
@@ -284,9 +313,63 @@
   function addFiles(list) {
     for (const f of list) {
       if (pending.length >= 4) { alert('파일은 한 번에 4개까지예요.'); break; }
-      pending.push(f);
+      if (isVideo(f)) addVideo(f); else pending.push(f);
     }
     drawChosen();
+  }
+
+  // ---- 영상: 브라우저에서 장면을 사진으로 뽑아 보낸다 (영상 파일 자체는 올리지 않아요) ----
+  const isVideo = (f) => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name);
+  let preparing = 0;
+  function seekTo(v, t) {
+    return new Promise((ok, no) => {
+      const to = setTimeout(() => no(new Error('seek')), 15000);
+      v.onseeked = () => { clearTimeout(to); ok(); };
+      v.currentTime = t;
+    });
+  }
+  function extractFrames(file, quality) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const fail = (m) => { URL.revokeObjectURL(url); reject(new Error(m)); };
+      const v = document.createElement('video');
+      v.muted = true; v.preload = 'auto'; v.playsInline = true;
+      v.onerror = () => fail('이 영상은 브라우저에서 열 수 없어요. mp4(H.264)로 올려 보세요.');
+      v.onloadedmetadata = async () => {
+        const dur = v.duration;
+        if (!isFinite(dur) || dur <= 0 || !v.videoWidth) return fail('영상 길이나 크기를 읽지 못했어요.');
+        const [step, max] = quality === 'dense' ? [1.5, 40] : quality === 'sparse' ? [7, 8] : [3, 20];
+        const n = Math.min(max, Math.max(4, Math.ceil(dur / step)));
+        // 장면이 많으면 사진을 조금 작게 해서 Claude·GPT가 읽는 양을 줄인다.
+        const sc = Math.min(1, (n > 24 ? 640 : 768) / Math.max(v.videoWidth, v.videoHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(v.videoWidth * sc);
+        c.height = Math.round(v.videoHeight * sc);
+        const ctx = c.getContext('2d');
+        const frames = [];
+        try {
+          for (let i = 0; i < n; i++) {
+            const t = dur * (i + 0.5) / n;
+            await seekTo(v, t);
+            ctx.drawImage(v, 0, 0, c.width, c.height);
+            const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.8));
+            frames.push({ blob, t });
+          }
+        } catch (_) { return fail('영상에서 장면을 뽑지 못했어요.'); }
+        URL.revokeObjectURL(url);
+        resolve({ frames, dur });
+      };
+      v.src = url;
+    });
+  }
+  function addVideo(file) {
+    const item = { video: true, name: file.name, loading: true, frames: [], dur: 0 };
+    pending.push(item);
+    preparing++;
+    extractFrames(file, document.getElementById('vq').value)
+      .then((r) => { item.frames = r.frames; item.dur = r.dur; item.loading = false; })
+      .catch((e) => { alert(e.message); const i = pending.indexOf(item); if (i >= 0) pending.splice(i, 1); })
+      .finally(() => { preparing--; drawChosen(); });
   }
   document.getElementById('attach').addEventListener('click', () => picker.click());
   picker.addEventListener('change', () => { addFiles(picker.files); picker.value = ''; });
@@ -306,7 +389,15 @@
   async function send() {
     const v = text.value.trim();
     if ((!v && !pending.length) || busy) return;
-    const files = await Promise.all(pending.map(async (f) => ({ name: f.name, data: await toB64(f) })));
+    if (preparing > 0) { alert('영상에서 장면을 뽑는 중이에요. 잠시만 기다려 주세요.'); return; }
+    const files = [];
+    for (const f of pending) {
+      if (f.video) {
+        for (let i = 0; i < f.frames.length; i++) {
+          files.push({ name: f.name + '-scene' + (i + 1) + '.jpg', data: await toB64(f.frames[i].blob), video: f.name, t: Math.round(f.frames[i].t * 10) / 10, dur: Math.round(f.dur) });
+        }
+      } else files.push({ name: f.name, data: await toB64(f) });
+    }
     const r = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: v, to, files, room: active }) });
     if (r.ok) { text.value = ''; pending = []; drawChosen(); autosize(); }
     else { try { alert((await r.json()).error || '보내지 못했어요.'); } catch (_) { alert('보내지 못했어요.'); } }
