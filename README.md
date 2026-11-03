@@ -84,3 +84,11 @@
 - 실행: 윈도우에서 `start.bat` 더블클릭 → 브라우저에 http://localhost:3939 이 열려요. 처음 한 번은 터미널에서 `codex login`, `claude`(로그인)를 해 두어야 해요.
 - 🎨 "GPT가 그리기" 버튼: 입력창에 적은 내용을 GPT가 그림으로 그려 대화창에 보여 줘요(전용 폴더 `gpt-chat/generated`에만 쓰기 가능, Codex의 이미지 생성 필요). Claude나 GPT가 앱 화면 시안을 HTML로 만들면 대화창에 작은 화면으로 바로 보여 줘요(스크립트·바깥 주소는 막아 둠)
 - 대화 내용과 공동 진행판은 PC의 `gpt-chat/chat-state.json`에 저장돼요. 기존 기록은 유지하며 새 필드를 추가해요.
+
+## 카톡 할 일 알림 (kakao/)
+할 일을 카카오톡 "나와의 채팅"으로 받는 장치예요. GitHub Actions가 카카오 "나에게 보내기"로 보내요.
+
+- 연결 페이지: https://podokajoa.github.io/Motion-trainer/kakao/ (카카오 개발자 앱 만들기 → 카카오 로그인 → 연결 코드를 Secret `KAKAO_AUTH`에 등록)
+- Secret `KAKAO_MSG_KEY`: 메시지 자물쇠(`kakao/msg-lock.pem`)를 여는 열쇠. 저장소가 공개라서 할 일 내용은 잠가서 보내요
+- 보내는 법: `kakao/encrypt.sh "보낼 내용" [링크]`로 잠근 한 줄을 `카톡으로 할 일 보내기` 워크플로(`kakao-todo.yml`)의 `msg` 입력에 넣고 실행
+- 200자가 넘으면 여러 통으로 나눠 보내요. 로그인은 약 두 달 유효하고, 한 달 안으로 남으면 카톡으로 다시 연결하라고 알려 줘요
