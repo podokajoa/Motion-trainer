@@ -89,6 +89,7 @@ class CaptionLayer(context: Context) : View(context) {
   }
   if (twoFingers) {
    // after a pinch the remaining finger must not make the text jump, so a drag only counts after a new touch
+   parent?.requestDisallowInterceptTouchEvent(true)
    if (e.actionMasked == MotionEvent.ACTION_MOVE && e.pointerCount >= 2) {
     val dist = hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0))
     val ang = Math.toDegrees(atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
