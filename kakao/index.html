@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>카톡 알림 연결</title>
+<meta name="theme-color" content="#0d1626">
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#0d1626; --card:#16233a; --line:#26385a; --fg:#eef4ff; --muted:#93a4c2; --blue:#3ba7ff; --kakao:#fee500; --ok:#5fd38d; --warn:#ffb454; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; line-height:1.6; }
+  main { max-width:620px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:23px; margin:4px 0 2px; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:17px; margin:0 0 8px; }
+  ol { margin:0; padding-left:22px; }
+  li { margin:6px 0; }
+  li b { color:#fff; }
+  code, .box { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; background:#0b1424; border:1px solid var(--line); border-radius:8px; padding:2px 6px; word-break:break-all; }
+  .box { display:block; padding:10px; margin:6px 0; user-select:all; }
+  label { display:block; font-size:14px; color:var(--muted); margin:12px 0 5px; }
+  input { width:100%; font:inherit; font-size:16px; color:var(--fg); background:#0b1424; border:1px solid var(--line); border-radius:12px; padding:12px; }
+  button { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; cursor:pointer; }
+  .big { width:100%; margin-top:16px; min-height:54px; font-size:17px; font-weight:800; border:none; }
+  .kakao { background:var(--kakao); color:#191600; }
+  .copy { font-size:13px; padding:6px 10px; }
+  .hint { font-size:13px; color:var(--muted); }
+  .ok { color:var(--ok); font-weight:700; }
+  .warn { color:var(--warn); }
+  a { color:var(--blue); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>💬 카톡 알림 연결</h1>
+  <div class="sub">내 카카오톡 "나와의 채팅"으로 할 일 알림을 받게 연결하는 페이지예요. 처음 한 번, 그리고 두 달에 한 번 다시 연결할 때만 써요.</div>
+
+  <section id="setup">
+    <div class="card">
+      <h2>1. 카카오 개발자 사이트에서 앱 만들기 (처음 한 번)</h2>
+      <ol>
+        <li><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener">developers.kakao.com</a>에 카카오 계정으로 로그인 → <b>앱 만들기</b>(이름은 아무거나, 예: "내 할 일 알림")</li>
+        <li><b>플랫폼 → Web</b>에 사이트 도메인 두 개 등록: <code>https://podokajoa.github.io</code>, <code>https://github.com</code></li>
+        <li><b>카카오 로그인</b>을 <b>사용(ON)</b>으로 켜기</li>
+        <li><b>리다이렉트 URI</b>에 아래 주소를 그대로 등록 <button class="copy" data-copy="redirect">복사</button>
+          <span class="box" id="redirect"></span></li>
+        <li><b>동의항목</b>에서 <b>카카오톡 메시지 전송</b>을 "선택 동의"로 설정</li>
+        <li><b>앱 키</b>(또는 플랫폼 키)에서 <b>REST API 키</b>를 복사. 클라이언트 시크릿이 켜져 있으면 그 코드도 복사</li>
+      </ol>
+      <div class="hint">메뉴 이름은 카카오가 가끔 바꿔요. 비슷한 이름을 찾으면 돼요.</div>
+    </div>
+
+    <div class="card">
+      <h2>2. 카카오 로그인으로 허가하기</h2>
+      <label for="key">REST API 키</label>
+      <input id="key" autocomplete="off" spellcheck="false" placeholder="영문·숫자 32자">
+      <label for="secret">클라이언트 시크릿 (켜져 있을 때만)</label>
+      <input id="secret" autocomplete="off" spellcheck="false" placeholder="없으면 비워 두세요">
+      <button class="big kakao" id="login">카카오 로그인하고 허가하기</button>
+      <div class="hint" style="margin-top:8px">"카카오톡 메시지 전송" 동의 화면이 나오면 체크하고 동의해 주세요. 입력한 키는 이 화면에서만 쓰이고 어디에도 저장되지 않아요.</div>
+      <div class="warn" id="err"></div>
+    </div>
+  </section>
+
+  <section id="done" hidden>
+    <div class="card">
+      <h2>3. 연결 코드를 GitHub에 등록하기</h2>
+      <div id="test"></div>
+      <ol>
+        <li>아래 연결 코드를 복사 <button class="copy" data-copy="code">복사</button>
+          <span class="box" id="code"></span></li>
+        <li><a href="https://github.com/podokajoa/Motion-trainer/settings/secrets/actions" target="_blank" rel="noopener">저장소 Secret 설정</a>을 열고 <b>New repository secret</b> (이미 있으면 <b>KAKAO_AUTH</b> 옆 연필 버튼)</li>
+        <li>Name: <code>KAKAO_AUTH</code>, Secret: 복사한 코드 붙여넣기 → 저장</li>
+      </ol>
+      <div class="hint">이 코드는 카톡을 보낼 수 있는 열쇠라서 다른 사람에게 보내지 마세요. 두 달쯤 지나 카톡으로 "연결이 곧 끝나요" 알림이 오면 이 페이지에서 다시 로그인하고 같은 이름으로 덮어쓰면 돼요.</div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const REDIRECT = location.origin + location.pathname.replace(/index\.html$/, "");
+$("redirect").textContent = REDIRECT;
+
+document.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+  const t = $(b.dataset.copy).textContent;
+  try { await navigator.clipboard.writeText(t); b.textContent = "복사됨"; }
+  catch { getSelection().selectAllChildren($(b.dataset.copy)); b.textContent = "길게 눌러 복사"; }
+  setTimeout(() => b.textContent = "복사", 1800);
+});
+
+function store(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} }
+function load(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+
+$("login").onclick = () => {
+  const key = $("key").value.trim(), secret = $("secret").value.trim();
+  if (!/^[0-9a-zA-Z]{20,}$/.test(key)) { $("err").textContent = "REST API 키를 확인해 주세요."; return; }
+  store("kk", key); store("ks", secret);
+  const q = new URLSearchParams({ client_id: key, redirect_uri: REDIRECT, response_type: "code", scope: "talk_message", prompt: "login" });
+  location.href = "https://kauth.kakao.com/oauth/authorize?" + q;
+};
+
+async function finish(code) {
+  history.replaceState(null, "", REDIRECT);
+  const key = load("kk"), secret = load("ks") || "";
+  if (!key) { $("err").textContent = "키 정보가 사라졌어요. 같은 브라우저에서 다시 해 주세요."; return; }
+  $("err").textContent = "연결하는 중…";
+  const body = new URLSearchParams({ grant_type: "authorization_code", client_id: key, redirect_uri: REDIRECT, code });
+  if (secret) body.set("client_secret", secret);
+  let tok;
+  try {
+    const r = await fetch("https://kauth.kakao.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" }, body });
+    tok = await r.json();
+    if (!r.ok || !tok.refresh_token) throw new Error(tok.error_description || tok.error || r.status);
+  } catch (e) {
+    $("err").textContent = "연결 실패: " + e.message + " (리다이렉트 URI, 클라이언트 시크릿을 확인해 주세요)";
+    return;
+  }
+  store("kk", null); store("ks", null);
+  if (tok.scope && !tok.scope.includes("talk_message")) {
+    $("err").textContent = "'카카오톡 메시지 전송'에 동의하지 않았어요. 동의항목 설정을 확인하고 다시 로그인해 주세요.";
+    return;
+  }
+  // 바로 한 통 보내 보기
+  try {
+    const tpl = { object_type: "text", text: "✅ 카톡 알림이 연결됐어요. 이제 할 일을 여기로 보내 드릴게요.", link: { web_url: REDIRECT, mobile_web_url: REDIRECT }, button_title: "열기" };
+    const r = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", { method: "POST", headers: { Authorization: "Bearer " + tok.access_token, "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" }, body: new URLSearchParams({ template_object: JSON.stringify(tpl) }) });
+    const j = await r.json();
+    $("test").innerHTML = j.result_code === 0 ? '<p class="ok">카톡 "나와의 채팅"에 확인 메시지를 보냈어요. 도착했는지 봐 주세요.</p>' : '<p class="warn">로그인은 됐지만 확인 메시지는 못 보냈어요: ' + (j.msg || r.status) + '</p>';
+  } catch (e) { $("test").innerHTML = '<p class="warn">로그인은 됐지만 확인 메시지는 못 보냈어요. 코드는 그대로 등록해 주세요.</p>'; }
+  $("code").textContent = btoa(JSON.stringify({ k: key, s: secret, r: tok.refresh_token }));
+  $("setup").hidden = true; $("done").hidden = false; $("err").textContent = "";
+}
+
+const p = new URLSearchParams(location.search);
+if (p.get("code")) finish(p.get("code"));
+else if (p.get("error")) { $("err").textContent = "카카오 로그인이 취소됐거나 실패했어요: " + (p.get("error_description") || p.get("error")); history.replaceState(null, "", REDIRECT); }
+</script>
+</body>
+</html>

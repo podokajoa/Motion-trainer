@@ -1,0 +1,30 @@
+name: 카톡으로 할 일 보내기
+
+on:
+  workflow_dispatch:
+    inputs:
+      msg:
+        description: "kakao/encrypt.sh로 잠근 메시지"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kakao-todo
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: kakao
+      - name: 카톡 보내기
+        env:
+          KAKAO_AUTH: ${{ secrets.KAKAO_AUTH }}
+          KAKAO_MSG_KEY: ${{ secrets.KAKAO_MSG_KEY }}
+          MSG: ${{ inputs.msg }}
+        run: python3 kakao/send.py
