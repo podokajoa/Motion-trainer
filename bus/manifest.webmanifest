@@ -1,7 +1,7 @@
 {
   "name": "버스 바로",
   "short_name": "버스 바로",
-  "description": "자주 타는 정류장과 버스를 저장해 두고, 한 번에 카카오맵·네이버지도 도착 화면으로 가는 앱",
+  "description": "자주 타는 정류장의 버스가 몇 분 뒤에 오는지 한 화면에 모아 보는 앱",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,14 +9,22 @@
   "background_color": "#0d1626",
   "theme_color": "#0d1626",
   "lang": "ko",
-  "share_target": {
-    "action": "./",
-    "method": "GET",
-    "params": { "title": "title", "text": "text", "url": "url" }
-  },
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

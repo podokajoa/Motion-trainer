@@ -1,5 +1,5 @@
 // 앱 화면은 네트워크 우선(업데이트 반영), 끊기면 캐시로 오프라인 실행
-const CACHE = "bus-shortcut-v1";
+const CACHE = "bus-live-v1";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
