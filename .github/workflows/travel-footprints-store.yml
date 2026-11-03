@@ -1,0 +1,61 @@
+name: 여행 발자국 출시용 AAB
+
+# 마켓(구글 플레이)에 올릴 서명된 AAB를 만든다. 새 앱 ID(kr.travelfootprints.app)이고,
+# 미나 폰의 기존 앱과는 별개의 앱이다. 업로드 키는 저장소 Secret에만 있다.
+on:
+  pull_request:
+    paths: ["travel-footprints/**", ".github/workflows/travel-footprints-store.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: travel-footprints-store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-footprints
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 업로드 키 준비
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_B64" ]; then
+            echo "::error::RELEASE_KEYSTORE_B64 Secret이 없습니다."
+            exit 1
+          fi
+          KS="$RUNNER_TEMP/upload.jks"
+          echo "$RELEASE_KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$KS"
+          echo "TF_RELEASE_KEYSTORE=$KS" >> "$GITHUB_ENV"
+
+      - name: AAB 빌드
+        env:
+          TF_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          TF_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          TF_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon bundleRelease -PstoreBuild=true
+
+      - name: 서명 확인
+        run: |
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          ls -l "$AAB"
+          keytool -printcert -jarfile "$AAB" | grep -E 'Owner|SHA256' || { echo "::error::AAB가 서명되지 않았습니다."; exit 1; }
+          cp "$AAB" ../travel-footprints-store.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: travel-footprints-store-aab
+          path: travel-footprints-store.aab
+          retention-days: 30
