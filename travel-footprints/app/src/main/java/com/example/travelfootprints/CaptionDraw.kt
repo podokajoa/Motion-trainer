@@ -11,6 +11,8 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.atan2
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -40,7 +42,9 @@ object CaptionDraw {
   val top = (photo.top + cap.y * photo.height() - h / 2f).coerceIn(clip.top + m, max(clip.top + m, clip.bottom - m - h))
   // centered text is laid out inside the wider box, so shift it back to where the visible block starts
   val shift = if (cap.align == 1) 0f else (maxW - w) / 2f
-  c.save(); c.clipRect(clip); c.translate(left - shift, top); l.draw(c); c.restore()
+  c.save(); c.clipRect(clip)
+  if (cap.rot != 0f) c.rotate(cap.rot, left + w / 2f, top + h / 2f)
+  c.translate(left - shift, top); l.draw(c); c.restore()
  }
 }
 
@@ -53,6 +57,11 @@ class CaptionLayer(context: Context) : View(context) {
  var bw = 0
  var bh = 0
  var onMove: ((Float, Float) -> Unit)? = null
+ /** Two fingers: how much the pinch scaled the text and how many degrees the twist turned it since the last call. */
+ var onPinch: ((Float, Float) -> Unit)? = null
+ private var lastDist = 0f
+ private var lastAngle = 0f
+ private var twoFingers = false
 
  private fun fit(): RectF? {
   if (bw <= 0 || bh <= 0 || width <= 0 || height <= 0) return null
@@ -70,11 +79,31 @@ class CaptionLayer(context: Context) : View(context) {
  override fun onTouchEvent(e: MotionEvent): Boolean {
   val move = onMove ?: return false
   val r = fit() ?: return false
-  if (e.action == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
-  if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) {
+  when (e.actionMasked) {
+   MotionEvent.ACTION_DOWN -> { parent?.requestDisallowInterceptTouchEvent(true); twoFingers = false }
+   MotionEvent.ACTION_POINTER_DOWN -> if (e.pointerCount == 2) {
+    twoFingers = true
+    lastDist = hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0))
+    lastAngle = Math.toDegrees(atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
+   }
+  }
+  if (twoFingers) {
+   // after a pinch the remaining finger must not make the text jump, so a drag only counts after a new touch
+   if (e.actionMasked == MotionEvent.ACTION_MOVE && e.pointerCount >= 2) {
+    val dist = hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0))
+    val ang = Math.toDegrees(atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
+    var da = ang - lastAngle
+    if (da > 180f) da -= 360f
+    if (da < -180f) da += 360f
+    if (lastDist > 10f && dist > 10f) onPinch?.invoke(dist / lastDist, da)
+    lastDist = dist; lastAngle = ang
+   }
+   return true
+  }
+  if (e.actionMasked == MotionEvent.ACTION_DOWN || e.actionMasked == MotionEvent.ACTION_MOVE) {
    move(((e.x - r.left) / r.width()).coerceIn(0f, 1f), ((e.y - r.top) / r.height()).coerceIn(0f, 1f))
   }
-  if (e.action == MotionEvent.ACTION_UP) performClick()
+  if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
   return true
  }
 

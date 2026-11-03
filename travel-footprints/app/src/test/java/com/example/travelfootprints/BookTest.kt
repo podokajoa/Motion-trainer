@@ -36,11 +36,11 @@ class BookTest {
  }
 
  @Test fun jsonRoundTrip() {
-  val b = TripBook(stars = linkedSetOf(3, 9), notes = linkedMapOf(1 to DayNote("가", "나", "다")), captions = linkedMapOf(3L to Caption("수영복", 0.3f, 0.2f, 0.1f, 1, 1)))
+  val b = TripBook(stars = linkedSetOf(3, 9), notes = linkedMapOf(1 to DayNote("가", "나", "다")), captions = linkedMapOf(3L to Caption("수영복", 0.3f, 0.2f, 0.1f, 1, 1, -12.5f)))
   val back = Book.fromJson(Book.toJson(mapOf("t" to b)))["t"]!!
   assertEquals(setOf(3L, 9L), back.stars)
   assertEquals("가\n\n나\n\n다", back.notes[1]!!.text())
-  assertEquals(Caption("수영복", 0.3f, 0.2f, 0.1f, 1, 1), back.captions[3L])
+  assertEquals(Caption("수영복", 0.3f, 0.2f, 0.1f, 1, 1, -12.5f), back.captions[3L])
  }
 
  @Test fun firstVersionCaptionsStillLoad() {
