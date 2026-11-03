@@ -51,6 +51,10 @@
   .fb-ctrl button.on { border-color:var(--good); color:var(--good); }
   #fbSummary { font-size:15px; line-height:1.6; margin:4px 0 10px; }
   #fbSummary b { color:var(--warn); }
+  #fbScores { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .chip { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:6px 12px; font-size:14px; cursor:pointer; }
+  .chip b { font-size:16px; }
+  .chip.hi { border-color:var(--good); } .chip.mid { border-color:var(--warn); } .chip.lo { border-color:var(--bad); }
   .note { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--warn); border-radius:10px; padding:9px 12px; margin-bottom:6px; font-size:15px; line-height:1.45; cursor:pointer; }
   .note.on { border-color:var(--warn); background:#2a2418; }
   .note small { display:block; color:var(--muted); font-size:13px; margin-top:2px; }
@@ -159,6 +163,7 @@
     <span class="label" style="margin-left:6px">속도</span><button data-rate="1">1배</button><button data-rate="0.5" class="on">0.5배</button><button data-rate="0.25">0.25배</button>
   </div>
   <div id="fbSummary"></div>
+  <div id="fbScores"></div>
   <div id="fbNotes"></div>
 </div>
 <script type="module">
@@ -264,6 +269,7 @@ const EX = {
       }
       return out;
     },
+    depthThr: 105, tempo: { min: 0.6, ecc: "down" }, sym: true,
     repEnd: (minAng) => minAng > 105 ? [{ k: "depth", m: "조금 더 깊게 앉아보세요" }] : [],
   },
   lunge: {
@@ -288,6 +294,7 @@ const EX = {
       }
       return out;
     },
+    depthThr: 110, tempo: { min: 0.6, ecc: "down" },
     repEnd: (minAng) => minAng > 110 ? [{ k: "depth", m: "더 깊게 내려가세요" }] : [],
   },
   pushup: {
@@ -307,6 +314,7 @@ const EX = {
       if (offLine(ear, sh, an) / body > 0.08) out.push({ k: "neck", m: "고개가 떨어졌어요, 목을 일직선으로", sev: 1 });
       return out;
     },
+    depthThr: 100, tempo: { min: 0.5, ecc: "down" },
     repEnd: (minAng) => minAng > 100 ? [{ k: "depth", m: "가슴이 바닥 가까이 가도록 더 내려가세요" }] : [],
   },
   plank: {
@@ -339,6 +347,7 @@ const EX = {
       if (Math.abs(lean - S.baseLean) > 12) out.push({ k: "swing", m: "상체 반동을 쓰지 마세요", sev: 2 });
       return out;
     },
+    tempo: { min: 0.6, ecc: "up" },
     repEnd: (minAng, maxAng) => maxAng < 145 ? [{ k: "range", m: "팔을 끝까지 펴세요" }] : [],
   },
 };
@@ -372,6 +381,7 @@ EX.kbdeadlift = {
     if (ang > 160 && signedLean(lm, s) < -12) out.push({ k: "leanback", m: "정점에서 상체를 뒤로 젖히지 마세요", sev: 2 });
     return out;
   },
+  depthThr: 125, tempo: { min: 0.6, ecc: "down" },
   repEnd: (minAng) => minAng > 125 ? [{ k: "depth", m: "엉덩이를 더 깊게 뒤로 접으세요" }] : [],
 };
 EX.kbswing = {
@@ -506,8 +516,10 @@ function analyzeSwing(frames) {
     const pk = r.peak.lm, wrY = P(pk, s.wr).y, shY = P(pk, s.sh).y;
     if (wrY < shY - torso * 0.25) issues.push("high");
     else if (wrY > shY + torso * 0.5) issues.push("weak");
+    const SW_PEN = { squat: 15, shallow: 10, low: 12, lockout: 12, kneeTop: 8, leanback: 15, high: 8, weak: 8 };
+    const score = Math.max(0, 100 - issues.reduce((t, k) => t + SW_PEN[k], 0));
     const at = { squat: r.bottom.t, shallow: r.bottom.t, low: r.bottom.t, lockout: r.top.t, kneeTop: r.top.t, leanback: r.back.t, high: r.peak.t, weak: r.peak.t };
-    return { n: idx + 1, t: r.start, tb: r.bottom.t, at, issues, hipMin: Math.round(r.bottom.raw), hipMax: Math.min(180, Math.round(r.top.raw)), kneeB: Math.round(kneeB) };
+    return { n: idx + 1, t: r.start, tb: r.bottom.t, at, issues, score, hipMin: Math.round(r.bottom.raw), hipMax: Math.min(180, Math.round(r.top.raw)), kneeB: Math.round(kneeB) };
   }) };
 }
 
@@ -519,7 +531,7 @@ function showSwingResult(r) {
 
   // 기록에 합산
   for (const rp of reps) {
-    S.count++; S.reps.push(rp.issues.map(k => SWING_MSG[k]));
+    S.count++; S.reps.push(rp.issues.map(k => SWING_MSG[k])); S.scores.push(rp.score);
     for (const k of rp.issues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = SWING_MSG[k]; }
   }
   if (reps.length) saveSession();
@@ -530,7 +542,7 @@ function showSwingResult(r) {
 
   const set = {
     id: Date.now(), ex: "kbswing", date: Date.now(), frames: SW.frames, mirror: video.style.transform !== "none", W, H, holdSec: 0,
-    reps: reps.map(rp => ({ n: rp.n, t: rp.t, issues: rp.issues })),
+    reps: reps.map(rp => ({ n: rp.n, t: rp.t, issues: rp.issues, score: rp.score })),
     notes: reps.flatMap(rp => rp.issues.map(k => ({ k, m: SWING_MSG[k], t: rp.at[k], rep: rp.n }))).sort((a, b) => a.t - b.t),
     video: SW.blob,
   };
@@ -574,7 +586,7 @@ function recNote(k, m, t, rep) {
   REC.noted[key] = rt;
   REC.notes.push({ k, m, t: rt, rep });
 }
-function recRep(n, issues, t) { if (REC) REC.reps.push({ n, t: t - REC.start, issues }); }
+function recRep(n, issues, t, score) { if (REC) REC.reps.push({ n, t: t - REC.start, issues, score }); }
 const stopRecorder = r => new Promise(res => { if (!r || r.state === "inactive") return res(); r.onstop = () => res(); r.stop(); });
 async function finalizeRec(open) {
   const R = REC; REC = null;
@@ -620,7 +632,8 @@ const fmtDate = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.ge
 function setSummary(set) {
   const ex = EX[set.ex];
   const clean = set.reps.filter(r => !r.issues.length).length;
-  return ex?.hold ? `${ex.name} ${fmtSec(set.holdSec)}` : `${ex?.name || set.ex} ${set.reps.length}회 · 바른 자세 ${clean}회`;
+  const sc = set.reps.filter(r => r.score != null).map(r => r.score);
+  return ex?.hold ? `${ex.name} ${fmtSec(set.holdSec)}` : `${ex?.name || set.ex} ${set.reps.length}회 · 바른 자세 ${clean}회${sc.length ? " · 평균 " + avgScore(sc) + "점" : ""}`;
 }
 async function renderSets() {
   const box = $("setList"), sets = await allSets();
@@ -669,6 +682,11 @@ function noteVis(exKey, k, lm) {
     case "elbow": return exKey === "curl"
       ? { joints: [s.sh, s.el], ang: [s.hip, s.sh, s.el], d: `팔꿈치가 몸통에서 ${A(s.hip, s.sh, s.el)}° 벌어졌어요 → 15° 이내로 옆구리에 붙이세요` }
       : { joints: [s.sh, s.el], pairs: [[s.sh, s.el]], d: "팔꿈치가 어깨 아래에서 벗어났어요 → 어깨 바로 아래에 두세요" };
+    case "fast": return { joints: exKey === "curl" ? elbow : knee, d: exKey === "curl" ? "팔을 내리는 속도가 너무 빨라요 → 2초 정도 천천히 내리세요 (내릴 때가 근육에 가장 중요해요)" : "내려가는 속도가 너무 빨라요 → 2초 정도 천천히 내려가세요 (반동을 쓰지 말고 근육으로 버티며)" };
+    case "asym": {
+      const L = Math.round(angle(P(lm, 23), P(lm, 25), P(lm, 27))), R = Math.round(angle(P(lm, 24), P(lm, 26), P(lm, 28)));
+      return { joints: [25, 26], pairs: [[25, 26]], d: `왼쪽 무릎 ${L}°, 오른쪽 무릎 ${R}° (차이 ${Math.abs(L - R)}°) → 10° 이내로 양쪽을 똑같이 굽히세요. 한쪽 다리에 체중이 쏠리지 않게` };
+    }
     case "swing": return { joints: [s.sh, s.hip], vert: s.hip, d: "상체가 흔들렸어요 → 상체는 고정하고 팔만 움직이세요. 계속되면 무게를 줄이세요" };
     case "range": return { joints: elbow, ang: elbow, d: `팔이 ${A(...elbow)}°까지만 펴졌어요 → 160° 이상 끝까지 펴세요` };
     case "depth": {
@@ -722,13 +740,24 @@ function openPlayer(set, opts = {}) {
   for (const n of notes) tally[n.k] = (tally[n.k] || 0) + 1;
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]);
   const sum = $("fbSummary"); sum.innerHTML = "";
-  if (!notes.length) sum.textContent = "교정할 부분이 없었어요! 아주 좋아요 👍";
+  const scs = set.reps.filter(r => r.score != null).map(r => r.score);
+  if (scs.length) sum.append(`평균 ${avgScore(scs)}점 (최고 ${Math.max(...scs)}점, 최저 ${Math.min(...scs)}점). `);
+  if (!notes.length) sum.append("교정할 부분이 없었어요! 아주 좋아요 👍");
   else {
     sum.append(`교정 포인트 ${notes.length}개. 가장 많이 나온 교정: `);
     top.slice(0, 2).forEach(([k, c], i) => { const b = document.createElement("b"); b.textContent = `${notes.find(n => n.k === k).m} (${c}번)`; sum.append(i ? " / " : "", b); });
     sum.append(". ▶ 코칭 재생을 누르면 문제 순간마다 멈춰서 설명해 드려요.");
   }
 
+  // 회차별 점수 칩: 누르면 그 회차로 이동
+  const sc = $("fbScores"); sc.innerHTML = "";
+  for (const r of set.reps) {
+    if (r.score == null) continue;
+    const c = document.createElement("div"); c.className = "chip " + (r.score >= 85 ? "hi" : r.score >= 65 ? "mid" : "lo");
+    c.innerHTML = `${r.n}회 <b>${r.score}</b>점`;
+    c.onclick = () => { PL.coach = false; hideCallout(); PL.P.seek(Math.max(0, r.t - 1500)); };
+    sc.append(c);
+  }
   // 교정 목록 (설명은 그 순간의 관절 위치로 계산)
   const frameAt = ms => { let lo = 0, hi = frames.length - 1; if (hi < 0) return null; while (lo < hi) { const m = (lo + hi) >> 1; if (frames[m].t < ms) lo = m + 1; else hi = m; } return frames[lo]; };
   const vis = notes.map(n => { const f = frameAt(n.t); return f ? withDims(set, () => noteVis(set.ex, n.k, f.lm)) : { joints: [], d: "" }; });
@@ -872,7 +901,7 @@ document.querySelectorAll(".fb-ctrl [data-rate]").forEach(b => b.onclick = () =>
 // ---------- 상태 ----------
 const S = {};
 function resetState() {
-  Object.assign(S, { count: 0, phase: "up", minAng: 180, maxAng: 0, repIssues: new Map(), reps: [], ang: null, prevAng: null,
+  Object.assign(S, { count: 0, phase: "up", minAng: 180, maxAng: 0, repIssues: new Map(), reps: [], scores: [], repSev: {}, ang: null, prevAng: null,
     breath: null, breathSince: 0, holdMs: 0, holdBad: 0, lastT: 0, baseLean: null, issueTally: {}, msgs: {}, dir: null, issueFrames: {}, cueIdx: 0, lastCoachAt: 0, lastHoldCue: 0, sid: Date.now(), lastSaveSec: 0 });
   $("count").textContent = "0"; $("reps").innerHTML = ""; $("summary").textContent = "";
   const ex = EX[$("exercise").value];
@@ -994,6 +1023,7 @@ function process(lm, t, wl) {
   }
   if (S.phase === "up" && ang < hi - 15 && S.ready) {
     S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.minT = S.maxT = t; S.repIssues.clear();
+    S.repSev = {}; S.symSum = 0; S.symN = 0; S.symL = 0; S.symR = 0;
     S.repStart = t; S.badFrames = 0; S.repInvalid = null; S.ready = false;
   }
   // 동작 중에 엎드리거나 손을 바닥에 짚으면 이번 회는 무효
@@ -1012,10 +1042,18 @@ function process(lm, t, wl) {
   if (S.phase !== "up") {
     if (ang < S.minAng) { S.minAng = ang; S.minT = t; }
     if (ang > S.maxAng) { S.maxAng = ang; S.maxT = t; }
+    // 좌우 대칭: 정면/대각선에서 양쪽 무릎 각도 차이를 깊게 앉은 구간에서만 평균냄
+    if (ex.sym && view !== "side" && ang < 140) {
+      const vis = [23, 24, 25, 26, 27, 28].every(i => lm[i].visibility > 0.5);
+      if (vis) {
+        const L = angle(P(lm, 23), P(lm, 25), P(lm, 27)), R = angle(P(lm, 24), P(lm, 26), P(lm, 28));
+        S.symSum += Math.abs(L - R); S.symN++; S.symL += L; S.symR += R;
+      }
+    }
   }
   // 바닥 기준을 조금 넉넉하게 둬서, 살짝 얕은 회차도 세고 "더 깊게" 교정을 남김
   if (S.phase === "moving" && ang < ex.down + 15) S.phase = "bottom";
-  if (S.phase !== "up") for (const i of issues) { S.repIssues.set(i.k, i.m); recNote(i.k, i.m, t, S.count + 1); }
+  if (S.phase !== "up") for (const i of issues) { S.repIssues.set(i.k, i.m); S.repSev[i.k] = i.sev; recNote(i.k, i.m, t, S.count + 1); }
 
   if (S.phase === "bottom" && ang > hi) completeRep(ex);
   else if (S.phase === "moving" && ang > hi) S.phase = "up"; // 덜 내려가고 돌아온 경우
@@ -1049,8 +1087,31 @@ function completeRep(ex) {
     return;
   }
   S.count++;
-  for (const i of ex.repEnd(S.minAng, S.maxAng)) { S.repIssues.set(i.k, i.m); recNote(i.k, i.m, i.k === "range" ? S.maxT : S.minT, S.count); }
-  recRep(S.count, [...S.repIssues.keys()], performance.now());
+  const endT = performance.now();
+  let pen = 0;
+  for (const i of ex.repEnd(S.minAng, S.maxAng)) {
+    S.repIssues.set(i.k, i.m); recNote(i.k, i.m, i.k === "range" ? S.maxT : S.minT, S.count);
+    const gap = i.k === "range" ? 145 - S.maxAng : S.minAng - (ex.depthThr ?? S.minAng);
+    pen += Math.max(8, Math.min(25, Math.round(gap) + 8)); S.repSev[i.k] = 0;
+  }
+  // 속도: 내려가는(근육이 늘어나는) 구간이 너무 빠르면 교정
+  if (ex.tempo) {
+    const ecc = ((ex.tempo.ecc === "down" ? S.minT - S.repStart : endT - S.minT)) / 1000;
+    S.eccSec = ecc;
+    if (ecc < ex.tempo.min) {
+      const m = ex.tempo.ecc === "down" ? "내려갈 때 너무 빨라요. 2초 정도 천천히 내려가세요" : "내릴 때 너무 빨라요. 2초 정도 천천히 내리세요";
+      S.repIssues.set("fast", m); S.repSev.fast = 0; pen += 10; recNote("fast", m, S.minT, S.count);
+    }
+  }
+  // 좌우 대칭
+  if (ex.sym && S.symN >= 5 && S.symSum / S.symN > 15) {
+    const m = "좌우 균형이 안 맞아요. 양쪽 무릎을 똑같이 굽히세요";
+    S.repIssues.set("asym", m); S.repSev.asym = 0; pen += 10; recNote("asym", m, S.minT, S.count);
+  }
+  for (const [k, sv] of Object.entries(S.repSev)) if (sv) pen += { 1: 5, 2: 10, 3: 15 }[sv];
+  const score = Math.max(0, 100 - pen);
+  S.scores.push(score);
+  recRep(S.count, [...S.repIssues.keys()], endT, score);
   const iss = [...S.repIssues.values()];
   for (const [k, m] of S.repIssues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = m; }
   S.reps.push(iss);
@@ -1059,7 +1120,7 @@ function completeRep(ex) {
   if (!iss.length) { setState("var(--good)"); }
   const el = document.createElement("div");
   el.className = "rep " + (iss.length ? "bad" : "ok");
-  el.textContent = `${S.count}회 ${iss.length ? "· " + iss.join(", ") : "· 완벽"}`;
+  el.textContent = `${S.count}회 · ${score}점 ${iss.length ? "· " + iss.join(", ") : "· 완벽"}`;
   $("reps").prepend(el);
   updateSummary();
   saveSession();
@@ -1089,10 +1150,11 @@ function processHold(ex, issues, dt) {
   $("count").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
 
+const avgScore = a => Math.round(a.reduce((t, x) => t + x, 0) / a.length);
 function updateSummary() {
   const clean = S.reps.filter(r => !r.length).length;
   const top = Object.entries(S.issueTally).sort((a, b) => b[1] - a[1])[0];
-  $("summary").textContent = `바른 자세 ${clean}/${S.count}회` + (top ? ` · 가장 자주 나온 교정: ${S.msgs[top[0]]}` : "");
+  $("summary").textContent = `바른 자세 ${clean}/${S.count}회` + (S.scores.length ? ` · 평균 ${avgScore(S.scores)}점` : "") + (top ? ` · 가장 자주 나온 교정: ${S.msgs[top[0]]}` : "");
 }
 
 // ---------- 카메라 / 모델 ----------
@@ -1174,7 +1236,7 @@ function saveSession() {
   if (!S.count && S.holdMs < 3000) return;
   const rec = {
     id: S.sid, t: S.sid, ex: exKey, reps: S.count, clean: S.reps.filter(r => !r.length).length,
-    holdSec: Math.floor(S.holdMs / 1000),
+    holdSec: Math.floor(S.holdMs / 1000), score: S.scores.length ? avgScore(S.scores) : null,
     issues: Object.entries(S.issueTally).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => [S.msgs[k], Math.round(n)]),
   };
   const h = loadHist(), i = h.findIndex(r => r.id === rec.id);
@@ -1213,7 +1275,7 @@ function renderHist() {
   if (!h.length) { list.innerHTML = `<div class="hist-item"><small>아직 기록이 없어요. 운동을 시작하면 자동으로 저장돼요.</small></div>`; return; }
   for (const r of h.slice().reverse().slice(0, 30)) {
     const d = new Date(r.t), ex = EX[r.ex];
-    const main = ex?.hold ? `${ex.name} ${fmtSec(r.holdSec)}` : `${ex?.name || r.ex} ${r.reps}회 · 바른 자세 ${r.clean}회`;
+    const main = ex?.hold ? `${ex.name} ${fmtSec(r.holdSec)}` : `${ex?.name || r.ex} ${r.reps}회 · 바른 자세 ${r.clean}회${r.score != null ? " · " + r.score + "점" : ""}`;
     const el = document.createElement("div"); el.className = "hist-item";
     el.append(`${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} · ${main}`);
     if (r.issues?.length) {
