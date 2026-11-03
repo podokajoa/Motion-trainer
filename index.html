@@ -36,20 +36,28 @@
   .rep.bad { border-color:var(--warn); }
   #summary { margin-top:12px; font-size:14px; line-height:1.6; color:var(--muted); }
   #status { color:var(--muted); font-size:13px; margin:4px 0; }
-  #ana { position:absolute; inset:0; z-index:5; background:var(--bg); overflow:auto; padding:12px; }
-  .ana-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:18px; }
-  .rp { position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; overflow:hidden; }
+  #fb { position:fixed; inset:0; z-index:20; background:var(--bg); overflow:auto; padding:12px 16px 32px; }
+  .fb-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px; font-size:18px; }
+  .rp { position:relative; width:100%; max-height:62vh; aspect-ratio:4/3; margin:0 auto; background:#000; border-radius:10px; overflow:hidden; }
   .rp video, .rp canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
-  .ana-ctrl { display:flex; gap:6px; align-items:center; margin:8px 0; }
-  .ana-ctrl button { padding:6px 10px; font-size:13px; }
-  .ana-ctrl button.on { border-color:var(--good); color:var(--good); }
-  #anaSummary { font-size:15px; line-height:1.6; margin:6px 0 10px; }
-  #anaSummary b { color:var(--warn); }
-  .ana-rep { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; cursor:pointer; }
-  .ana-rep.ok { border-color:var(--good); }
-  .ana-rep.bad { border-color:var(--warn); }
-  .ana-rep small { display:block; color:var(--muted); }
-  body.workout #ana { font-size:4vmin; }
+  #fbCallout { position:absolute; left:8px; right:8px; top:8px; background:rgba(0,0,0,.8); border-left:5px solid var(--warn); border-radius:10px; padding:10px 12px; font-size:17px; font-weight:800; line-height:1.35; }
+  #fbCallout small { display:block; font-size:14px; font-weight:500; color:#e5e7eb; margin-top:4px; }
+  #fbBar { position:relative; height:30px; background:var(--card); border:1px solid var(--line); border-radius:8px; margin:10px 0 8px; cursor:pointer; touch-action:none; }
+  #fbBar .mk { position:absolute; top:4px; width:12px; height:20px; margin-left:-6px; border-radius:4px; background:var(--warn); }
+  #fbBar .mk.rep { width:2px; margin-left:-1px; top:9px; height:10px; background:var(--good); border-radius:1px; }
+  #fbHead { position:absolute; top:-3px; bottom:-3px; width:3px; margin-left:-1px; background:#fff; border-radius:2px; }
+  .fb-ctrl { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; }
+  .fb-ctrl button { padding:8px 12px; font-size:14px; }
+  .fb-ctrl button.on { border-color:var(--good); color:var(--good); }
+  #fbSummary { font-size:15px; line-height:1.6; margin:4px 0 10px; }
+  #fbSummary b { color:var(--warn); }
+  .note { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--warn); border-radius:10px; padding:9px 12px; margin-bottom:6px; font-size:15px; line-height:1.45; cursor:pointer; }
+  .note.on { border-color:var(--warn); background:#2a2418; }
+  .note small { display:block; color:var(--muted); font-size:13px; margin-top:2px; }
+  .set-item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px; font-size:14px; line-height:1.5; cursor:pointer; }
+  .set-item small { display:block; color:var(--muted); }
+  #fbSection { margin-top:28px; border-top:1px solid var(--line); padding-top:16px; }
+  #fbSection h2 { font-size:18px; margin:0 0 10px; }
   #history { margin-top:28px; border-top:1px solid var(--line); padding-top:16px; }
   #history h2 { font-size:18px; margin:0 0 10px; }
   .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -124,18 +132,15 @@
       <div class="pill" id="breathBox" style="color:var(--muted)"><div class="label">호흡</div><div id="breath">-</div><div id="breathBar"><div id="breathFill"></div></div></div>
       <div class="pill" style="text-align:right"><div class="label">카메라 방향</div><div id="view" style="font-weight:700">-</div><div class="label" id="angle"></div></div>
     </div>
-    <div id="ana" hidden>
-      <div class="ana-head"><b id="anaTitle">스윙 분석</b><button id="anaClose">다시 하기</button></div>
-      <div class="rp"><video id="rv" playsinline muted loop></video><canvas id="rc"></canvas></div>
-      <div class="ana-ctrl"><span class="label">재생 속도</span>
-        <button data-rate="1">1배</button><button data-rate="0.5" class="on">0.5배</button><button data-rate="0.25">0.25배</button></div>
-      <div id="anaSummary"></div>
-      <div id="anaReps"></div>
-    </div>
     <div class="cue" id="cue">준비되면 시작하세요<small>몸 전체가 화면에 들어오게 서주세요</small></div>
   </div>
   <div id="reps"></div>
   <div id="summary"></div>
+  <section id="fbSection">
+    <h2>운동 후 피드백</h2>
+    <div class="label" style="margin-bottom:8px">운동할 때마다 자동으로 녹화돼요. 눌러서 리플레이와 교정 설명을 보세요. (이 폰에 최근 6세트 보관)</div>
+    <div id="setList"></div>
+  </section>
   <section id="history">
     <h2>운동 기록</h2>
     <div class="stats" id="histStats"></div>
@@ -145,6 +150,17 @@
     <button id="histClear">기록 전체 삭제</button>
   </section>
 </main>
+<div id="fb" hidden>
+  <div class="fb-head"><div><b id="fbTitle"></b><div class="label" id="fbSub"></div></div><button id="fbClose">닫기</button></div>
+  <div class="rp" id="fbRp"><video id="rv" playsinline muted></video><canvas id="rc"></canvas><div id="fbCallout" hidden></div></div>
+  <div id="fbBar"><div id="fbHead"></div></div>
+  <div class="fb-ctrl">
+    <button id="fbPrev">◀ 이전</button><button id="fbPlay" class="primary">▶ 코칭 재생</button><button id="fbNext">다음 ▶</button>
+    <span class="label" style="margin-left:6px">속도</span><button data-rate="1">1배</button><button data-rate="0.5" class="on">0.5배</button><button data-rate="0.25">0.25배</button>
+  </div>
+  <div id="fbSummary"></div>
+  <div id="fbNotes"></div>
+</div>
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
@@ -204,7 +220,7 @@ function bodyPosture(lm, wl, hinge) {
   if (wl) {
     const legs = verticalRatio(wl, [11, 12], [27, 28]), torso = verticalRatio(wl, [11, 12], [23, 24]);
     if (hinge) return legs < 0.5 ? "horizontal" : legs > 0.7 ? "upright" : "mid";
-    if (legs < 0.5 || torso < 0.4) return "horizontal";
+    if (legs < 0.5 || torso < 0.25) return "horizontal"; // 상체가 많이 숙여진 스쿼트(약 70°)까지는 선 자세로 봄
     if (legs > 0.7 && torso > 0.55) return "upright";
     return "mid";
   }
@@ -367,11 +383,10 @@ EX.kbswing = {
 
 // ---------- 스윙: 자동 녹화 + 세트 후 분석 ----------
 // 실시간으로는 말하지 않고(집중 방해), 관절 위치를 저장해 두었다가 세트가 끝나면 분석.
-const SW = { mode: "wait", frames: [], recStart: 0, lastMotion: 0, lastSeen: 0, recorder: null, chunks: [], liveReps: 0, livePhase: "up", url: null, result: null };
+const SW = { mode: "wait", frames: [], recStart: 0, lastMotion: 0, lastSeen: 0, recorder: null, chunks: [], liveReps: 0, livePhase: "up", blob: null, result: null };
 function resetSwing() {
   if (SW.recorder?.state === "recording") SW.recorder.stop();
   Object.assign(SW, { mode: "wait", frames: [], recorder: null, chunks: [], liveReps: 0, livePhase: "up", result: null });
-  $("ana").hidden = true;
 }
 // 고관절 각도(180 = 똑바로 섬, 180 미만 = 접힘, 180 초과 = 뒤로 젖힘).
 // 일반 각도는 뒤로 젖혀도 180 미만으로 접혀 보여서 정점을 놓치므로 방향을 구분함.
@@ -395,7 +410,7 @@ function processSwing(lm, t, sd, view) {
     else return;
   }
   // 녹화 중: 프레임 저장, 화면에는 회수만 크게
-  SW.frames.push({ t: t - SW.recStart, lm: lm.map(p => ({ x: p.x, y: p.y, visibility: p.visibility })) });
+  SW.frames.push({ t: t - SW.recStart, lm: packLm(lm) });
   if (hipA < 150) SW.lastMotion = t;
   if (SW.livePhase === "up" && hipA < 120) SW.livePhase = "down";
   if (SW.livePhase === "down" && hipA > 160) {
@@ -415,7 +430,7 @@ function startSwingRec(t) {
   tone(true);
   try {
     const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find(m => MediaRecorder.isTypeSupported?.(m));
-    SW.recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 2_500_000 } : undefined);
+    SW.recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 1_500_000 } : undefined);
     SW.recorder.ondataavailable = e => e.data.size && SW.chunks.push(e.data);
     SW.recorder.start(500);
   } catch { SW.recorder = null; }
@@ -429,12 +444,11 @@ function finishSwing() {
   const done = () => showSwingResult(r);
   if (SW.recorder && SW.recorder.state !== "inactive") {
     SW.recorder.onstop = () => {
-      if (SW.url) URL.revokeObjectURL(SW.url);
-      SW.url = SW.chunks.length ? URL.createObjectURL(new Blob(SW.chunks, { type: SW.recorder.mimeType || "video/webm" })) : null;
+      SW.blob = SW.chunks.length ? new Blob(SW.chunks, { type: SW.recorder.mimeType || "video/webm" }) : null;
       done();
     };
     SW.recorder.stop();
-  } else { SW.url = null; done(); }
+  } else { SW.blob = null; done(); }
 }
 
 const SWING_MSG = {
@@ -492,7 +506,8 @@ function analyzeSwing(frames) {
     const pk = r.peak.lm, wrY = P(pk, s.wr).y, shY = P(pk, s.sh).y;
     if (wrY < shY - torso * 0.25) issues.push("high");
     else if (wrY > shY + torso * 0.5) issues.push("weak");
-    return { n: idx + 1, t: r.start, tb: r.bottom.t, issues, hipMin: Math.round(r.bottom.raw), hipMax: Math.min(180, Math.round(r.top.raw)), kneeB: Math.round(kneeB) };
+    const at = { squat: r.bottom.t, shallow: r.bottom.t, low: r.bottom.t, lockout: r.top.t, kneeTop: r.top.t, leanback: r.back.t, high: r.peak.t, weak: r.peak.t };
+    return { n: idx + 1, t: r.start, tb: r.bottom.t, at, issues, hipMin: Math.round(r.bottom.raw), hipMax: Math.min(180, Math.round(r.top.raw)), kneeB: Math.round(kneeB) };
   }) };
 }
 
@@ -501,7 +516,6 @@ function showSwingResult(r) {
   const tally = {};
   for (const rp of reps) for (const k of rp.issues) tally[k] = (tally[k] || 0) + 1;
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]);
-  const clean = reps.filter(rp => !rp.issues.length).length;
 
   // 기록에 합산
   for (const rp of reps) {
@@ -510,72 +524,350 @@ function showSwingResult(r) {
   }
   if (reps.length) saveSession();
 
-  $("anaTitle").textContent = `스윙 ${reps.length}회 분석`;
-  const sum = $("anaSummary"); sum.innerHTML = "";
-  if (!reps.length) sum.textContent = "스윙 동작을 찾지 못했어요. 옆에서 몸 전체가 보이게 찍어주세요.";
-  else {
-    sum.append(`바른 자세 ${clean}/${reps.length}회. `);
-    if (top.length) {
-      sum.append("가장 많이 나온 교정: ");
-      top.slice(0, 2).forEach(([k, n], i) => { const b = document.createElement("b"); b.textContent = `${SWING_MSG[k]} (${n}회)`; sum.append(i ? " / " : "", b); });
-    } else sum.append("아주 좋아요! 지금 리듬 그대로 가세요.");
-  }
-  const list = $("anaReps"); list.innerHTML = "";
-  for (const rp of reps) {
-    const el = document.createElement("div");
-    el.className = "ana-rep " + (rp.issues.length ? "bad" : "ok");
-    el.append(`${rp.n}회 · ${rp.issues.length ? rp.issues.length + "개 교정" : "완벽"}`);
-    const sm = document.createElement("small");
-    sm.textContent = (rp.issues.length ? rp.issues.map(k => SWING_MSG[k]).join(" / ") + " · " : "") + `엉덩이 ${rp.hipMin}°→${rp.hipMax}°, 하이크 때 무릎 ${rp.kneeB}°`;
-    el.append(sm);
-    el.onclick = () => seekReplay(rp.t / 1000 - 0.3);
-    list.append(el);
-  }
-  $("ana").hidden = false;
-  setupReplay(r);
-  // 음성 요약: 핵심 교정 2개까지만
   const say = !reps.length ? "스윙을 찾지 못했어요. 옆에서 찍어주세요."
     : `스윙 ${reps.length}회. ` + (top.length ? top.slice(0, 2).map(([k]) => SWING_MSG[k]).join(". ") : "아주 좋아요.");
   speak(say, 3);
+
+  const set = {
+    id: Date.now(), ex: "kbswing", date: Date.now(), frames: SW.frames, mirror: video.style.transform !== "none", W, H, holdSec: 0,
+    reps: reps.map(rp => ({ n: rp.n, t: rp.t, issues: rp.issues })),
+    notes: reps.flatMap(rp => rp.issues.map(k => ({ k, m: SWING_MSG[k], t: rp.at[k], rep: rp.n }))).sort((a, b) => a.t - b.t),
+    video: SW.blob,
+  };
+  if (reps.length) saveSet(set);
+  // 결과 음성이 먼저 나오도록 리플레이는 자동 재생하지 않음
+  openPlayer(set, { closeLabel: "다시 하기", noAutoplay: true, onClose: () => { SW.mode = "wait"; SW.frames = []; } });
 }
 
-// 리플레이: 녹화 영상 위에 저장한 관절을 시간에 맞춰 그림. 교정이 있는 회차는 빨간 뼈대.
-let replayRAF = 0;
-function setupReplay(r) {
-  const rv = $("rv"), rc = $("rc"), rctx = rc.getContext("2d"), rdraw = new DrawingUtils(rctx);
-  cancelAnimationFrame(replayRAF);
-  const mirror = video.style.transform;
-  rv.style.transform = rc.style.transform = mirror;
-  rc.width = W; rc.height = H;
-  const frames = SW.frames;
-  const badAt = t => r.reps.find(rp => t >= rp.t - 200 && t <= (r.reps[rp.n]?.t ?? Infinity))?.issues.length > 0;
-  let fallbackStart = performance.now();
-  const frameAt = ms => { let lo = 0, hi = frames.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (frames[m].t < ms) lo = m + 1; else hi = m; } return frames[lo]; };
-  const paint = () => {
-    rctx.clearRect(0, 0, rc.width, rc.height);
-    let ms;
-    if (SW.url) ms = rv.currentTime * 1000;
-    else { // 영상 녹화가 안 되는 기기: 뼈대만 0.5배속으로 재생
-      const dur = frames.at(-1)?.t || 1;
-      ms = ((performance.now() - fallbackStart) * 0.5) % dur;
-      rctx.fillStyle = "#000"; rctx.fillRect(0, 0, rc.width, rc.height);
-    }
-    const f = frames.length && frameAt(ms);
-    if (f) {
-      const color = badAt(f.t) ? "#f87171" : "#4ade80";
-      rdraw.drawConnectors(f.lm, PoseLandmarker.POSE_CONNECTIONS, { color, lineWidth: 5 });
-      rdraw.drawLandmarks(f.lm, { color: "#fff", radius: 3 });
-    }
-    if (!$("ana").hidden) replayRAF = requestAnimationFrame(paint);
-  };
-  if (SW.url) {
-    rv.hidden = false; rv.src = SW.url; rv.playbackRate = 0.5;
-    // 크롬 녹화 webm은 길이 정보가 없어 탐색이 안 되는 문제 우회
-    rv.onloadedmetadata = () => { if (rv.duration === Infinity) { rv.currentTime = 1e9; rv.ondurationchange = () => { rv.ondurationchange = null; rv.currentTime = 0; rv.play().catch(() => {}); }; } else rv.play().catch(() => {}); };
-  } else rv.hidden = true;
-  paint();
+// ---------- 운동 후 피드백: 자동 녹화 + 교정 순간 기록 + 리플레이 ----------
+// 운동하는 동안 영상과 관절 위치를 함께 저장하고, 교정이 나온 순간(시간, 회차)을 표시해 둠.
+// 운동이 끝나면 그 순간마다 멈춰서 "무릎 112° → 90~100°"처럼 숫자로 설명.
+const REC_MAX_MS = 5 * 60 * 1000;
+let REC = null;
+const packLm = lm => lm.map(p => ({ x: Math.round(p.x * 1e4) / 1e4, y: Math.round(p.y * 1e4) / 1e4, visibility: Math.round((p.visibility ?? 0) * 100) / 100 }));
+function newRecorder(chunks) {
+  try {
+    const type = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find(m => MediaRecorder.isTypeSupported?.(m));
+    const r = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 1_500_000 } : undefined);
+    r.ondataavailable = e => e.data.size && chunks.push(e.data);
+    r.start(1000);
+    return r;
+  } catch { return null; }
 }
-function seekReplay(sec) { const rv = $("rv"); if (SW.url) { rv.currentTime = Math.max(0, sec); rv.play().catch(() => {}); } }
+function startRec() {
+  const chunks = [];
+  REC = { id: Date.now(), ex: $("exercise").value, start: performance.now(), frames: [], notes: [], reps: [], chunks,
+    recorder: newRecorder(chunks), mirror: video.style.transform !== "none", W, H, noted: {} };
+}
+function recFrame(lm, t) {
+  if (!REC) return;
+  const rt = t - REC.start;
+  if (rt > REC_MAX_MS) { if (REC.recorder?.state === "recording") REC.recorder.stop(); return; } // 녹화는 5분까지
+  REC.frames.push({ t: rt, lm: packLm(lm) });
+}
+// 같은 회차에서 같은 교정은 한 번만 기록 (플랭크처럼 회차가 없으면 같은 교정을 6초에 한 번)
+function recNote(k, m, t, rep) {
+  if (!REC || k === "view") return;
+  const rt = t - REC.start, key = rep != null ? rep + ":" + k : k;
+  if (rt > REC_MAX_MS) return;
+  if (REC.noted[key] != null && (rep != null || rt - REC.noted[key] < 6000)) return;
+  REC.noted[key] = rt;
+  REC.notes.push({ k, m, t: rt, rep });
+}
+function recRep(n, issues, t) { if (REC) REC.reps.push({ n, t: t - REC.start, issues }); }
+const stopRecorder = r => new Promise(res => { if (!r || r.state === "inactive") return res(); r.onstop = () => res(); r.stop(); });
+async function finalizeRec(open) {
+  const R = REC; REC = null;
+  if (!R) return;
+  await stopRecorder(R.recorder);
+  if (!R.reps.length && !R.notes.length && S.holdMs < 3000) return; // 운동을 안 했으면 저장 안 함
+  const set = { id: R.id, ex: R.ex, date: R.id, frames: R.frames, notes: R.notes.sort((a, b) => a.t - b.t), reps: R.reps,
+    mirror: R.mirror, W: R.W, H: R.H, holdSec: Math.floor(S.holdMs / 1000),
+    video: R.chunks.length ? new Blob(R.chunks, { type: R.recorder?.mimeType || "video/webm" }) : null };
+  await saveSet(set);
+  if (open) openPlayer(set);
+}
+
+// 세트 보관: IndexedDB(폰에 저장, 최근 6개). 안 되는 환경이면 이번 실행 동안만 메모리에.
+const MEM_SETS = new Map();
+let dbP;
+const idb = () => dbP ??= new Promise((res, rej) => {
+  const r = indexedDB.open("motion-trainer", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("sets", { keyPath: "id" });
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+async function allSets() {
+  let list = [];
+  try {
+    const db = await idb();
+    list = await new Promise((res, rej) => { const q = db.transaction("sets").objectStore("sets").getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  } catch {}
+  for (const st of MEM_SETS.values()) if (!list.some(x => x.id === st.id)) list.push(st);
+  return list.sort((a, b) => b.id - a.id);
+}
+async function saveSet(set) {
+  MEM_SETS.set(set.id, set);
+  try {
+    const db = await idb();
+    await new Promise((res, rej) => { const tx = db.transaction("sets", "readwrite"); tx.objectStore("sets").put(set); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    const old = (await allSets()).slice(6);
+    if (old.length) await new Promise(res => { const tx = db.transaction("sets", "readwrite"); for (const o of old) { tx.objectStore("sets").delete(o.id); MEM_SETS.delete(o.id); } tx.oncomplete = res; tx.onerror = res; });
+  } catch {}
+  renderSets();
+}
+const fmtT = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmtDate = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+function setSummary(set) {
+  const ex = EX[set.ex];
+  const clean = set.reps.filter(r => !r.issues.length).length;
+  return ex?.hold ? `${ex.name} ${fmtSec(set.holdSec)}` : `${ex?.name || set.ex} ${set.reps.length}회 · 바른 자세 ${clean}회`;
+}
+async function renderSets() {
+  const box = $("setList"), sets = await allSets();
+  box.innerHTML = "";
+  if (!sets.length) { box.innerHTML = `<div class="set-item"><small>아직 녹화된 세트가 없어요. 운동을 시작하면 자동으로 녹화돼요.</small></div>`; return; }
+  for (const st of sets) {
+    const el = document.createElement("div"); el.className = "set-item";
+    el.append(`${fmtDate(st.date)} · ${setSummary(st)}`);
+    const sm = document.createElement("small");
+    sm.textContent = st.notes.length ? `교정 포인트 ${st.notes.length}개 · 눌러서 리플레이` : "교정 포인트 없음 · 눌러서 리플레이";
+    el.append(sm);
+    el.onclick = () => openPlayer(st);
+    box.append(el);
+  }
+}
+
+// 교정 종류별로 화면에 강조할 관절, 각도 표시, 숫자가 들어간 설명을 그 순간의 관절 위치로 계산
+function lungeKnee(lm) {
+  const L = angle(P(lm, 23), P(lm, 25), P(lm, 27)), R = angle(P(lm, 24), P(lm, 26), P(lm, 28));
+  return L < R ? [23, 25, 27] : [24, 26, 28];
+}
+function noteVis(exKey, k, lm) {
+  const s = pickSide(lm, ["sh", "hip", "kn", "an"]).s;
+  const A = (a, b, c) => Math.round(angle(P(lm, a), P(lm, b), P(lm, c)));
+  const pct = (a, b) => Math.round(a / (b || 1) * 100);
+  const knee = [s.hip, s.kn, s.an], elbow = [s.sh, s.el, s.wr], hipJ = [s.sh, s.hip, s.kn], body = [s.sh, s.hip, s.an];
+  const lean = Math.round(leanFromVertical(P(lm, s.hip), P(lm, s.sh)));
+  const swing = exKey === "kbswing", floor = exKey === "pushup" || exKey === "plank";
+  switch (k) {
+    case "valgus": {
+      if (exKey === "lunge") return { joints: [s.kn, s.an, s.toe], ang: knee, d: "앞무릎이 발끝 방향을 따라가게, 무릎을 살짝 바깥쪽으로 밀어주세요" };
+      const kw = Math.abs(P(lm, 25).x - P(lm, 26).x), aw = Math.abs(P(lm, 27).x - P(lm, 28).x);
+      return { joints: [25, 26, 27, 28], pairs: [[25, 26], [27, 28]], d: `무릎 간격이 발 간격의 ${pct(kw, aw)}%예요 → 100% 이상(발 너비 이상)이 되게 무릎을 바깥쪽으로 밀어주세요` };
+    }
+    case "stance": {
+      const aw = Math.abs(P(lm, 27).x - P(lm, 28).x), sw = Math.abs(P(lm, 11).x - P(lm, 12).x);
+      return { joints: [11, 12, 27, 28], pairs: [[11, 12], [27, 28]], d: `발 간격이 어깨 너비의 ${pct(aw, sw)}%예요 → 100% 정도로 벌려주세요` };
+    }
+    case "shift": return { joints: [23, 24], pairs: [[23, 24]], d: "골반이 한쪽으로 기울었어요 → 양발에 체중을 반반 실으세요" };
+    case "lean": return { joints: [s.sh, s.hip], vert: s.hip, d: exKey === "lunge" ? `상체가 ${lean}° 기울었어요 → 15° 이내로 똑바로 세우세요` : `상체가 ${lean}° 숙여졌어요 → 45° 이내로 가슴을 세우고 등을 곧게 펴세요` };
+    case "knee_fwd": return { joints: [s.kn, s.toe], ang: knee, d: exKey === "lunge" ? "앞무릎이 발끝보다 많이 나갔어요 → 보폭을 한 뼘 더 넓히세요" : "무릎이 발끝보다 많이 나갔어요 → 의자에 앉듯 엉덩이를 뒤로 빼며 앉으세요" };
+    case "heel": return { joints: [s.heel, s.toe], pairs: [[s.heel, s.toe]], d: "뒤꿈치가 들렸어요 → 체중을 발 뒤쪽에 두고 뒤꿈치로 바닥을 누르세요" };
+    case "neck": return { joints: [s.ear, s.sh], pairs: [[s.ear, s.sh]], d: floor ? "고개가 떨어졌어요 → 정수리부터 발끝까지 일직선, 시선은 손 약간 앞 바닥" : "고개가 숙여졌어요 → 시선은 2~3m 앞, 턱은 살짝 당기세요" };
+    case "sag": return { joints: body, ang: body, d: `몸 각도 ${A(...body)}°, 허리가 처졌어요 → 170~180° 일직선이 되게 배꼽을 당기고 엉덩이를 조이세요` };
+    case "pike": return { joints: body, ang: body, d: `몸 각도 ${A(...body)}°, 엉덩이가 들렸어요 → 170~180° 일직선이 되게 엉덩이를 내리세요` };
+    case "elbow": return exKey === "curl"
+      ? { joints: [s.sh, s.el], ang: [s.hip, s.sh, s.el], d: `팔꿈치가 몸통에서 ${A(s.hip, s.sh, s.el)}° 벌어졌어요 → 15° 이내로 옆구리에 붙이세요` }
+      : { joints: [s.sh, s.el], pairs: [[s.sh, s.el]], d: "팔꿈치가 어깨 아래에서 벗어났어요 → 어깨 바로 아래에 두세요" };
+    case "swing": return { joints: [s.sh, s.hip], vert: s.hip, d: "상체가 흔들렸어요 → 상체는 고정하고 팔만 움직이세요. 계속되면 무게를 줄이세요" };
+    case "range": return { joints: elbow, ang: elbow, d: `팔이 ${A(...elbow)}°까지만 펴졌어요 → 160° 이상 끝까지 펴세요` };
+    case "depth": {
+      if (exKey === "pushup") return { joints: elbow, ang: elbow, d: `가장 낮을 때 팔꿈치 ${A(...elbow)}° → 90° 이하가 되게 가슴을 바닥 가까이` };
+      if (exKey === "kbdeadlift") return { joints: hipJ, ang: hipJ, d: `엉덩이 각도 ${A(...hipJ)}° → 90~110°까지 엉덩이를 더 뒤로 접으세요` };
+      const kk = exKey === "lunge" ? lungeKnee(lm) : knee;
+      return { joints: kk, ang: kk, d: exKey === "lunge" ? `가장 낮을 때 무릎 ${A(...kk)}° → 90°까지 더 내려가세요` : `가장 깊을 때 무릎 ${A(...kk)}° → 90~100°까지 더 앉으세요` };
+    }
+    case "squat": return { joints: knee, ang: knee, d: swing ? `하이크 때 무릎 ${A(...knee)}° → 130~150°: 무릎은 덜 굽히고 엉덩이를 뒤로 접으세요` : `무릎 ${A(...knee)}° → 140° 이상: 무릎은 살짝만 굽히고 엉덩이를 뒤로 빼세요` };
+    case "shallow": return { joints: hipJ, ang: hipJ, d: `엉덩이 각도 ${A(...hipJ)}° → 110° 이하로 더 깊게 접으세요` };
+    case "low": return { joints: [s.wr, s.kn], pairs: [[s.wr, s.kn]], d: "벨이 무릎보다 아래로 지나가요 → 손목이 무릎 위, 사타구니 쪽으로 높게 하이크하세요" };
+    case "lockout": return { joints: hipJ, ang: hipJ, d: `정점에서 엉덩이 ${Math.min(180, A(...hipJ))}° → 170~180°까지 펴고 엉덩이를 꽉 조이세요` };
+    case "kneeTop": return { joints: knee, ang: knee, d: `정점에서 무릎 ${A(...knee)}° → 170° 이상으로 쭉 펴세요` };
+    case "leanback": return { joints: [s.sh, s.hip], vert: s.hip, d: `상체가 뒤로 ${Math.abs(Math.round(signedLean(lm, s)))}° 젖혀졌어요 → 0~5°, 서 있는 플랭크처럼 일직선` };
+    case "high": return { joints: [s.wr, s.sh], pairs: [[s.wr, s.sh]], d: "벨이 어깨보다 높이 떠요 → 가슴~어깨 높이까지만 (팔로 들지 말고 엉덩이 힘으로)" };
+    case "weak": return { joints: [s.wr, s.sh], pairs: [[s.wr, s.sh]], d: "벨이 가슴 아래에서 멈춰요 → 엉덩이를 더 세게 앞으로 튕기세요" };
+    case "far": return { joints: [s.wr, s.an], pairs: [[s.wr, s.an]], d: "벨이 발에서 멀어요 → 벨을 발 중앙 위, 다리 가까이로" };
+    default: return { joints: [], d: "" };
+  }
+}
+
+// ---------- 리플레이 플레이어 ----------
+let PL = null;
+function withDims(set, fn) { const w = W, h = H; W = set.W || W; H = set.H || H; try { return fn(); } finally { W = w; H = h; } }
+function openPlayer(set, opts = {}) {
+  closePlayer(true);
+  const rv = $("rv"), rc = $("rc"), rctx = rc.getContext("2d"), rdraw = new DrawingUtils(rctx);
+  const frames = set.frames, notes = set.notes, ex = EX[set.ex];
+  rc.width = set.W || 640; rc.height = set.H || 480;
+  $("fbRp").style.aspectRatio = `${rc.width} / ${rc.height}`;
+  rv.style.transform = set.mirror ? "scaleX(-1)" : "none";
+  rc.style.transform = "none"; // 거울 모드는 좌표를 직접 뒤집어 그리므로 캔버스는 CSS로 뒤집지 않음(글자 보호)
+  const url = set.video ? URL.createObjectURL(set.video) : null;
+  const dur = () => Math.max(frames.at(-1)?.t || 0, url && isFinite(rv.duration) ? rv.duration * 1000 : 0) || 1;
+  // 영상이 없는 기기에서도 뼈대만으로 재생되게 시계를 따로 둠
+  const clock = { t: 0, playing: false, rate: 0.5, last: 0 };
+  const P_ = {
+    now: () => url ? rv.currentTime * 1000 : clock.t,
+    seek: ms => { ms = Math.max(0, Math.min(ms, dur())); if (url) rv.currentTime = ms / 1000; else clock.t = ms; },
+    play: () => { if (url) rv.play().catch(() => {}); else { clock.playing = true; clock.last = performance.now(); } },
+    pause: () => { if (url) rv.pause(); else clock.playing = false; },
+    playing: () => url ? !rv.paused : clock.playing,
+    rate: r => { if (url) rv.playbackRate = r; clock.rate = r; },
+  };
+  PL = { set, url, opts, active: -1, coach: false, lastMs: 0, resumeT: 0, raf: 0, P: P_ };
+
+  $("fbTitle").textContent = `${ex?.name || set.ex} 피드백`;
+  $("fbSub").textContent = `${fmtDate(set.date)} · ${setSummary(set)}`;
+  $("fbClose").textContent = opts.closeLabel || "닫기";
+  const tally = {};
+  for (const n of notes) tally[n.k] = (tally[n.k] || 0) + 1;
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+  const sum = $("fbSummary"); sum.innerHTML = "";
+  if (!notes.length) sum.textContent = "교정할 부분이 없었어요! 아주 좋아요 👍";
+  else {
+    sum.append(`교정 포인트 ${notes.length}개. 가장 많이 나온 교정: `);
+    top.slice(0, 2).forEach(([k, c], i) => { const b = document.createElement("b"); b.textContent = `${notes.find(n => n.k === k).m} (${c}번)`; sum.append(i ? " / " : "", b); });
+    sum.append(". ▶ 코칭 재생을 누르면 문제 순간마다 멈춰서 설명해 드려요.");
+  }
+
+  // 교정 목록 (설명은 그 순간의 관절 위치로 계산)
+  const frameAt = ms => { let lo = 0, hi = frames.length - 1; if (hi < 0) return null; while (lo < hi) { const m = (lo + hi) >> 1; if (frames[m].t < ms) lo = m + 1; else hi = m; } return frames[lo]; };
+  const vis = notes.map(n => { const f = frameAt(n.t); return f ? withDims(set, () => noteVis(set.ex, n.k, f.lm)) : { joints: [], d: "" }; });
+  PL.vis = vis; PL.frameAt = frameAt;
+  const list = $("fbNotes"); list.innerHTML = "";
+  notes.forEach((n, i) => {
+    const el = document.createElement("div"); el.className = "note"; el.dataset.i = i;
+    el.append(`${n.rep ? n.rep + "회 · " : ""}${fmtT(n.t)} · ${n.m}`);
+    const sm = document.createElement("small"); sm.textContent = vis[i].d; el.append(sm);
+    el.onclick = () => { PL.coach = false; showNote(i, true); };
+    list.append(el);
+  });
+
+  // 타임라인: 초록 눈금 = 1회, 노란 칸 = 교정 순간
+  const bar = $("fbBar");
+  bar.querySelectorAll(".mk").forEach(m => m.remove());
+  const placeMarks = () => {
+    bar.querySelectorAll(".mk").forEach(m => m.remove());
+    for (const r of set.reps) { const m = document.createElement("div"); m.className = "mk rep"; m.style.left = `${r.t / dur() * 100}%`; bar.append(m); }
+    notes.forEach((n, i) => { const m = document.createElement("div"); m.className = "mk"; m.style.left = `${n.t / dur() * 100}%`; m.onclick = e => { e.stopPropagation(); PL.coach = false; showNote(i, true); }; bar.append(m); });
+  };
+  placeMarks();
+  bar.onpointerdown = e => { const r = bar.getBoundingClientRect(); PL.coach = false; hideCallout(); P_.seek((e.clientX - r.left) / r.width * dur()); };
+
+  if (url) {
+    rv.hidden = false; rv.src = url; rv.playbackRate = 0.5;
+    // 크롬 녹화 webm은 길이 정보가 없어 탐색이 안 되는 문제 우회
+    rv.onloadedmetadata = () => {
+      if (rv.duration === Infinity) { rv.currentTime = 1e9; rv.ondurationchange = () => { rv.ondurationchange = null; rv.currentTime = 0; placeMarks(); }; }
+      else placeMarks();
+    };
+    rv.onended = () => { PL.coach = false; updatePlayBtn(); };
+  } else rv.hidden = true;
+  document.querySelectorAll(".fb-ctrl [data-rate]").forEach(b => b.classList.toggle("on", b.dataset.rate === "0.5"));
+  P_.rate(0.5);
+  $("fb").hidden = false; $("fb").scrollTop = 0;
+  hideCallout(); updatePlayBtn();
+
+  const paint = () => {
+    if (!PL || PL.set !== set) return;
+    if (!url && clock.playing) { const n = performance.now(); clock.t += (n - clock.last) * clock.rate; clock.last = n; if (clock.t >= dur()) { clock.t = dur(); clock.playing = false; PL.coach = false; updatePlayBtn(); } }
+    const ms = P_.now();
+    // 코칭 재생: 다음 교정 순간을 지나면 멈추고 설명
+    if (PL.coach && P_.playing()) {
+      const i = notes.findIndex((n, j) => j > PL.active && n.t > PL.lastMs - 1 && n.t <= ms);
+      if (i >= 0) showNote(i, true);
+    }
+    if (PL.coach && !P_.playing() && PL.resumeT && performance.now() > PL.resumeT) { PL.resumeT = 0; hideCallout(); P_.play(); }
+    PL.lastMs = ms;
+    drawReplay(rctx, rdraw, set, frameAt(ms), ms);
+    $("fbHead").style.left = `${Math.min(100, ms / dur() * 100)}%`;
+    PL.raf = requestAnimationFrame(paint);
+  };
+  paint();
+  if (!opts.noAutoplay) P_.play();
+  updatePlayBtn();
+}
+
+function drawReplay(c, dr, set, f, ms) {
+  c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+  if (!PL.url) { c.fillStyle = "#000"; c.fillRect(0, 0, c.canvas.width, c.canvas.height); }
+  if (!f) return;
+  // 거울 모드(전면 카메라)면 좌표를 직접 뒤집어서 글자가 거꾸로 안 보이게
+  const lm = set.mirror ? f.lm.map(p => ({ ...p, x: 1 - p.x })) : f.lm;
+  dr.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#4ade80", lineWidth: 4 });
+  dr.drawLandmarks(lm, { color: "#fff", radius: 3 });
+  // 지금 보고 있는 교정(멈춘 교정, 또는 재생 중 ±0.6초 안의 교정)의 관절을 강조
+  let i = PL.active;
+  if (i < 0 || !(!PL.P.playing() || Math.abs(set.notes[i].t - ms) < 600)) i = set.notes.findIndex(n => Math.abs(n.t - ms) < 600);
+  if (i < 0) return;
+  const v = PL.vis[i], cw = c.canvas.width, chh = c.canvas.height;
+  const px = j => ({ x: lm[j].x * cw, y: lm[j].y * chh });
+  c.lineWidth = Math.max(4, cw / 120); c.strokeStyle = "#fbbf24"; c.fillStyle = "#f87171";
+  for (const [a, b] of v.pairs || []) { const A = px(a), B = px(b); c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(B.x, B.y); c.stroke(); }
+  if (v.vert != null) { const A = px(v.vert); c.save(); c.setLineDash([10, 8]); c.strokeStyle = "#e5e7eb"; c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(A.x, A.y - chh * 0.35); c.stroke(); c.restore();
+    const [a, b] = v.joints; const A2 = px(a), B2 = px(b); c.beginPath(); c.moveTo(B2.x, B2.y); c.lineTo(A2.x, A2.y); c.stroke(); }
+  if (v.ang) {
+    const [a, b, d] = v.ang.map(px);
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(d.x, d.y); c.stroke();
+    const deg = Math.round(withDims(set, () => angle(P(f.lm, v.ang[0]), P(f.lm, v.ang[1]), P(f.lm, v.ang[2]))));
+    const fs = Math.round(chh * 0.06);
+    c.font = `800 ${fs}px system-ui, sans-serif`;
+    const label = `${deg}°`, tw = c.measureText(label).width;
+    const lx = Math.min(cw - tw - 12, b.x + fs * 0.6), ly = Math.max(fs + 8, b.y - fs * 0.4);
+    c.fillStyle = "rgba(0,0,0,.75)"; c.fillRect(lx - 8, ly - fs, tw + 16, fs * 1.3);
+    c.fillStyle = "#fbbf24"; c.fillText(label, lx, ly);
+  }
+  c.fillStyle = "#f87171";
+  for (const j of v.joints) { const A = px(j); c.beginPath(); c.arc(A.x, A.y, Math.max(8, cw / 70), 0, Math.PI * 2); c.fill(); }
+}
+
+function showNote(i, speakIt) {
+  if (!PL) return;
+  const n = PL.set.notes[i]; if (!n) return;
+  PL.active = i;
+  PL.P.pause(); PL.P.seek(n.t); PL.lastMs = n.t;
+  const c = $("fbCallout"); c.hidden = false; c.innerHTML = "";
+  c.append(`${n.rep ? n.rep + "회 · " : ""}${n.m}`);
+  const sm = document.createElement("small"); sm.textContent = PL.vis[i].d; c.append(sm);
+  document.querySelectorAll("#fbNotes .note").forEach(el => el.classList.toggle("on", +el.dataset.i === i));
+  document.querySelector(`#fbNotes .note[data-i="${i}"]`)?.scrollIntoView({ block: "nearest" });
+  if (speakIt && voiceOn && "speechSynthesis" in window) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(`${n.m}. ${PL.vis[i].d.replace("→", ".")}`); u.lang = "ko-KR"; u.rate = 1.05;
+    speechSynthesis.speak(u);
+  }
+  PL.resumeT = PL.coach ? performance.now() + 5500 : 0;
+  updatePlayBtn();
+}
+function hideCallout() { $("fbCallout").hidden = true; }
+function updatePlayBtn() { if (PL) $("fbPlay").textContent = PL.coach ? "❚❚ 멈춤" : "▶ 코칭 재생"; }
+function closePlayer(silent) {
+  if (!PL) return;
+  cancelAnimationFrame(PL.raf);
+  const { url, opts } = PL; PL = null;
+  $("rv").pause(); $("rv").removeAttribute("src"); $("rv").load();
+  if (url) URL.revokeObjectURL(url);
+  $("fb").hidden = true;
+  speechSynthesis.cancel();
+  if (!silent) opts.onClose?.();
+}
+$("fbClose").onclick = () => closePlayer();
+$("fbPlay").onclick = () => {
+  if (!PL) return;
+  if (PL.coach) { PL.coach = false; PL.resumeT = 0; PL.P.pause(); }
+  else {
+    PL.coach = true; hideCallout();
+    if (PL.P.now() >= (PL.set.frames.at(-1)?.t || 0) - 100) { PL.P.seek(0); PL.active = -1; PL.lastMs = 0; }
+    else PL.active = PL.set.notes.findIndex(n => n.t > PL.P.now()) - 1;
+    PL.P.play();
+  }
+  updatePlayBtn();
+};
+$("fbPrev").onclick = () => { if (!PL) return; PL.coach = false; const ms = PL.P.now(); let i = -1; PL.set.notes.forEach((n, j) => { if (n.t < ms - 300) i = j; }); if (i >= 0) showNote(i, true); else { PL.P.seek(0); hideCallout(); } };
+$("fbNext").onclick = () => { if (!PL) return; PL.coach = false; const ms = PL.P.now(); const i = PL.set.notes.findIndex(n => n.t > ms + 300); if (i >= 0) showNote(i, true); };
+document.querySelectorAll(".fb-ctrl [data-rate]").forEach(b => b.onclick = () => {
+  PL?.P.rate(+b.dataset.rate);
+  document.querySelectorAll(".fb-ctrl [data-rate]").forEach(x => x.classList.toggle("on", x === b));
+});
 
 // ---------- 상태 ----------
 const S = {};
@@ -701,13 +993,13 @@ function process(lm, t, wl) {
     if (pst !== ex.posture && pst !== "mid") S.ready = false;
   }
   if (S.phase === "up" && ang < hi - 15 && S.ready) {
-    S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.repIssues.clear();
+    S.phase = "moving"; S.minAng = ang; S.maxAng = ang; S.minT = S.maxT = t; S.repIssues.clear();
     S.repStart = t; S.badFrames = 0; S.repInvalid = null; S.ready = false;
   }
   // 동작 중에 엎드리거나 손을 바닥에 짚으면 이번 회는 무효
   if (S.phase !== "up" && ex.posture === "upright") {
     let reason = null;
-    if (pst !== "upright") reason = "몸이 앞으로 엎드려졌어요";
+    if (pst === "horizontal") reason = "몸이 앞으로 엎드려졌어요";
     if (ex.legs) {
       const kn = P(lm, sd.s.kn), an = P(lm, sd.s.an), shin = dist(kn, an);
       const wr = [P(lm, 15), P(lm, 16)].filter(w => w.v > 0.5);
@@ -717,9 +1009,13 @@ function process(lm, t, wl) {
     if (S.badFrames >= 3) S.repInvalid = reason;
     if (t - S.repStart > 8000) S.repInvalid = "한 번 하는 데 너무 오래 걸렸어요";
   }
-  if (S.phase !== "up") { S.minAng = Math.min(S.minAng, ang); S.maxAng = Math.max(S.maxAng, ang); }
-  if (S.phase === "moving" && ang < ex.down) S.phase = "bottom";
-  if (S.phase !== "up") for (const i of issues) S.repIssues.set(i.k, i.m);
+  if (S.phase !== "up") {
+    if (ang < S.minAng) { S.minAng = ang; S.minT = t; }
+    if (ang > S.maxAng) { S.maxAng = ang; S.maxT = t; }
+  }
+  // 바닥 기준을 조금 넉넉하게 둬서, 살짝 얕은 회차도 세고 "더 깊게" 교정을 남김
+  if (S.phase === "moving" && ang < ex.down + 15) S.phase = "bottom";
+  if (S.phase !== "up") for (const i of issues) { S.repIssues.set(i.k, i.m); recNote(i.k, i.m, t, S.count + 1); }
 
   if (S.phase === "bottom" && ang > hi) completeRep(ex);
   else if (S.phase === "moving" && ang > hi) S.phase = "up"; // 덜 내려가고 돌아온 경우
@@ -753,7 +1049,8 @@ function completeRep(ex) {
     return;
   }
   S.count++;
-  for (const i of ex.repEnd(S.minAng, S.maxAng)) S.repIssues.set(i.k, i.m);
+  for (const i of ex.repEnd(S.minAng, S.maxAng)) { S.repIssues.set(i.k, i.m); recNote(i.k, i.m, i.k === "range" ? S.maxT : S.minT, S.count); }
+  recRep(S.count, [...S.repIssues.keys()], performance.now());
   const iss = [...S.repIssues.values()];
   for (const [k, m] of S.repIssues) { S.issueTally[k] = (S.issueTally[k] || 0) + 1; S.msgs[k] = m; }
   S.reps.push(iss);
@@ -777,6 +1074,7 @@ function processHold(ex, issues, dt) {
     S.holdBad += dt;
     setCue(issues[0].m, "자세를 바로잡으면 시간이 다시 올라가요", "var(--bad)");
     speak(issues[0].m, 2, issues[0].k);
+    recNote(issues[0].k, issues[0].m, performance.now(), null);
     S.issueTally[issues[0].k] = (S.issueTally[issues[0].k] || 0) + dt / 1000; S.msgs[issues[0].k] = issues[0].m;
   } else {
     S.holdMs += dt;
@@ -857,6 +1155,8 @@ async function start() {
     video.style.transform = canvas.style.transform = mirror;
     $("status").textContent = "인식 중입니다. 운동을 시작하세요!";
     enterWorkout();
+    if (REC) await finalizeRec(false);
+    if (!EX[$("exercise").value].analyze) startRec();
     if (!running) { running = true; loop(); }
   } catch (e) {
     $("status").textContent = "시작 실패: " + e.message + " (카메라 권한과 인터넷 연결을 확인해주세요)";
@@ -927,6 +1227,7 @@ function renderHist() {
 
 function exitWorkout() {
   if (SW.mode === "rec") finishSwing();
+  finalizeRec(true);
   saveSession();
   document.body.classList.remove("workout");
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -946,6 +1247,7 @@ function loop() {
     if (lm) {
       draw.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#4ade80", lineWidth: 4 });
       draw.drawLandmarks(lm, { color: "#fff", radius: 3 });
+      recFrame(lm, now);
       process(lm, now, res.worldLandmarks?.[0]);
       swingTick(now);
     } else { swingTick(now); if (SW.mode !== "done") setCue("사람이 보이지 않아요", "몸 전체가 화면에 들어오게 해주세요", "var(--muted)"); }
@@ -954,11 +1256,6 @@ function loop() {
 }
 
 $("start").onclick = start;
-$("anaClose").onclick = () => { $("ana").hidden = true; $("rv").pause(); SW.mode = "wait"; SW.frames = []; };
-document.querySelectorAll(".ana-ctrl button").forEach(b => b.onclick = () => {
-  $("rv").playbackRate = +b.dataset.rate;
-  document.querySelectorAll(".ana-ctrl button").forEach(x => x.classList.toggle("on", x === b));
-});
 $("cam").onchange = () => { store.set("camId", $("cam").value); store.set("zoom", ""); if (running) start(); };
 $("exit").onclick = exitWorkout;
 $("reset").onclick = resetState;
@@ -970,6 +1267,7 @@ $("breathVoice").onclick = () => { breathMode = { tone: "voice", voice: "off", o
 showBreath();
 resetState();
 renderHist();
+renderSets();
 $("histClear").onclick = () => { if (confirm("운동 기록을 모두 지울까요? 되돌릴 수 없어요.")) { store.set("history", "[]"); renderHist(); } };
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSession(); });
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
