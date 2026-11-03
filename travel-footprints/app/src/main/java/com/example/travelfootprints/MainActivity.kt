@@ -705,8 +705,19 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     runOnUiThread { if (bmp != null) { img.setImageBitmap(bmp); layer.bw = bmp.width; layer.bh = bmp.height; layer.invalidate() } }
    }
    fun preview() { layer.cap = cap; layer.invalidate() }
+   var sizeBar: android.widget.SeekBar? = null
    layer.onMove = { x, y -> cap = cap.copy(x = x, y = y); preview() }
-   col.addView(Y2k.text(this, "글자를 사진 위에서 손가락으로 끌어 옮겨요", 12f, Y2k.MUTED, true).apply { setPadding(dp(2), dp(8), 0, 0) })
+   layer.onPinch = { k, deg ->
+    val ns = (cap.size * k).coerceIn(0.03f, 0.17f)
+    var r = cap.rot + deg
+    while (r > 180f) r -= 360f
+    while (r < -180f) r += 360f
+    if (kotlin.math.abs(r) < 3f) r = 0f
+    cap = cap.copy(size = ns, rot = r)
+    sizeBar?.progress = (((ns - 0.03f) / 0.14f) * 100f).toInt().coerceIn(0, 100)
+    preview()
+   }
+   col.addView(Y2k.text(this, "한 손가락으로 끌어 옮기고, 두 손가락으로 벌리면 크기, 비틀면 회전돼요", 12f, Y2k.MUTED, true).apply { setPadding(dp(2), dp(8), 0, 0) })
    val et = android.widget.EditText(this).apply {
     setText(cap.text); textSize = 16f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = "사진 위에 올릴 글"
     background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(8), dp(10), dp(8)); maxLines = 4
@@ -722,9 +733,10 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    val sizeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(12), 0, 0) }
    sizeRow.addView(Y2k.text(this, "크기", 13f, ink, true), LinearLayout.LayoutParams(dp(64), -2))
    sizeRow.addView(android.widget.SeekBar(this).apply {
+    sizeBar = this
     max = 100; progress = (((cap.size - 0.03f) / 0.14f) * 100f).toInt().coerceIn(0, 100)
     setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-     override fun onProgressChanged(sb: android.widget.SeekBar?, v: Int, fromUser: Boolean) { cap = cap.copy(size = 0.03f + 0.14f * v / 100f); preview() }
+     override fun onProgressChanged(sb: android.widget.SeekBar?, v: Int, fromUser: Boolean) { if (fromUser) { cap = cap.copy(size = 0.03f + 0.14f * v / 100f); preview() } }
      override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
      override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
     })
