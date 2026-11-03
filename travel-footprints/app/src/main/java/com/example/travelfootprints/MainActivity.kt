@@ -706,13 +706,15 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    }
    fun preview() { layer.cap = cap; layer.invalidate() }
    var sizeBar: android.widget.SeekBar? = null
+   var rawRot = cap.rot
    layer.onMove = { x, y -> cap = cap.copy(x = x, y = y); preview() }
    layer.onPinch = { k, deg ->
     val ns = (cap.size * k).coerceIn(0.03f, 0.17f)
-    var r = cap.rot + deg
-    while (r > 180f) r -= 360f
-    while (r < -180f) r += 360f
-    if (kotlin.math.abs(r) < 3f) r = 0f
+    // keep the real angle apart from the shown one: snapping to 0 on every small step would swallow slow twists
+    rawRot += deg
+    while (rawRot > 180f) rawRot -= 360f
+    while (rawRot < -180f) rawRot += 360f
+    val r = if (kotlin.math.abs(rawRot) < 3f) 0f else rawRot
     cap = cap.copy(size = ns, rot = r)
     sizeBar?.progress = (((ns - 0.03f) / 0.14f) * 100f).toInt().coerceIn(0, 100)
     preview()
