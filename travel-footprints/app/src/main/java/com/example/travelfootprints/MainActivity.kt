@@ -333,7 +333,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun photoBox(): ImageView = ImageView(this).apply {
   scaleType = ImageView.ScaleType.CENTER_CROP
   background = Y2k.frame(ink, ink, 0, 4)
-  setPadding(dp(3), dp(3), dp(7), dp(7))
+  setPadding(0, dp(3), 0, dp(7))
  }
 
  private inner class TripHolder : RecyclerView.ViewHolder(LinearLayout(this@MainActivity)) {
@@ -430,7 +430,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    override fun getItemViewType(p: Int) = if (rows[p] is AlbumRow.Photo) 2 else 0
    override fun onCreateViewHolder(parent: ViewGroup, type: Int): RecyclerView.ViewHolder = object : RecyclerView.ViewHolder(
     if (type == 2) FrameLayout(this@MainActivity).apply {
-     addView(ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(ink); setPadding(dp(2), dp(2), dp(2), dp(2)) }, FrameLayout.LayoutParams(-1, -1))
+     addView(ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(ink); setPadding(0, dp(2), 0, dp(2)) }, FrameLayout.LayoutParams(-1, -1))
      addView(Y2k.text(this@MainActivity, "☆", 24f, Color.WHITE, false).apply {
       typeface = android.graphics.Typeface.DEFAULT; setShadowLayer(4f, 0f, 0f, ink); setPadding(dp(8), dp(4), dp(8), dp(10))
      }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END))
@@ -471,7 +471,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun albumCover(t: Trip, days: List<TripDay>, plan: TripPlan, jump: (Int) -> Unit): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(2), dp(2), dp(4))
   val top = FrameLayout(context)
-  val img = photoBox().apply { background = Y2k.frame(ink, ink, 0, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
+  val img = photoBox().apply { background = Y2k.frame(ink, ink, 0, 0); setPadding(0, dp(2), 0, dp(2)) }
   loadThumb(img, t.cover.uri, resources.displayMetrics.widthPixels)
   top.addView(img, FrameLayout.LayoutParams(-1, -1))
   top.addView(Y2k.text(context, dateRange(t.start, t.end), 12f, Color.WHITE, true).apply { setBackgroundColor(ink); setPadding(dp(8), dp(4), dp(8), dp(4)) },
