@@ -20,15 +20,18 @@
   .tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
   .tabs button { background:var(--card); padding:11px; }
   .tabs button.on { background:var(--accent); color:#fff; }
-  .frame { position:sticky; top:0; z-index:5; width:100%; display:flex; justify-content:center; background:var(--bg); padding:6px 0; }
+  .stage { position:sticky; top:0; z-index:5; display:flex; gap:10px; align-items:stretch; justify-content:center; background:var(--bg); padding:6px 0; }
+  .frame { position:relative; flex:none; display:flex; }
+  .frame::before { content:""; position:absolute; top:0; left:0; right:0; height:56px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:1; }
   #view { border-radius:12px; display:block; background:#000; }
-  .hud { position:absolute; left:50%; transform:translateX(-50%); pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); }
-  .frame::before { content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:var(--cw,100%); height:90px; top:6px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:1; }
-  .hud { z-index:2; }
-  .hud-top { top:14px; width:calc(var(--cw,100%) - 20px); display:flex; justify-content:space-between; align-items:flex-start; }
-  .big { font-size:30px; font-weight:800; line-height:1; }
-  .big small { font-size:16px; font-weight:700; margin-left:2px; }
-  .sub { font-size:13px; opacity:.9; text-align:right; line-height:1.5; }
+  .ctl { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between; }
+  .ctl .row { margin:0; font-size:12px; }
+  .ctl .row b { font-size:15px; }
+  .ctl input[type=range] { height:30px; margin:0; }
+  .hud { position:absolute; left:8px; right:8px; top:8px; z-index:2; pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); display:flex; justify-content:space-between; align-items:flex-start; }
+  .big { font-size:26px; font-weight:800; line-height:1; }
+  .big small { font-size:13px; font-weight:700; margin-left:2px; }
+  .sub { font-size:12px; opacity:.95; text-align:right; line-height:1.4; }
   .card { background:var(--card); border-radius:14px; padding:12px; margin-top:10px; }
   .row { margin:10px 0 2px; display:flex; justify-content:space-between; align-items:baseline; font-size:14px; }
   .row b { font-size:17px; color:var(--accent); }
@@ -68,23 +71,25 @@
   </div>
   <div id="warn" class="warn hide">이 브라우저는 흐림 효과를 지원하지 않아요. 안드로이드 크롬에서 열어 주세요. (배경 크기·위치는 그대로 보여요)</div>
 
-  <div class="frame">
-    <canvas id="view"></canvas>
-    <div class="hud hud-top">
-      <div class="big" id="hMm">35<small>mm</small></div>
-      <div class="sub" id="hSub"></div>
+  <div class="stage" id="stage">
+    <div class="frame">
+      <canvas id="view"></canvas>
+      <div class="hud">
+        <div class="big" id="hMm">35<small>mm</small></div>
+        <div class="sub" id="hSub"></div>
+      </div>
+    </div>
+    <div class="ctl" id="ctl">
+      <div><div class="row"><span>📏 카메라↔인물</span><b id="vD"></b></div><input type="range" id="sD" min="0" max="1000"></div>
+      <div><div class="row"><span>🏙️ 인물↔배경</span><b id="vG"></b></div><input type="range" id="sG" min="0" max="1000"></div>
+      <div><div class="row"><span>🔭 화각</span><b id="vF"></b></div><input type="range" id="sF" min="0" max="1000"></div>
     </div>
   </div>
 
   <!-- 실험실 -->
   <section id="lab">
     <div class="card">
-      <div class="row"><span>📏 카메라 ↔ 인물</span><b id="vD"></b></div>
-      <input type="range" id="sD" min="0" max="1000">
-      <div class="row"><span>🏙️ 인물 ↔ 배경</span><b id="vG"></b></div>
-      <input type="range" id="sG" min="0" max="1000">
-      <div class="row"><span>🔭 화각(초점거리)</span><b id="vF"></b></div>
-      <input type="range" id="sF" min="0" max="1000">
+      <div class="row" style="margin-top:0"><span>🔭 화각(초점거리) 바로 고르기</span></div>
       <div class="chips" id="fChips"></div>
       <div class="row" style="margin-top:12px"><span>◐ 조리개</span><b id="vN"></b></div>
       <div class="chips" id="nChips"></div>
@@ -156,10 +161,11 @@ const M = 48;                         // 흐림 번짐용 여백
 let W, H, K;
 function size() {
   // 미리보기는 위에 고정되므로 화면 높이의 약 42%까지만 쓴다 (슬라이더와 같이 보이게)
-  const css = Math.max(150, Math.min(cv.parentElement.clientWidth, 400, window.innerHeight * 0.42 / 1.5));
+  const cw = $("#stage").clientWidth, ih = window.innerHeight;
+  const css = mode === "lab" ? Math.max(130, Math.min(cw * 0.5, ih * 0.32, 400)) : Math.max(150, Math.min(cw, 400, ih * 0.42 / 1.5));
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   W = Math.round(css * dpr); H = Math.round(W * 1.5); K = W / SENS_W;
-  cv.width = W; cv.height = H; cv.style.width = css + "px"; cv.parentElement.style.setProperty("--cw", css + "px"); cv.style.height = css * 1.5 + "px";
+  cv.width = W; cv.height = H; cv.style.width = css + "px";  cv.style.height = css * 1.5 + "px";
   off.width = W + 2 * M; off.height = H + 2 * M;
 }
 
@@ -392,7 +398,7 @@ function draw() {
   render(s);
   const hidden = mode === "quiz" && !quiz.revealed;
   $("#hMm").innerHTML = hidden ? "?<small>mm</small>" : Math.round(s.f) + "<small>mm</small>";
-  $("#hSub").innerHTML = hidden ? "" : `f/${s.N}<br>카메라 ↔ 인물 ${fmtM(s.d)}<br>인물 ↔ 배경 ${fmtM(s.gap)}`;
+  $("#hSub").innerHTML = hidden ? "" : `f/${s.N}`;
   if (mode === "lab") { syncUI(); drawMap(s); updateInfo(s); }
 }
 function syncUI() {
@@ -451,6 +457,7 @@ $("#qOpen").onclick = () => { Object.assign(S, quiz.s, { lock: false }); setTab(
 
 function setTab(t) {
   mode = t;
+  $("#ctl").classList.toggle("hide", t !== "lab"); size();
   $("#tabLab").classList.toggle("on", t === "lab"); $("#tabQuiz").classList.toggle("on", t === "quiz");
   $("#lab").classList.toggle("hide", t !== "lab"); $("#quiz").classList.toggle("hide", t !== "quiz");
   if (t === "quiz") { showScore(); if (!quiz || quiz.revealed) newQuiz(); else refresh(); } else refresh();
