@@ -20,18 +20,23 @@
   .tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
   .tabs button { background:var(--card); padding:11px; }
   .tabs button.on { background:var(--accent); color:#fff; }
-  .stage { position:sticky; top:0; z-index:5; display:flex; gap:10px; align-items:stretch; justify-content:center; background:var(--bg); padding:6px 0; }
+  .sticky { position:sticky; top:0; z-index:5; background:var(--bg); padding:6px 0 4px; }
+  .stage { display:flex; gap:10px; align-items:stretch; justify-content:center; }
   .frame { position:relative; flex:none; display:flex; }
-  .frame::before { content:""; position:absolute; top:0; left:0; right:0; height:56px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:1; }
+  .frame::before { content:""; position:absolute; top:0; left:0; right:0; height:56px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:2; }
   #view { border-radius:12px; display:block; background:#000; }
+  .grain { position:absolute; inset:0; border-radius:12px; pointer-events:none; z-index:1; mix-blend-mode:overlay; opacity:0; background-size:96px 96px; }
   .ctl { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between; }
   .ctl .row { margin:0; font-size:12px; }
   .ctl .row b { font-size:15px; }
   .ctl input[type=range] { height:30px; margin:0; }
-  .hud { position:absolute; left:8px; right:8px; top:8px; z-index:2; pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); display:flex; justify-content:space-between; align-items:flex-start; }
+  .hud { position:absolute; left:8px; right:8px; top:8px; z-index:3; pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.7); display:flex; justify-content:space-between; align-items:flex-start; }
   .big { font-size:26px; font-weight:800; line-height:1; }
   .big small { font-size:13px; font-weight:700; margin-left:2px; }
-  .sub { font-size:12px; opacity:.95; text-align:right; line-height:1.4; }
+  .sub { font-size:11px; opacity:.95; text-align:right; line-height:1.4; }
+  .mini { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; font-size:12px; }
+  .b { background:var(--chip); border-radius:99px; padding:3px 9px; }
+  .b.ok { background:#1f4a39; color:#9af0c5; }
   .card { background:var(--card); border-radius:14px; padding:12px; margin-top:10px; }
   .row { margin:10px 0 2px; display:flex; justify-content:space-between; align-items:baseline; font-size:14px; }
   .row b { font-size:17px; color:var(--accent); }
@@ -50,7 +55,14 @@
   .tip { line-height:1.6; font-size:14px; }
   .tip p { margin:6px 0; }
   .muted { color:var(--muted); font-size:13px; line-height:1.6; }
-  #map { width:100%; height:190px; display:block; border-radius:10px; background:#171d1f; }
+  .meter { position:relative; height:10px; margin:8px 6px 4px; border-radius:6px; background:linear-gradient(90deg,#3a5a8a,#5ed39a 42%,#5ed39a 58%,#ff6a3d); }
+  .meter i { position:absolute; top:-4px; width:4px; height:18px; background:#fff; border-radius:2px; transform:translateX(-50%); box-shadow:0 0 4px rgba(0,0,0,.6); }
+  .mission { margin-top:10px; padding:10px 12px; background:var(--chip); border-radius:12px; font-size:14px; line-height:1.6; }
+  .mission h3 { margin:0 0 4px; font-size:15px; }
+  .mission ul { list-style:none; padding:0; margin:6px 0 0; }
+  .mission li { margin:4px 0; }
+  .mission .done { color:#9af0c5; font-weight:700; margin-top:6px; }
+  #map { width:100%; height:200px; display:block; border-radius:10px; background:#171d1f; }
   .hide { display:none !important; }
   .score { text-align:right; font-size:13px; color:var(--muted); }
   .result { margin-top:10px; padding:10px 12px; border-radius:12px; font-size:14px; line-height:1.6; }
@@ -71,34 +83,61 @@
   </div>
   <div id="warn" class="warn hide">이 브라우저는 흐림 효과를 지원하지 않아요. 안드로이드 크롬에서 열어 주세요. (배경 크기·위치는 그대로 보여요)</div>
 
-  <div class="stage" id="stage">
-    <div class="frame">
-      <canvas id="view"></canvas>
-      <div class="hud">
-        <div class="big" id="hMm">35<small>mm</small></div>
-        <div class="sub" id="hSub"></div>
+  <div class="sticky" id="sticky">
+    <div class="stage" id="stage">
+      <div class="frame">
+        <canvas id="view"></canvas>
+        <div class="grain" id="grain"></div>
+        <div class="hud">
+          <div class="big" id="hMm">35<small>mm</small></div>
+          <div class="sub" id="hSub"></div>
+        </div>
+      </div>
+      <div class="ctl" id="ctl">
+        <div><div class="row"><span>📏 카메라↔인물</span><b id="vD"></b></div><input type="range" id="sD" min="0" max="1000"></div>
+        <div><div class="row"><span id="lG">🏙️ 인물↔배경</span><b id="vG"></b></div><input type="range" id="sG" min="0" max="1000"></div>
+        <div><div class="row"><span>🔭 화각</span><b id="vF"></b></div><input type="range" id="sF" min="0" max="1000"></div>
       </div>
     </div>
-    <div class="ctl" id="ctl">
-      <div><div class="row"><span>📏 카메라↔인물</span><b id="vD"></b></div><input type="range" id="sD" min="0" max="1000"></div>
-      <div><div class="row"><span>🏙️ 인물↔배경</span><b id="vG"></b></div><input type="range" id="sG" min="0" max="1000"></div>
-      <div><div class="row"><span>🔭 화각</span><b id="vF"></b></div><input type="range" id="sF" min="0" max="1000"></div>
-    </div>
+    <div class="mini" id="mini"></div>
   </div>
 
   <!-- 실험실 -->
   <section id="lab">
     <div class="card">
-      <div class="row" style="margin-top:0"><span>🎬 상황</span></div>
-      <div class="chips" id="sceneChips"></div>
-      <div class="muted" id="sceneHint" style="margin-top:6px"></div>
-      <div class="row" style="margin-top:12px"><span>👥 인원 / 배치</span></div>
+      <div class="row" style="margin-top:0"><span>🎬 상황 (연출 환경)</span></div>
+      <div class="chips" id="sitChips"></div>
+      <div class="mission" id="mission"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-top:0"><span>👥 인원</span></div>
       <div class="chips" id="pChips"></div>
-      <div class="chips" id="arrChips" style="margin-top:6px"></div>
-      <div class="row" style="margin-top:12px"><span>🔭 화각(초점거리) 바로 고르기</span></div>
-      <div class="chips" id="fChips"></div>
-      <div class="row" style="margin-top:12px"><span>◐ 조리개</span><b id="vN"></b></div>
+      <div id="multi" class="hide">
+        <div class="row"><span>↕ 인물 ↔ 인물 거리</span><b id="vS"></b></div>
+        <input type="range" id="sS" min="0" max="600">
+        <div class="row"><span>🎯 초점 맞출 사람</span></div>
+        <div class="chips" id="fcChips"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-top:0"><span>☀️ 광량 (현장 밝기)</span></div>
+      <div class="chips" id="evChips"></div>
+      <div class="row"><span>◐ 조리개</span><b id="vN"></b></div>
       <div class="chips" id="nChips"></div>
+      <div class="row"><span>⏱ 셔터속도</span><b id="vT"></b></div>
+      <div class="chips" id="tChips"></div>
+      <div class="row"><span>🎞 ISO</span><b id="vI"></b></div>
+      <div class="chips" id="iChips"></div>
+      <div class="row"><span>노출</span><b id="vE"></b></div>
+      <div class="meter"><i id="mk"></i></div>
+      <div class="muted" id="expNote"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-top:0"><span>🔭 화각(초점거리) 바로 고르기</span></div>
+      <div class="chips" id="fChips"></div>
       <label class="lock"><input type="checkbox" id="lock"><span><b>인물 크기 고정</b> (돌리 줌)<br><span class="muted">화각을 바꾸면 카메라가 자동으로 뒤로/앞으로 가서 인물이 같은 크기로 찍혀요</span></span></label>
     </div>
 
@@ -118,8 +157,9 @@
       <h2>촬영 현장 공식</h2>
       <ul>
         <li><b>배경을 키우고 싶다</b> → 화각을 좁히고(망원) 카메라는 뒤로. 인물이 멀어진 만큼 배경이 가까워 보여요</li>
-        <li><b>배경을 흐리게</b> → ① 인물과 배경을 멀게 ② 화각을 좁게 ③ 조리개를 열기(숫자 작게) ④ 인물에게 가까이. 이 네 가지가 전부예요</li>
-        <li><b>배경을 작게·넓게</b> → 광각으로 가까이. 인물과 배경 사이를 벌리면 배경이 작아져요</li>
+        <li><b>배경을 흐리게</b> → ① 인물과 배경을 멀게 ② 화각을 좁게 ③ 조리개를 열기(숫자 작게) ④ 인물에게 가까이</li>
+        <li><b>둘 이상을 다 선명하게</b> → 같은 거리에 세우거나, 조리개를 조이거나, 화각을 넓혀요</li>
+        <li><b>밝을 때 조리개를 열면</b> 과노출 → 셔터를 빠르게(또는 ISO를 낮춰요). <b>어두울 때</b>는 조리개를 열고 ISO를 올려요. 셔터는 1/화각(mm)보다 빨라야 손떨림이 안 생겨요</li>
         <li><b>얼굴 사진</b>은 광각으로 바싹 붙으면 코가 커져요. 70mm 이상에서 찍으면 자연스러워요</li>
         <li>폰 카메라 대략: 1배 ≈ 24mm, 2배 ≈ 48mm, 3배 ≈ 70mm (기종마다 달라요)</li>
       </ul>
@@ -143,33 +183,49 @@
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const SENS_W = 24, SENS_H = 36;      // 풀프레임 세로 사진 (mm)
 const CAMH = 1.4, SUBJ = 1.7;        // 카메라 높이, 인물 키 (m)
 const LENSES = [14, 16, 24, 35, 50, 85, 135, 200];
 const APERTURES = [1.4, 1.8, 2.8, 4, 5.6, 8, 11, 16];
+const ISOS = [100, 200, 400, 800, 1600, 3200, 6400];
+const SHUTS = [30, 60, 125, 250, 500, 1000, 2000, 4000];     // 1/x 초
+const LIGHTS = [["☀️ 맑음", 15], ["⛅ 흐림", 12], ["🏠 실내 밝음", 9], ["🕯️ 실내 어둠", 7], ["🌃 야간", 3]];   // EV100
 const FRAME_FRAC = 0.7;              // 인물 고정 시 프레임 높이 대비 인물 키
 
 const RANGES = { d:[0.5, 20], g:[0.5, 80], f:[14, 200] };
 const logVal = (p, [a, b]) => a * Math.pow(b / a, p / 1000);
 const logPos = (v, [a, b]) => Math.round(1000 * Math.log(v / a) / Math.log(b / a));
+
 const PEOPLE = [
   { h: 1.70, w: 1.00, top: "#e0703a", arm: "#c8552a", pants: "#2f3a4a", hair: "#3b2a22", skin: "#f0c9a4" },
   { h: 1.62, w: 0.95, top: "#3f7fbf", arm: "#2f6399", pants: "#4a4540", hair: "#8a5a2b", skin: "#f4d2b4" },
   { h: 1.76, w: 1.05, top: "#6aa84f", arm: "#4f8a38", pants: "#2b3a55", hair: "#1f1b19", skin: "#e8bb94" },
   { h: 1.15, w: 0.75, top: "#f0c43a", arm: "#d2a51f", pants: "#3a5a8a", hair: "#5a3a22", skin: "#f4d2b4" }
 ];
-// 배치: side = 나란히(같은 거리), depth = 앞뒤로(1m씩 뒤로)
-function layoutPeople(n, arr, d) {
-  const out = [];
-  for (let i = 0; i < n; i++) out.push(arr === "depth" ? { p: PEOPLE[i], x: [0, 0.5, -0.55, 0.85][i], z: d + i } : { p: PEOPLE[i], x: (i - (n - 1) / 2) * 0.64, z: d });
+const nOf = s => clamp(s.n || 1, 1, 4);
+// 인물 배치: 인물 사이 거리(sp)가 0이면 나란히, 벌릴수록 앞뒤로 엇갈려 선다
+function layoutPeople(n, sp, d) {
+  const out = [], t = clamp(sp / 1.0, 0, 1);
+  for (let i = 0; i < n; i++) { const sx = (i - (n - 1) / 2) * 0.64, tx = [0, 0.5, -0.55, 0.85][i]; out.push({ p: PEOPLE[i], i, x: sx + (tx - sx) * t, z: d + i * sp }); }
   return out;
 }
-const groupWidth = (n, arr) => { const xs = layoutPeople(n, arr, 0).map(o => o.x); return Math.max(...xs) - Math.min(...xs) + 0.6; };
+const groupWidth = (n, sp) => { const xs = layoutPeople(n, sp, 0).map(o => o.x); return Math.max(...xs) - Math.min(...xs) + 0.6; };
 // 키와 폭 둘 다 프레임에 들어오는 가장 가까운 거리
-const fitDist = (f, frac, n, arr) => Math.max(f * SUBJ / (frac * SENS_H), f * groupWidth(n, arr) / (0.88 * SENS_W));
-const lockDist = (f, s = S) => fitDist(f, FRAME_FRAC, s.n || 1, s.arr || "side");
+const fitDist = (f, frac, n, sp) => Math.max(f * SUBJ / (frac * SENS_H), f * groupWidth(n, sp) / (0.88 * SENS_W));
+const lockDist = (f, s = S) => fitDist(f, FRAME_FRAC, nOf(s), s.sp || 0);
+// d = 카메라↔맨 앞 사람, 인물 사이 거리 sp, gap = 맨 뒷사람↔배경
+const rearZ = s => s.d + (nOf(s) - 1) * (s.sp || 0);
+const bgZ = s => rearZ(s) + s.gap;
+const focusIdx = s => Math.min(s.focus || 0, nOf(s) - 1);
+const focusZ = s => s.d + focusIdx(s) * (s.sp || 0);
+// 노출: 0이면 적정, +면 과노출(단 수), -면 어두움
+const expoStops = s => s.ev + Math.log2(s.iso / 100) - Math.log2(s.N * s.N * s.shut);
+// 착란원(보케) 지름 mm: c = f²/(N(S1-f)) × |S2-S1|/S2  (얇은 렌즈 공식, S1 = 초점 거리)
+const cocMm = (s, Z) => { const S1 = focusZ(s) * 1000, S2 = Z * 1000; return s.f * s.f / (s.N * (S1 - s.f)) * Math.abs(S2 - S1) / S2; };
+const pctW = mm => mm / SENS_W * 100;      // 화면 폭 대비 %
 
-const S = { f:35, d:2.5, gap:8, N:2.8, lock:false, scene:"cafe", n:1, arr:"side" };
+const S = { f:35, d:2.5, gap:15, N:2.8, lock:false, scene:"park", n:1, sp:0, focus:0, ev:15, iso:100, shut:125, sit:null };
 let mode = "lab";
 let quiz = null;
 
@@ -181,14 +237,20 @@ const off = document.createElement("canvas"), octx = off.getContext("2d");
 const M = 48;                         // 흐림 번짐용 여백
 let W, H, K;
 function size() {
-  // 미리보기는 위에 고정되므로 화면 높이의 약 42%까지만 쓴다 (슬라이더와 같이 보이게)
+  // 미리보기는 위에 고정되므로 화면 높이의 일부만 쓴다 (슬라이더와 같이 보이게)
   const cw = $("#stage").clientWidth, ih = window.innerHeight;
-  const css = mode === "lab" ? Math.max(130, Math.min(cw * 0.5, ih * 0.32, 400)) : Math.max(150, Math.min(cw, 400, ih * 0.42 / 1.5));
+  const css = mode === "lab" ? Math.max(130, Math.min(cw * 0.5, ih * 0.3, 400)) : Math.max(150, Math.min(cw, 400, ih * 0.42 / 1.5));
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   W = Math.round(css * dpr); H = Math.round(W * 1.5); K = W / SENS_W;
-  cv.width = W; cv.height = H; cv.style.width = css + "px";  cv.style.height = css * 1.5 + "px";
+  cv.width = W; cv.height = H; cv.style.width = css + "px"; cv.style.height = css * 1.5 + "px";
   off.width = W + 2 * M; off.height = H + 2 * M;
 }
+// ISO 노이즈 질감 (한 번만 만들어 반복)
+(function () {
+  const t = document.createElement("canvas"); t.width = t.height = 96; const g = t.getContext("2d"), im = g.createImageData(96, 96);
+  for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+  g.putImageData(im, 0, 0); $("#grain").style.backgroundImage = "url(" + t.toDataURL() + ")";
+})();
 
 /* ---------- 장면 데이터 (고정 난수) ---------- */
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
@@ -205,6 +267,7 @@ const DAPPLE = Array.from({ length: 80 }, () => ({ x: -9 + R() * 18, y: 1.5 + R(
 const GLITTER = Array.from({ length: 110 }, () => ({ k: R(), u: R() * 2 - 1, r: 0.1 + R() * 0.14 }));
 const CARS = Array.from({ length: 12 }, (_, i) => ({ k: i * 8.5 + R() * 4, side: R() > 0.4 ? 1 : -1, col: R() > 0.3 ? "#ff3b3b" : "#fff6d8" }));
 
+const CROWD = Array.from({ length: 10 }, () => ({ h: 1.5 + R() * 0.35, w: 0.9 + R() * 0.2, top: pickc(["#c94f4f", "#4f7fc9", "#d9b43a", "#5aa06a", "#8a5ac9", "#e0e0e0", "#d97a3a"]), arm: "#555", pants: pickc(["#2f3a4a", "#4a4540", "#3a4a3a", "#1f2230"]), hair: pickc(["#2b2320", "#5a3a22", "#8a8a8a", "#1a1a1a"]), skin: pickc(["#f0c9a4", "#e8bb94", "#d9a37a"]) }));
 const bushFront = (e, d) => { if (e.d < 1.4) return; const Z = e.d * 0.5, { layer, circ } = e;
   layer(Z, c => { for (const [x, y, r, col] of [[-0.62, 0.35, 0.38, "#4e7f45"], [-0.4, 0.5, 0.34, "#5f9552"], [-0.8, 0.55, 0.3, "#427239"], [-0.55, 0.78, 0.26, "#6aa35b"]]) circ(c, col, x, y, r, Z); }); };
 
@@ -213,7 +276,7 @@ const SCENES = {
     name: "카페 앞", emoji: "☕", bgLabel: "가게", bgW: 8,
     hint: "황혼 무렵 가게 앞이에요. 전구줄과 가게 불빛이 보케 볼이 돼요. 배경을 멀리 두고 조리개를 열어 보세요.",
     draw(e) {
-      const { B, gap, rect, circ, X, Y, sc, layer, lights, sky, ground, W } = e;
+      const { z0, B, gap, rect, circ, X, Y, sc, layer, lights, sky, ground, W } = e;
       sky([[0, "#4d6fa6"], [0.7, "#c8a2a0"], [1, "#f6c98d"]]);
       const Zs = B + 80;
       layer(Zs, c => { for (const b of BUILDINGS) rect(c, b.c > 0.5 ? "#7b8ca5" : "#6f7f98", b.x, -2, b.x + b.w, b.h, Zs); });
@@ -253,9 +316,9 @@ const SCENES = {
     name: "지하철 승강장", emoji: "🚇", bgLabel: "열차", bgW: 14,
     hint: "형광등이 길게 늘어선 승강장이에요. 건너편 열차를 배경으로, 노란 안전선이 앞쪽에 있어요. 실내라 조리개를 열면 천장 불빛이 흐려져요.",
     draw(e) {
-      const { B, d, gap, rect, X, Y, sc, layer, lights, sky, ground, W } = e;
+      const { z0, B, d, gap, rect, X, Y, sc, layer, lights, sky, ground, W } = e;
       sky([[0, "#4a5558"], [1, "#b9c6c0"]]);
-      const Zy = d + gap * 0.4;
+      const Zy = z0 + gap * 0.4;
       ground({ c0: "#8d9a98", c1: "#6f7c7a", grid: "rgba(40,50,50,.22)", extra: (c, Zn, Zf) => {
         e.gz(c, "#2b3033", Zy + 0.35, B - 0.5, Zn, Zf); e.gz(c, "#f2c230", Zy, Zy + 0.35, Zn, Zf);
         const a = Math.max(Zn, Zy + 0.35), b = Math.min(Zf, B - 0.5);
@@ -274,13 +337,13 @@ const SCENES = {
         rect(c, "#44494c", -14, 0.4, 14, 0.9, B); rect(c, "#e9eef0", -14, 0.9, 14, 3.8, B); rect(c, "#e0702e", -14, 1.2, 14, 1.6, B);
         for (let x = -13.5; x < 13; x += 3.4) { rect(c, "#3a4a55", x, 2.0, x + 1.2, 3.2, B); rect(c, "#3a4a55", x + 1.5, 2.0, x + 2.7, 3.2, B); rect(c, "#cfd6d9", x + 1.2, 0.9, x + 1.5, 3.8, B); }
       });
-      const Zp = d + gap * 0.4;
+      const Zp = z0 + gap * 0.4;
       layer(Zp, c => {
         rect(c, "#c9d3cd", -3.0, 0, -2.4, 4.8, Zp); rect(c, "#2c6fb5", -3.0, 2.6, -2.4, 3.5, Zp);
         c.fillStyle = "#fff"; c.font = "700 " + Math.max(3, 0.22 * sc(Zp)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("달빛역", X(-2.7, Zp), Y(3.05, Zp));
       });
       const tubes = [];
-      for (let z = d + 2, i = 0; z < d + gap + 70 && i < 22; i++, z += 4 + i * 1.2) { tubes.push({ x: -1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }, { x: 1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }); }
+      for (let z = d + 2, i = 0; z < B + 70 && i < 22; i++, z += 4 + i * 1.2) { tubes.push({ x: -1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }, { x: 1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }); }
       lights(tubes, B);
     },
     front() {}
@@ -290,7 +353,7 @@ const SCENES = {
     name: "공원 산책로", emoji: "🌳", bgLabel: "나무", bgW: 6,
     hint: "낮의 공원이에요. 나뭇잎 사이로 들어오는 햇빛이 둥근 보케가 돼요. 망원+열린 조리개일수록 크게 번져요.",
     draw(e) {
-      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      const { z0, B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
       sky([[0, "#8fc3ea"], [1, "#dff0f7"]]);
       const Zh = B + 150;
       layer(Zh, c => { circ(c, "#9bbfa8", -40, -20, 52, Zh); circ(c, "#86b295", 45, -22, 55, Zh); });
@@ -313,7 +376,7 @@ const SCENES = {
     name: "해변", emoji: "🏖️", bgLabel: "바다", bgW: 12,
     hint: "해변이에요. 멀리 수평선과 바다, 햇빛이 물결에 반짝여서 작은 보케가 돼요. 인물과 바다 사이를 멀리 해 보세요.",
     draw(e) {
-      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      const { z0, B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
       sky([[0, "#7fb8e6"], [0.65, "#bfe0f2"], [1, "#fbe5c8"]]);
       const Zc = 700;
       layer(Zc, c => { for (const [x, y, r] of [[-60, 140, 22], [-40, 135, 28], [-20, 142, 20], [70, 190, 24], [95, 185, 30], [120, 192, 22]]) { c.globalAlpha = 0.85; circ(c, "#ffffff", x, y, r, Zc); } c.globalAlpha = 1; });
@@ -335,7 +398,7 @@ const SCENES = {
     name: "야경 거리", emoji: "🌃", bgLabel: "상점", bgW: 12,
     hint: "밤거리예요. 가로등, 창문, 자동차 불빛이 전부 보케 볼이 돼요. 조리개를 열고 망원으로 가면 가장 크게 번져요.",
     draw(e) {
-      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      const { z0, B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
       sky([[0, "#070a18"], [0.6, "#1c2247"], [1, "#5a3d62"]]);
       const Zs = B + 90;
       layer(Zs, c => { for (const b of BUILDINGS) rect(c, "#141a30", b.x, -2, b.x + b.w, b.h, Zs); });
@@ -352,28 +415,107 @@ const SCENES = {
         c.fillStyle = "#fff"; c.font = "800 " + Math.max(4, 0.55 * sc(B)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("OPEN", X(0, B), Y(4.0, B));
       });
       const L = [];
-      for (let i = 0, z = d + gap * 0.25; i < 7; i++, z += 13) { L.push({ x: -1.3, y: 5.2, col: "#ffe2a0", r: 0.28, z }, { x: 1.9, y: 5.0, col: "#ffe2a0", r: 0.28, z: z + 6 }); }
+      for (let i = 0, z = z0 + gap * 0.25; i < 7; i++, z += 13) { L.push({ x: -1.3, y: 5.2, col: "#ffe2a0", r: 0.28, z }, { x: 1.9, y: 5.0, col: "#ffe2a0", r: 0.28, z: z + 6 }); }
       lights(L, B);
       lights([{ x: -2, y: 4.0, col: "#ff7ab8", r: 0.3 }, { x: 2, y: 4.0, col: "#ff7ab8", r: 0.3 }, { x: -3, y: 1.5, col: "#ffcf8a", r: 0.4 }, { x: 3, y: 1.5, col: "#ffcf8a", r: 0.4 }], B - 0.3);
-      lights(CARS.map(c => ({ x: c.side > 0 ? 4.4 : 2.9, y: 0.75, col: c.col, r: 0.13, z: d + gap * 0.3 + c.k })).flatMap(l => [l, { ...l, x: l.x + 0.9 }]), B);
+      lights(CARS.map(c => ({ x: c.side > 0 ? 4.4 : 2.9, y: 0.75, col: c.col, r: 0.13, z: z0 + gap * 0.3 + c.k })).flatMap(l => [l, { ...l, x: l.x + 0.9 }]), B);
+    },
+    front() {}
+  },
+
+  cafein: {
+    name: "카페 안", emoji: "☕", bgLabel: "카페 벽", bgW: 7,
+    hint: "실내 카페예요. 창문의 밝은 빛과 전구가 보케가 돼요. 배경(벽)이 가까워서 보케가 약하니 화각과 조리개로 키워 보세요.",
+    draw(e) {
+      const { z0, B, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      sky([[0, "#2a1d17"], [1, "#5a4030"]]);
+      ground({ c0: "#7a5538", c1: "#3d2a1c", grid: "rgba(30,18,10,.35)" });
+      const Zw = B + 1.5;
+      layer(Zw, c => {
+        rect(c, "#5b4030", -9, 0, 9, 3.4, Zw); rect(c, "#2a1d17", -9, 3.4, 9, 9, Zw);
+        rect(c, "#e6f1fa", -6.2, 0.9, -3.4, 2.9, Zw); rect(c, "#3a2a20", -4.85, 0.9, -4.75, 2.9, Zw); rect(c, "#3a2a20", -6.2, 1.85, -3.4, 1.95, Zw);
+        for (const y of [1.3, 1.9, 2.5]) { rect(c, "#8a6845", 0.2, y, 6.8, y + 0.05, Zw); for (let k = 0; k < 12; k++) rect(c, ["#7ab8a0", "#d9a441", "#a05a3a", "#cfd8dc"][k % 4], 0.4 + k * 0.52, y + 0.05, 0.62 + k * 0.52, y + 0.35 + (k % 3) * 0.08, Zw); }
+        rect(c, "#25382f", -2.8, 1.5, -0.4, 2.8, Zw);
+        for (let k = 0; k < 5; k++) rect(c, "#e8efe6", -2.5, 2.5 - k * 0.22, -0.9 - (k % 2) * 0.4, 2.54 - k * 0.22, Zw);
+      });
+      layer(B, c => {
+        rect(c, "#3a2a20", -7, 0, 7, 1.05, B); rect(c, "#8a6845", -7.1, 1.05, 7.1, 1.12, B);
+        rect(c, "#b0b8bc", 2.0, 1.12, 3.0, 1.7, B); circ(c, "#cfd8dc", -1.5, 1.3, 0.2, B);
+      });
+      const Zt = z0 + gap * 0.55;
+      layer(Zt, c => { rect(c, "#7a5a40", 1.0, 0.72, 3.2, 0.78, Zt); rect(c, "#5a4030", 2.05, 0, 2.15, 0.72, Zt); circ(c, "#f2efe9", 1.7, 0.86, 0.1, Zt); circ(c, "#f2efe9", 2.6, 0.86, 0.1, Zt); });
+      const bulbs = []; for (let x = -6; x <= 6; x += 1.5) bulbs.push({ x, y: 2.9 + Math.sin(x) * 0.2, col: "#ffcf80", r: 0.1 });
+      lights(bulbs, B - 0.5);
+      lights([{ x: -4.8, y: 1.9, col: "#e6f1fa", r: 0.9 }, { x: 4.5, y: 3.0, col: "#ffd9a0", r: 0.3 }], Zw);
+      lights([{ x: -1.8, y: 3.1, col: "#ffd9a0", r: 0.18 }, { x: 1.8, y: 3.1, col: "#ffd9a0", r: 0.18 }], z0 + gap * 0.5);
+    },
+    front() {}
+  },
+
+  alley: {
+    name: "골목", emoji: "🏘️", bgLabel: "골목 끝", bgW: 2.4,
+    hint: "좁은 골목이에요. 양쪽 벽이 소실점으로 모이는 원근이 화각에 따라 확 달라지고, 골목 끝의 밝은 빛과 등이 보케가 돼요.",
+    draw(e) {
+      const { z0, B, gap, rect, layer, lights, sky, ground, walls } = e;
+      sky([[0, "#bcd0e6"], [1, "#f7e6c8"]]);
+      const Zs = B + 120;
+      layer(Zs, c => { for (const b of BUILDINGS) rect(c, "#9aa7b8", b.x, -2, b.x + b.w, Math.min(b.h, 30), Zs); });
+      ground({ c0: "#9c9486", c1: "#625d52", grid: "rgba(40,36,30,.35)" });
+      walls(B + 25, [{ x: -2.2, h: 7, col: "#c9a88a", win: true }, { x: 2.3, h: 9, col: "#b7a590", win: true }]);
+      lights([{ x: 0.1, y: 2.4, col: "#fff0c8", r: 1.1, z: B + 24 }], B);
+      const L = []; for (let i = 0; i < 4; i++) L.push({ x: i % 2 ? 0.6 : -0.7, y: 3.4, col: "#ffc47a", r: 0.2, z: z0 + gap * (0.15 + i * 0.22) });
+      lights(L, B);
+    },
+    front() {}
+  },
+
+  market: {
+    name: "시장", emoji: "🛒", bgLabel: "가판대", bgW: 10,
+    hint: "붐비는 시장이에요. 주인공 뒤로 행인들이 여러 거리에 서 있어요. 뒤로 갈수록 더 흐려지는 걸 볼 수 있어요.",
+    draw(e) {
+      const { z0, B, gap, rect, circ, layer, lights, sky, ground, person } = e;
+      sky([[0, "#a9c7e6"], [1, "#f3e3c6"]]);
+      const Zs = B + 60;
+      layer(Zs, c => { for (const b of BUILDINGS) rect(c, b.c > 0.5 ? "#c4b19a" : "#b39f88", b.x, -2, b.x + b.w, Math.min(b.h, 26), Zs); });
+      ground({ c0: "#c2b59f", c1: "#8f8470", grid: "rgba(80,66,50,.35)" });
+      const stall = (Z, off) => layer(Z, c => {
+        for (let i = 0; i < 5; i++) {
+          const x = -10 + i * 4.6 + off;
+          rect(c, "#6b4a35", x, 0, x + 3.8, 1.0, Z);
+          for (let k = 0; k < 8; k++) circ(c, ["#e8503a", "#f2a93b", "#7bb04a", "#c9402f"][(i + k) % 4], x + 0.3 + k * 0.45, 1.12, 0.2, Z);
+          rect(c, "#5a4636", x, 0, x + 0.08, 2.6, Z); rect(c, "#5a4636", x + 3.7, 0, x + 3.78, 2.6, Z);
+          for (let k = 0; k < 8; k++) rect(c, k % 2 ? "#fffaf0" : ["#d9493a", "#3a7bbf", "#e0a030", "#4a9a5a"][i % 4], x - 0.1 + k * 0.5, 2.6, x + 0.4 + k * 0.5, 3.3, Z);
+        }
+      });
+      const crowd = us => us.map(([u, x, i]) => ({ z: z0 + gap * u, x, p: CROWD[i] })).sort((a, b) => b.z - a.z);
+      stall(B + 7, 2.3);
+      for (const o of crowd([[1.5, 3, 0], [1.3, -4, 1]])) layer(o.z, c => person(c, o.p, o.x, o.z));
+      stall(B, 0);
+      for (const o of crowd([[0.9, 4.5, 2], [0.75, -3.5, 3], [0.6, 1.8, 4], [0.45, -2.2, 5], [0.3, 3.2, 6], [0.15, -1.6, 7]])) layer(o.z, c => person(c, o.p, o.x, o.z));
+      const strings = []; for (let i = -10; i <= 10; i += 0.5) strings.push({ x: i, y: 3.0 - 0.2 * Math.sin(i), col: "#ffe2a0", r: 0.08 });
+      lights(strings, B - 0.3);
     },
     front() {}
   }
 };
 const SCENE_IDS = Object.keys(SCENES);
 
+
 /* ---------- 렌더 ---------- */
 function render(s) {
-  const { f, d, gap, N } = s;
-  const scene = SCENES[s.scene] || SCENES.cafe;
-  const B = d + gap, fk = f * K, cx = W / 2;
-  // 인물 몸통 중앙(0.95m)이 프레임 중앙에 오도록 센서를 위로 시프트 (수직선이 평행하게 유지됨)
-  const cy = H / 2 - fk * (CAMH - 0.95) / d;
+  const { f, N, d } = s;
+  const scene = SCENES[s.scene] || SCENES.park;
+  const n = nOf(s), sp = s.sp || 0, z0 = rearZ(s), B = bgZ(s), gap = s.gap, S1 = focusZ(s);
+  const fk = f * K, cx = W / 2;
+  // 구도 중심: 전신이 들어오면 몸 한가운데(0.95m), 당길수록 머리 꼭대기가 프레임 위쪽에 들어오도록
+  // 올라가서 최대 줌에선 얼굴(1.6m)이 중심이 된다 (센서를 위아래로 시프트해서 수직선은 평행하게 유지)
+  const halfH = 18 / f * S1;                    // 인물 거리에서 프레임이 위아래로 담는 높이의 절반 (m)
+  const aim = clamp(1.78 - 0.85 * halfH, 0.95, 1.6);
+  const cy = H / 2 - fk * (CAMH - aim) / S1;
   const sc = Z => fk / Z;                       // 1m가 화면에서 몇 px인가
   const X = (x, Z) => cx + fk * x / Z;
   const Y = (y, Z) => cy - fk * (y - CAMH) / Z;
-  // 착란원(보케) 지름 px: c = f²/(N(S1-f)) × |S2-S1|/S2  (얇은 렌즈 공식)
-  const coc = Z => { const S1 = d * 1000, S2 = Z * 1000; return f * f / (N * (S1 - f)) * Math.abs(S2 - S1) / S2 * K; };
+  const coc = Z => cocMm(s, Z) * K;             // 착란원 지름 px
   const sig = Z => Math.min(30, coc(Z) * 0.3);
   const Zfar = 600;
 
@@ -391,7 +533,7 @@ function render(s) {
     ctx.drawImage(off, 0, y0, off.width, y1 - y0 + 2 * M, -M, y0 - M, off.width, y1 - y0 + 2 * M);
     ctx.restore();
   }
-  const hex = a => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
+  const hex = a => Math.round(clamp(a, 0, 1) * 255).toString(16).padStart(2, "0");
   // 빛 점은 깊이에 맞는 크기의 원판(보케 볼)으로 직접 그림 (점마다 z를 따로 줄 수 있음)
   function lights(list, Z) {
     ctx.save(); ctx.globalCompositeOperation = "screen";
@@ -424,16 +566,16 @@ function render(s) {
     c.fillStyle = col; c.beginPath();
     c.moveTo(X(xa, Zn), Y(0, Zn)); c.lineTo(X(xb, Zn), Y(0, Zn)); c.lineTo(X(xb, Zf), Y(0, Zf)); c.lineTo(X(xa, Zf), Y(0, Zf)); c.fill();
   };
+  const zNear = Math.max(0.3, fk * CAMH / Math.max(1, H - cy)) * 0.9;
   // 바닥: 기본색 + 깊이 구간별로 나눈 무늬(타일 선 등)에 그 깊이의 흐림 적용
   function ground(o) {
     const gh = Math.max(0, Math.min(H, cy));
     const gg = ctx.createLinearGradient(0, gh, 0, H); gg.addColorStop(0, o.c0); gg.addColorStop(1, o.c1);
     ctx.fillStyle = gg; ctx.fillRect(0, gh, W, H - gh);
     if (!o.grid && !o.extra) return;
-    const Znear = Math.max(0.3, fk * CAMH / Math.max(1, H - cy)) * 0.9, NB = 14;
-    const rr = Math.pow(Zfar / Znear, 1 / NB);
+    const NB = 14, rr = Math.pow(Zfar / zNear, 1 / NB);
     for (let i = NB - 1; i >= 0; i--) {
-      const Zn = Znear * Math.pow(rr, i), Zf = Zn * rr, Zm = Math.sqrt(Zn * Zf);
+      const Zn = zNear * Math.pow(rr, i), Zf = Zn * rr, Zm = Math.sqrt(Zn * Zf);
       let yTop = Math.max(0, Y(0, Zf) - 1); const yBot = Math.min(H, Y(0, Zn) + 1);
       if (i === NB - 1) yTop = Math.max(0, Math.min(yTop, cy - 1));
       if (yBot <= yTop) continue;
@@ -453,7 +595,32 @@ function render(s) {
       }, yTop, yBot);
     }
   }
-
+  // 길게 이어진 옆벽(골목): 깊이 구간별로 나눠 그려서 멀수록 흐려진다
+  function walls(zmax, list) {
+    const NB = 16, rr = Math.pow(zmax / zNear, 1 / NB);
+    for (let i = NB - 1; i >= 0; i--) {
+      const Zn = zNear * Math.pow(rr, i), Zf = Math.min(zmax, Zn * rr * 1.04), Zm = Math.sqrt(Zn * Zf);
+      layer(Zm, c => {
+        for (const w of list) {
+          const xa = X(w.x, Zn), xb = X(w.x, Zf);
+          c.fillStyle = w.col; c.beginPath(); c.moveTo(xa, Y(0, Zn)); c.lineTo(xb, Y(0, Zf)); c.lineTo(xb, Y(w.h, Zf)); c.lineTo(xa, Y(w.h, Zn)); c.closePath(); c.fill();
+          c.strokeStyle = "rgba(60,40,30,.25)"; c.lineWidth = Math.max(0.6, 0.03 * sc(Zm)); c.beginPath();
+          if (fk * 0.6 / Zm > 3) for (let y = 0.6; y < w.h; y += 0.6) { c.moveTo(xa, Y(y, Zn)); c.lineTo(xb, Y(y, Zf)); }
+          for (let z = Math.ceil(Zn / 1.5) * 1.5; z < Zf; z += 1.5) { const px = X(w.x, z); c.moveTo(px, Y(0, z)); c.lineTo(px, Y(w.h, z)); }
+          c.stroke();
+          if (w.win) for (let zc = Math.floor(Zn / 3) * 3; zc < Zf; zc += 3) {
+            const zs = zc + 0.8; if (zs < Zn || zs >= Zf) continue;
+            const ze = zc + 2.2, k = Math.floor(zc / 3) * 7 + (w.x > 0 ? 3 : 0);
+            for (const [y0, y1] of w.h > 8 ? [[1.9, 3.3], [4.3, 5.7], [6.7, 8.1]] : [[1.9, 3.3], [4.3, 5.7]]) {
+              const lit = ((k + y0 * 3) | 0) % 5 < 2;
+              c.fillStyle = lit ? "#ffd98f" : "#4a5568";
+              c.beginPath(); c.moveTo(X(w.x, zs), Y(y0, zs)); c.lineTo(X(w.x, ze), Y(y0, ze)); c.lineTo(X(w.x, ze), Y(y1, ze)); c.lineTo(X(w.x, zs), Y(y1, zs)); c.closePath(); c.fill();
+            }
+          }
+        }
+      });
+    }
+  }
   function drawPerson(c, p, x, Z) {
     const k = p.h / SUBJ, w = p.w, rx = (col, x0, y0, x1, y1) => rect(c, col, x + x0 * w, y0 * k, x + x1 * w, y1 * k, Z);
     c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(X(x, Z), Y(0, Z), 0.45 * w * sc(Z), 0.06 * sc(Z), 0, 0, 7); c.fill();
@@ -466,17 +633,96 @@ function render(s) {
     circ(c, p.skin, x, hc, hr, Z);
     c.fillStyle = p.hair; c.beginPath(); c.arc(X(x, Z), Y(hc + 0.01, Z), (hr + 0.01) * sc(Z), Math.PI, 0); c.fill();
   }
+
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-  const e = { B, d, gap, W, H, cy, rect, circ, X, Y, sc, layer, lights, sky, ground, gz, gx };
+  const e = { B, d, gap, z0, W, H, cy, rect, circ, X, Y, sc, layer, lights, sky, ground, gz, gx, walls, person: drawPerson };
   scene.draw(e);
 
-  // 인물: 맨 앞 사람(거리 d)에 초점이 맞고, 뒤에 선 사람은 그 깊이만큼 흐려진다. 먼 사람부터 그린다
+  // 인물: 먼 사람부터. 초점 거리의 사람은 선명하고, 앞뒤로 어긋난 사람은 그 거리만큼 흐려진다
   {
-    const people = layoutPeople(s.n || 1, s.arr || "side", d), zs = [...new Set(people.map(o => o.z))].sort((p, q) => q - p);
+    const people = layoutPeople(n, sp, d), zs = [...new Set(people.map(o => o.z))].sort((p, q) => q - p);
     for (const z of zs) layer(z, c => { for (const o of people) if (o.z === z) drawPerson(c, o.p, o.x, z); });
   }
   // 앞쪽 소품 (인물보다 가까워서 흐려짐)
   if (scene.front) scene.front(e);
+}
+
+/* ---------- 지표 ---------- */
+function metrics(s) {
+  const n = nOf(s), fz = focusZ(s), B = bgZ(s);
+  let pb = 0;
+  for (const o of layoutPeople(n, s.sp || 0, s.d)) if (Math.abs(o.z - fz) > 0.05) pb = Math.max(pb, pctW(cocMm(s, o.z)));
+  return {
+    n, expo: expoStops(s),
+    frac: SUBJ * s.f / fz / SENS_H,                          // 프레임 높이 중 초점 인물의 키 (1 = 100%)
+    ratio: fz / B,                                           // 인물 대비 배경 크기
+    bgBlur: pctW(cocMm(s, B)),                               // 배경 흐림 (화면 폭 대비 %)
+    peopleBlur: pb,                                          // 초점에서 어긋난 사람의 흐림
+    widthFrac: s.f * groupWidth(n, s.sp || 0) / s.d / SENS_W,
+    shakeOk: s.shut >= s.f
+  };
+}
+const fmtM = v => (v < 10 ? v.toFixed(1) : Math.round(v)) + " m";
+const fmtE = v => (v >= 0 ? "+" : "") + v.toFixed(1) + "단";
+const fmtP = v => v.toFixed(1) + "%";
+
+/* ---------- 상황 = 연출 환경 + 미션 ---------- */
+const chkExpo = { k: "노출", t: "노출이 적정 (±0.7단 이내)", ok: m => Math.abs(m.expo) <= 0.7, v: m => "지금 " + fmtE(m.expo) };
+const SITS = [
+  { id: "park", emoji: "🌳", name: "공원 인물", scene: "park", n: 1, sp: 0, focus: 0, gap: 15, ev: 15, f: 35, d: 2.5, N: 2.8, iso: 100, shut: 125,
+    goal: "맑은 낮의 공원. 인물 상반신을 크게 담고, 멀리 나뭇잎 사이 햇빛은 둥글게 흐리게 만들어 보세요.",
+    tip: "맑은 낮(EV15)은 아주 밝아서 조리개를 열면 과노출이 돼요. 셔터를 빠르게 올려서 맞춰요.",
+    checks: [chkExpo,
+      { k: "배경 흐림", t: "배경이 확실히 흐림 (1.5% 이상)", ok: m => m.bgBlur >= 1.5, v: m => "지금 " + fmtP(m.bgBlur) },
+      { k: "인물 크기", t: "인물 상반신 이상으로 크게 (프레임 키 120% 이상)", ok: m => m.frac >= 1.2, v: m => "지금 " + Math.round(m.frac * 100) + "%" }] },
+  { id: "cafein", emoji: "☕", name: "카페 안 (어두움)", scene: "cafein", n: 1, sp: 0, focus: 0, gap: 3, ev: 7, f: 50, d: 2.5, N: 4, iso: 100, shut: 125,
+    goal: "어두운 실내 카페. 배경 벽이 가까운데도 배경 불빛이 둥글게 번지도록 만들어 보세요.",
+    tip: "실내(EV7)는 어두워요. 조리개를 열고 ISO를 올려야 해요. 그래도 셔터는 1/화각 이상으로 빨라야 손떨림이 없어요.",
+    checks: [chkExpo,
+      { k: "손떨림", t: "손떨림 안전 (셔터가 1/화각보다 빠름)", ok: m => m.shakeOk, v: m => m.shakeOk ? "안전" : "위험" },
+      { k: "배경 흐림", t: "배경이 흐림 (1.0% 이상)", ok: m => m.bgBlur >= 1, v: m => "지금 " + fmtP(m.bgBlur) }] },
+  { id: "beach", emoji: "🏖️", name: "해변 두 사람", scene: "beach", n: 2, sp: 1.5, focus: 0, gap: 8, ev: 15, f: 85, d: 6, N: 1.8, iso: 100, shut: 125,
+    goal: "해변에서 앞뒤로 선 두 사람을 둘 다 선명하게, 바다는 인물 뒤에 크게 보이게 찍어 보세요.",
+    tip: "두 사람 사이가 1.5m라 조리개를 활짝 열면 뒷사람이 흐려져요. 조리개를 조이면 선명해지지만 밝은 해변에선 셔터도 같이 올려야 해요. 바다를 크게 하려면 인물↔바다를 줄이고 멀리서 당겨 보세요.",
+    checks: [chkExpo,
+      { k: "전원 선명", t: "두 사람 모두 선명 (뒷사람 흐림 0.3% 미만)", ok: m => m.peopleBlur < 0.3, v: m => "지금 " + fmtP(m.peopleBlur) },
+      { k: "프레임", t: "두 사람이 프레임 안 (폭 100% 이하)", ok: m => m.widthFrac <= 1, v: m => "지금 " + Math.round(m.widthFrac * 100) + "%" },
+      { k: "바다 크기", t: "바다가 인물 뒤에 크게 (배경 크기 60% 이상)", ok: m => m.ratio >= 0.6, v: m => "지금 " + Math.round(m.ratio * 100) + "%" }] },
+  { id: "alley", emoji: "🏘️", name: "골목 앞뒤 두 사람", scene: "alley", n: 2, sp: 3, focus: 0, gap: 12, ev: 12, f: 35, d: 3.5, N: 2, iso: 100, shut: 125,
+    goal: "좁은 골목. 앞사람에게 초점을 두고 3m 뒤 사람과 골목 끝은 확실히 흐리게 만들어 보세요. 그다음 초점을 뒷사람으로 바꿔 보세요.",
+    tip: "흐린 날(EV12)도 조리개를 열면 과노출이에요. 셔터를 올려요. 초점 맞출 사람을 바꾸면 누가 선명하고 누가 흐려지는지 달라져요.",
+    checks: [chkExpo,
+      { k: "인물 간 흐림", t: "초점 밖 사람이 확실히 흐림 (1% 이상)", ok: m => m.peopleBlur >= 1, v: m => "지금 " + fmtP(m.peopleBlur) },
+      { k: "배경 흐림", t: "골목 끝도 흐림 (1.5% 이상)", ok: m => m.bgBlur >= 1.5, v: m => "지금 " + fmtP(m.bgBlur) }] },
+  { id: "subway", emoji: "🚇", name: "지하철 승강장", scene: "subway", n: 1, sp: 0, focus: 0, gap: 6, ev: 9, f: 24, d: 1.7, N: 4, iso: 100, shut: 125,
+    goal: "승강장에서 건너편 열차를 인물만큼 크게 압축해서 보여 주세요. 같은 장소가 화각에 따라 얼마나 달라지는지 비교해 보세요.",
+    tip: "배경 크기는 카메라↔인물 거리 ÷ (카메라↔배경 거리)예요. 열차를 크게 하려면 카메라를 멀리 빼고 망원으로 당겨야 해요. 인물 크기 고정을 켜고 화각을 바꿔 보세요.",
+    checks: [chkExpo,
+      { k: "열차 크기", t: "열차가 인물 가까운 크기로 압축 (배경 크기 65% 이상)", ok: m => m.ratio >= 0.65, v: m => "지금 " + Math.round(m.ratio * 100) + "%" },
+      { k: "인물 크기", t: "인물이 너무 작지 않게 (프레임 키 60% 이상)", ok: m => m.frac >= 0.6, v: m => "지금 " + Math.round(m.frac * 100) + "%" }] },
+  { id: "night", emoji: "🌃", name: "야경 거리", scene: "night", n: 1, sp: 0, focus: 0, gap: 15, ev: 3, f: 50, d: 3.4, N: 8, iso: 100, shut: 125,
+    goal: "밤거리. 가로등·창문·자동차 불빛을 아주 큰 보케로 만들면서도 노출은 맞춰 보세요.",
+    tip: "야간(EV3)은 정말 어두워요. 조리개를 활짝 열고 ISO를 크게 올려야 해요. 셔터를 느리게 하면 노출은 쉽지만 손떨림이 생겨요.",
+    checks: [chkExpo,
+      { k: "보케 크기", t: "불빛이 큰 보케로 (배경 흐림 3% 이상)", ok: m => m.bgBlur >= 3, v: m => "지금 " + fmtP(m.bgBlur) },
+      { k: "손떨림", t: "손떨림 안전 (셔터가 1/화각보다 빠름)", ok: m => m.shakeOk, v: m => m.shakeOk ? "안전" : "위험" }] },
+  { id: "market", emoji: "🛒", name: "시장 군중", scene: "market", n: 1, sp: 0, focus: 0, gap: 6, ev: 13, f: 35, d: 2.5, N: 4, iso: 100, shut: 125,
+    goal: "붐비는 시장. 주인공 얼굴을 프레임 가득 담고, 뒤의 행인들은 누군지 알아볼 수 없게 흐리게 만들어 보세요.",
+    tip: "많이 당기면 구도 중심이 얼굴로 올라가요. 인물 키가 프레임의 200%면 얼굴이 가득 차요. 행인들은 뒤로 갈수록 더 흐려져요.",
+    checks: [chkExpo,
+      { k: "얼굴 크기", t: "얼굴이 프레임 가득 (프레임 키 200% 이상)", ok: m => m.frac >= 2, v: m => "지금 " + Math.round(m.frac * 100) + "%" },
+      { k: "배경 흐림", t: "행인이 알아볼 수 없게 흐림 (1.5% 이상)", ok: m => m.bgBlur >= 1.5, v: m => "지금 " + fmtP(m.bgBlur) }] },
+  { id: "cafe", emoji: "🍰", name: "카페 앞 저녁", scene: "cafe", n: 1, sp: 0, focus: 0, gap: 8, ev: 9, f: 35, d: 2.5, N: 2.8, iso: 100, shut: 125,
+    goal: "저녁 카페 앞. 전구줄은 둥근 보케로, 가게 간판은 읽힐 만큼 크게 보이게 해 보세요.",
+    tip: "간판을 크게 하면(압축) 카메라가 멀어지고, 보케를 키우려면 조리개를 열어야 해요. 두 가지가 서로 당기는 걸 느껴 보세요.",
+    checks: [chkExpo,
+      { k: "보케", t: "전구줄이 둥근 보케로 (배경 흐림 1.0% 이상)", ok: m => m.bgBlur >= 1, v: m => "지금 " + fmtP(m.bgBlur) },
+      { k: "간판 크기", t: "간판이 보이는 크기 (배경 크기 45% 이상)", ok: m => m.ratio >= 0.45, v: m => "지금 " + Math.round(m.ratio * 100) + "%" }] }
+];
+const SIT_KEYS = ["scene", "n", "sp", "focus", "gap", "ev", "f", "d", "N", "iso", "shut"];
+function applySit(id) {
+  const t = SITS.find(x => x.id === id); if (!t) return;
+  S.sit = id; for (const k of SIT_KEYS) S[k] = t[k]; S.lock = false; refresh();
 }
 
 /* ---------- 위에서 본 지도 ---------- */
@@ -485,7 +731,7 @@ function drawMap(s) {
   const w = m.clientWidth * dpr, h = m.clientHeight * dpr;
   m.width = w; m.height = h;
   const c = m.getContext("2d");
-  const B = s.d + s.gap, top = Math.max(B * 1.12, s.d * 1.4) + 0.5;
+  const B = bgZ(s), top = Math.max(B * 1.12, rearZ(s) * 1.4) + 0.5;
   const u = (h - 26 * dpr) / top, ox = w / 2, oy = h - 12 * dpr;
   const P = (x, z) => [ox + x * u, oy - z * u];
   c.clearRect(0, 0, w, h);
@@ -496,109 +742,144 @@ function drawMap(s) {
   c.fillStyle = "rgba(255,106,61,.16)"; c.strokeStyle = "rgba(255,106,61,.8)"; c.lineWidth = 1.5 * dpr;
   c.beginPath(); c.moveTo(x0, y0); c.lineTo(xa, ya); c.lineTo(xb, yb); c.closePath(); c.fill();
   c.beginPath(); c.moveTo(xa, ya); c.lineTo(x0, y0); c.lineTo(xb, yb); c.stroke();
-  // 배경 건물
-  const sc0 = SCENES[s.scene] || SCENES.cafe, [bx0, by] = P(-sc0.bgW, B), [bx1] = P(sc0.bgW, B);
+  // 배경
+  const sc0 = SCENES[s.scene] || SCENES.park, [bx0, by] = P(-sc0.bgW, B), [bx1] = P(sc0.bgW, B);
   c.strokeStyle = "#dcc6a6"; c.lineWidth = 5 * dpr; c.beginPath(); c.moveTo(Math.max(0, bx0), by); c.lineTo(Math.min(w, bx1), by); c.stroke();
   c.fillStyle = "#dcc6a6"; c.textAlign = "left"; c.fillText("배경: " + sc0.bgLabel, 6 * dpr, by - 10 * dpr);
-  // 인물
-  const crowd = layoutPeople(s.n || 1, s.arr || "side", s.d);
-  for (const o of crowd) { const [qx, qy] = P(o.x, o.z); c.fillStyle = o.p.top; c.beginPath(); c.arc(qx, qy, 5 * dpr, 0, 7); c.fill(); }
-  const [px, py] = P(0, s.d);
+  // 인물 (초점 맞는 사람은 고리 표시)
+  const crowd = layoutPeople(nOf(s), s.sp || 0, s.d), fi = focusIdx(s);
+  for (const o of crowd) {
+    const [qx, qy] = P(o.x, o.z);
+    c.fillStyle = o.p.top; c.beginPath(); c.arc(qx, qy, 5 * dpr, 0, 7); c.fill();
+    if (o.i === fi) { c.strokeStyle = "#fff"; c.lineWidth = 1.5 * dpr; c.beginPath(); c.arc(qx, qy, 8.5 * dpr, 0, 7); c.stroke(); }
+  }
   // 카메라
   c.fillStyle = "#eef2f0"; c.fillRect(x0 - 8 * dpr, y0 - 5 * dpr, 16 * dpr, 10 * dpr);
   c.fillStyle = "#888"; c.fillRect(x0 - 3 * dpr, y0 - 9 * dpr, 6 * dpr, 4 * dpr);
-  // 거리 표시
-  c.strokeStyle = "#5ed39a"; c.fillStyle = "#5ed39a"; c.lineWidth = 1 * dpr; c.setLineDash([4 * dpr, 3 * dpr]);
-  c.beginPath(); c.moveTo(x0, y0 - 10 * dpr); c.lineTo(px, py + 7 * dpr); c.stroke();
-  c.strokeStyle = "#7ab8ff"; c.beginPath(); c.moveTo(px, py - 7 * dpr); c.lineTo(px, by + 3 * dpr); c.stroke(); c.setLineDash([]);
-  c.textAlign = "left"; c.fillStyle = "#5ed39a"; c.fillText(fmtM(s.d), px + 10 * dpr, (y0 + py) / 2);
-  c.fillStyle = "#7ab8ff"; c.fillText(fmtM(s.gap), px + 10 * dpr, (py + by) / 2);
+  // 거리 표시: 카메라↔맨 앞(초록), 인물 사이(노랑), 맨 뒷사람↔배경(파랑)
+  const [fx, fy] = P(0, s.d), [rx, ry] = P(crowd[crowd.length - 1].x, rearZ(s));
+  c.setLineDash([4 * dpr, 3 * dpr]); c.lineWidth = 1 * dpr; c.textAlign = "left";
+  c.strokeStyle = c.fillStyle = "#5ed39a"; c.beginPath(); c.moveTo(x0, y0 - 10 * dpr); c.lineTo(fx, fy + 8 * dpr); c.stroke(); c.fillText(fmtM(s.d), ox + 12 * dpr, (y0 + fy) / 2);
+  if (crowd.length > 1 && (s.sp || 0) > 0.05) { c.strokeStyle = c.fillStyle = "#f2c230"; c.beginPath(); c.moveTo(fx - 14 * dpr, fy - 4 * dpr); c.lineTo(fx - 14 * dpr, ry + 4 * dpr); c.stroke(); c.textAlign = "right"; c.fillText(fmtM(s.sp), fx - 18 * dpr, (fy + ry) / 2); c.textAlign = "left"; }
+  c.strokeStyle = c.fillStyle = "#7ab8ff"; c.beginPath(); c.moveTo(rx, ry - 9 * dpr); c.lineTo(rx, by + 3 * dpr); c.stroke(); c.fillText(fmtM(s.gap), rx + 12 * dpr, (ry + by) / 2);
+  c.setLineDash([]);
 }
-const fmtM = v => (v < 10 ? v.toFixed(1) : Math.round(v)) + " m";
 
-/* ---------- 숫자·설명 ---------- */
+/* ---------- 숫자·설명·미션 ---------- */
 const hfov = f => 2 * Math.atan(SENS_W / 2 / f) * 180 / Math.PI;
 const vfov = f => 2 * Math.atan(SENS_H / 2 / f) * 180 / Math.PI;
-function cocMm(s) { const S1 = s.d * 1000, S2 = (s.d + s.gap) * 1000; return s.f * s.f / (s.N * (S1 - s.f)) * (S2 - S1) / S2; }
 function updateInfo(s) {
-  const frac = SUBJ * s.f / s.d / SENS_H;                 // 프레임 높이 중 인물 비율
-  const ratio = s.d / (s.d + s.gap);                      // 인물 대비 배경 배율
-  const widthFrac = s.f * groupWidth(s.n || 1, s.arr || "side") / s.d / SENS_W;
-  const blur = cocMm(s) / SENS_W * 100;                   // 화면 폭 대비 %
-  const blurTxt = blur < 0.25 ? "거의 선명" : blur < 0.8 ? "살짝 흐림" : blur < 2 ? "흐림" : "아주 흐림";
+  const m = metrics(s), multi = m.n > 1;
+  const blurTxt = v => v < 0.25 ? "거의 선명" : v < 0.8 ? "살짝 흐림" : v < 2 ? "흐림" : "아주 흐림";
   $("#stats").innerHTML =
     `<div><span>화각 (가로 / 세로)</span><b>${hfov(s.f).toFixed(0)}° / ${vfov(s.f).toFixed(0)}°</b></div>` +
-    `<div><span>프레임 속 인물 키</span><b>${Math.round(frac * 100)}%</b></div>` +
-    `<div><span>배경 크기 (인물 대비)</span><b>${(ratio * 100).toFixed(0)}%</b></div>` +
-    `<div><span>배경 흐림</span><b>${blurTxt}</b></div>` +
+    `<div><span>프레임 속 인물 키</span><b>${Math.round(m.frac * 100)}%</b></div>` +
+    `<div><span>배경 크기 (인물 대비)</span><b>${Math.round(m.ratio * 100)}%</b></div>` +
+    `<div><span>배경 흐림</span><b>${blurTxt(m.bgBlur)} (${fmtP(m.bgBlur)})</b></div>` +
+    `<div><span>${multi ? "초점 밖 사람 흐림" : "초점"}</span><b>${multi ? blurTxt(m.peopleBlur) + " (" + fmtP(m.peopleBlur) + ")" : "인물에 정확히"}</b></div>` +
+    `<div><span>노출</span><b>${Math.abs(m.expo) <= 0.7 ? "적정" : fmtE(m.expo)}</b></div>` +
+    `<div><span>손떨림</span><b>${m.shakeOk ? "안전" : "위험 (1/" + s.f + "초보다 느림)"}</b></div>` +
+    `<div><span>프레임 속 인물 폭</span><b>${Math.round(m.widthFrac * 100)}%</b></div>` +
     `<div><span>인물이 70%로 보이는 거리</span><b>${fmtM(lockDist(s.f, s))}</b></div>` +
-    `<div><span>프레임 속 인물 폭</span><b>${Math.round(widthFrac * 100)}%</b></div>` +
-    `<div><span>초점이 맞는 사람</span><b>${(s.n || 1) > 1 && s.arr === "depth" ? "맨 앞 1명" : "전원"}</b></div>` +
-    `<div><span>배경까지 거리</span><b>${fmtM(s.d + s.gap)}</b></div>`;
+    `<div><span>배경까지 거리</span><b>${fmtM(bgZ(s))}</b></div>`;
   const tips = [];
   if (s.f <= 28) tips.push("광각이에요. 시야가 넓고 원근이 강해서 배경이 멀리 퍼져 보여요. 인물에게 바싹 붙으면 얼굴·손이 크게 왜곡돼요.");
   else if (s.f >= 85) tips.push("망원이에요. 배경이 눌려서 인물 뒤에 바싹 붙어 보이고, 시야는 좁아요. 인물 사진·압축감에 좋아요.");
   else tips.push("표준 화각이에요. 눈으로 보는 느낌과 가장 비슷해요.");
-  if (ratio > 0.8) tips.push("인물과 배경 사이가 카메라 거리에 비해 짧아서 배경이 인물만큼 크게 보여요. 압축감이 커요.");
-  else if (ratio < 0.4) tips.push("카메라보다 배경이 훨씬 멀어서 배경이 작고 넓게 보여요.");
-  if (blur >= 0.8) tips.push("배경이 많이 흐려요. 더 선명하게 하려면 조리개를 조이거나(숫자 크게) 화각을 넓혀 보세요.");
-  else if (blur < 0.25) tips.push("배경이 거의 선명해요. 흐리게 하려면 조리개를 열거나, 망원으로 바꾸거나, 인물을 배경에서 떼어 보세요.");
-  if ((s.n || 1) > 1 && s.arr === "depth") tips.push("앞뒤로 선 단체예요. 초점은 맨 앞 사람에게 있고, 뒷사람은 흐려져요. 전원을 선명하게 하려면 나란히 세우거나 조리개를 조이세요(f/8 이상).");
-  else if ((s.n || 1) > 1) tips.push("나란히 선 단체예요. 모두 같은 거리라 전원 초점이 맞아요. 대신 폭이 넓어서 광각이거나 카메라를 뒤로 빼야 다 들어가요.");
-  if (widthFrac > 1.0) tips.push("⚠ 옆 사람이 프레임 밖으로 잘려요. 카메라를 뒤로 가거나 화각을 넓혀요.");
-  if (frac > 0.95) tips.push("⚠ 인물이 프레임에 다 안 들어가요. 카메라를 뒤로 가거나 화각을 넓혀요.");
+  if (m.ratio > 0.8) tips.push("배경이 인물만큼 크게 보여요. 압축감이 커요.");
+  else if (m.ratio < 0.4) tips.push("카메라보다 배경이 훨씬 멀어서 배경이 작고 넓게 보여요.");
+  if (m.bgBlur >= 1.5) tips.push("배경이 많이 흐려요. 더 선명하게 하려면 조리개를 조이거나(숫자 크게) 화각을 넓혀 보세요.");
+  else if (m.bgBlur < 0.25) tips.push("배경이 거의 선명해요. 흐리게 하려면 조리개를 열거나, 망원으로 바꾸거나, 인물을 배경에서 떼어 보세요.");
+  if (multi && m.peopleBlur >= 0.8) tips.push("초점 밖 사람이 흐려요. 전원을 선명하게 하려면 사이 거리를 줄이거나 조리개를 조이세요(f/8 이상). 또는 초점 맞출 사람을 바꿔 보세요.");
+  if (m.widthFrac > 1.0) tips.push("⚠ 옆 사람이 프레임 밖으로 잘려요. 카메라를 뒤로 가거나 화각을 넓혀요.");
+  if (m.frac >= 2) tips.push("얼굴 클로즈업이에요. 많이 당기면 구도 중심이 얼굴로 올라가요.");
+  else if (m.frac > 1.05) tips.push("인물이 프레임보다 커서 상반신 위주로 잘려요.");
   $("#tips").innerHTML = "<h2>이렇게 보여요</h2>" + tips.map(t => "<p>" + t + "</p>").join("");
+  // 노출 메모
+  $("#vE").textContent = Math.abs(m.expo) <= 0.7 ? "적정" : fmtE(m.expo);
+  $("#mk").style.left = clamp((m.expo + 3) / 6, 0, 1) * 100 + "%";
+  const note = [];
+  if (m.expo > 0.7) note.push("과노출이에요. 셔터를 빠르게 / 조리개를 조이기 / ISO 낮추기.");
+  else if (m.expo < -0.7) note.push("너무 어두워요. 조리개를 열기 / ISO 올리기 / 셔터 느리게(손떨림 주의).");
+  else note.push("노출이 적정이에요.");
+  if (s.iso >= 1600) note.push("ISO가 높아서 화면에 노이즈가 껴요.");
+  if (!m.shakeOk) note.push("셔터가 화각(" + s.f + "mm)보다 느려서 손떨림 위험이 있어요.");
+  $("#expNote").textContent = note.join(" ");
+  // 미션 (상황별 체크리스트)
+  const t = SITS.find(x => x.id === s.sit);
+  if (!t) { $("#mission").innerHTML = '<div class="muted">상황을 골라 보세요. 상황마다 거리·광량·인원이 달라요.</div>'; $("#mini").innerHTML = ""; return; }
+  const res = t.checks.map(c => ({ c, ok: c.ok(m) }));
+  $("#mission").innerHTML = `<h3>${t.emoji} ${t.name}</h3><div>${t.goal}</div><div class="muted" style="margin-top:4px">💡 ${t.tip}</div><ul>` +
+    res.map(r => `<li>${r.ok ? "✅" : "⬜"} ${r.c.t} <span class="muted">· ${r.c.v(m)}</span></li>`).join("") + "</ul>" +
+    (res.every(r => r.ok) ? '<div class="done">🎉 미션 달성! 이번엔 다른 상황이나, 같은 상황에서 화각을 바꿔 다시 해 보세요.</div>' : "") +
+    '<button class="wide" id="resetSit">↺ 처음 상태로</button>';
+  $("#mini").innerHTML = res.map(r => `<span class="b ${r.ok ? "ok" : ""}">${r.ok ? "✅" : "⬜"} ${r.c.k}</span>`).join("");
 }
 
 /* ---------- 화면 갱신 ---------- */
 let pending = false;
 function refresh() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; draw(); }); }
 function cur() { return mode === "quiz" && quiz ? quiz.s : S; }
+function applyExposure(s) {
+  if (mode !== "lab") { cv.style.filter = ""; $("#grain").style.opacity = 0; return; }
+  const o = expoStops(s);
+  cv.style.filter = "brightness(" + clamp(Math.pow(2, o * 0.6), 0.12, 1.9).toFixed(2) + ")";
+  $("#grain").style.opacity = clamp(Math.log2(s.iso / 100) * 0.07 + Math.max(0, -o) * 0.05, 0, 0.7).toFixed(2);
+}
 function draw() {
   const s = cur();
-  render(s);
+  render(s); applyExposure(s);
   const hidden = mode === "quiz" && !quiz.revealed;
   $("#hMm").innerHTML = hidden ? "?<small>mm</small>" : Math.round(s.f) + "<small>mm</small>";
-  $("#hSub").innerHTML = hidden ? "" : `f/${s.N}`;
+  $("#hSub").innerHTML = hidden ? "" : mode === "lab" ? `f/${s.N}<br>1/${s.shut} · ISO ${s.iso}<br>노출 ${Math.abs(expoStops(s)) <= 0.7 ? "적정" : fmtE(expoStops(s))}` : `f/${s.N}`;
   if (mode === "lab") { syncUI(); drawMap(s); updateInfo(s); }
 }
 function syncUI() {
-  $("#vD").textContent = fmtM(S.d); $("#vG").textContent = fmtM(S.gap); $("#vF").textContent = Math.round(S.f) + " mm"; $("#vN").textContent = "f/" + S.N;
+  const multi = nOf(S) > 1;
+  $("#vD").textContent = fmtM(S.d); $("#vG").textContent = fmtM(S.gap); $("#vF").textContent = Math.round(S.f) + " mm";
+  $("#lG").textContent = multi ? "🏙️ 맨 뒷사람↔배경" : "🏙️ 인물↔배경";
   $("#sD").value = logPos(S.d, RANGES.d); $("#sG").value = logPos(S.gap, RANGES.g); $("#sF").value = logPos(S.f, RANGES.f);
   $("#sD").disabled = S.lock; $("#vD").parentElement.classList.toggle("auto", S.lock);
   $("#lock").checked = S.lock;
-  document.querySelectorAll("#sceneChips button").forEach(b => b.classList.toggle("on", b.dataset.v === S.scene));
-  $("#sceneHint").textContent = SCENES[S.scene].hint;
-  document.querySelectorAll("#pChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === S.n));
-  document.querySelectorAll("#arrChips button").forEach(b => b.classList.toggle("on", b.dataset.v === S.arr));
-  $("#arrChips").classList.toggle("hide", S.n < 2);
-  document.querySelectorAll("#fChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === Math.round(S.f)));
-  document.querySelectorAll("#nChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === S.N));
+  $("#multi").classList.toggle("hide", !multi);
+  $("#sS").value = Math.round((S.sp || 0) * 100); $("#vS").textContent = (S.sp || 0) < 0.05 ? "나란히 (같은 거리)" : fmtM(S.sp);
+  $("#vN").textContent = "f/" + S.N; $("#vT").textContent = "1/" + S.shut; $("#vI").textContent = "ISO " + S.iso;
+  const tog = (sel, fn) => document.querySelectorAll(sel + " button").forEach(b => b.classList.toggle("on", fn(b.dataset.v)));
+  tog("#sitChips", v => v === S.sit); tog("#pChips", v => +v === nOf(S)); tog("#fcChips", v => +v === focusIdx(S));
+  tog("#evChips", v => +v === S.ev); tog("#nChips", v => +v === S.N); tog("#tChips", v => +v === S.shut); tog("#iChips", v => +v === S.iso);
+  tog("#fChips", v => +v === Math.round(S.f));
+  document.querySelectorAll("#fcChips button").forEach(b => b.classList.toggle("hide", +b.dataset.v >= nOf(S)));
 }
-function setF(f) { S.f = Math.max(RANGES.f[0], Math.min(RANGES.f[1], f)); if (S.lock) S.d = Math.max(RANGES.d[0], Math.min(RANGES.d[1], lockDist(S.f, S))); refresh(); }
+function setF(f) { S.f = clamp(f, RANGES.f[0], RANGES.f[1]); if (S.lock) S.d = clamp(lockDist(S.f, S), RANGES.d[0], RANGES.d[1]); refresh(); }
 
 /* ---------- 입력 ---------- */
 $("#sD").oninput = e => { if (!S.lock) { S.d = logVal(+e.target.value, RANGES.d); refresh(); } };
 $("#sG").oninput = e => { S.gap = logVal(+e.target.value, RANGES.g); refresh(); };
 $("#sF").oninput = e => setF(logVal(+e.target.value, RANGES.f));
+$("#sS").oninput = e => { S.sp = +e.target.value / 100; if (S.lock) setF(S.f); else refresh(); };
 $("#lock").onchange = e => { S.lock = e.target.checked; if (S.lock) setF(S.f); else refresh(); };
-SCENE_IDS.forEach(id => { const b = document.createElement("button"); b.textContent = SCENES[id].emoji + " " + SCENES[id].name; b.dataset.v = id; b.onclick = () => { S.scene = id; refresh(); }; $("#sceneChips").appendChild(b); });
-[1, 2, 3, 4].forEach(v => { const b = document.createElement("button"); b.textContent = v + "명"; b.dataset.v = v; b.onclick = () => { S.n = v; if (S.lock) setF(S.f); else refresh(); }; $("#pChips").appendChild(b); });
-[["side", "나란히 (같은 거리)"], ["depth", "앞뒤로 (거리 차)"]].forEach(([v, t]) => { const b = document.createElement("button"); b.textContent = t; b.dataset.v = v; b.onclick = () => { S.arr = v; if (S.lock) setF(S.f); else refresh(); }; $("#arrChips").appendChild(b); });
-LENSES.forEach(v => { const b = document.createElement("button"); b.textContent = v; b.dataset.v = v; b.onclick = () => setF(v); $("#fChips").appendChild(b); });
-APERTURES.forEach(v => { const b = document.createElement("button"); b.textContent = "f/" + v; b.dataset.v = v; b.onclick = () => { S.N = v; refresh(); }; $("#nChips").appendChild(b); });
+$("#mission").onclick = e => { if (e.target.id === "resetSit" && S.sit) applySit(S.sit); };
+const mk = (id, items, onpick) => items.forEach(([label, v]) => { const b = document.createElement("button"); b.textContent = label; b.dataset.v = v; b.onclick = () => onpick(v); $(id).appendChild(b); });
+mk("#sitChips", SITS.map(t => [t.emoji + " " + t.name, t.id]), v => applySit(v));
+mk("#pChips", [1, 2, 3, 4].map(v => [v + "명", v]), v => { S.n = v; if (S.lock) setF(S.f); else refresh(); });
+mk("#fcChips", [0, 1, 2, 3].map(v => ["인물" + (v + 1), v]), v => { S.focus = v; refresh(); });
+mk("#evChips", LIGHTS, v => { S.ev = v; refresh(); });
+mk("#nChips", APERTURES.map(v => ["f/" + v, v]), v => { S.N = v; refresh(); });
+mk("#tChips", SHUTS.map(v => ["1/" + v, v]), v => { S.shut = v; refresh(); });
+mk("#iChips", ISOS.map(v => [v, v]), v => { S.iso = v; refresh(); });
+mk("#fChips", LENSES.map(v => [v, v]), v => setF(v));
 
 /* ---------- 맞혀보기 ---------- */
 const store = { get() { try { return JSON.parse(localStorage.getItem("lens-score") || "{}"); } catch (e) { return {}; } }, set(v) { try { localStorage.setItem("lens-score", JSON.stringify(v)); } catch (e) {} } };
 function newQuiz() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
   const f = pick([16, 24, 35, 50, 85, 135, 200]);
+  const n = pick([1, 1, 2, 3, 4]), sp = n > 1 ? pick([0.6, 1.2, 2, 3.5]) : 0, focus = n > 1 ? Math.floor(Math.random() * n) : 0;
   const fmin = Math.max(0.35, f * 0.00236 + 0.02);
   const frac = fmin + Math.random() * (0.85 - fmin);
-  const n = pick([1, 1, 2, 3, 4]), arr = pick(["side", "depth"]);
-  const d = fitDist(f, frac, n, arr);
+  const d = fitDist(f, frac, n, sp);
   const gap = Math.exp(Math.log(2) + Math.random() * (Math.log(40) - Math.log(2)));
-  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false, scene: pick(SCENE_IDS), n, arr }, revealed: false, answer: f };
+  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false, scene: pick(SCENE_IDS), n, sp, focus, ev: 15, iso: 100, shut: 125 }, revealed: false, answer: f };
   $("#qResult").classList.add("hide"); $("#qNext").classList.add("hide"); $("#qOpen").classList.add("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = false);
   refresh();
@@ -614,8 +895,8 @@ function answer(v) {
   else if (diff === 1) { t.near = (t.near || 0) + 1; cls = "near"; msg = `거의 맞았어요. 정답은 ${quiz.answer}mm (고른 값: ${v}mm)`; }
   else { cls = "bad"; msg = `정답은 ${quiz.answer}mm (고른 값: ${v}mm)`; }
   store.set(t);
-  const s = quiz.s, ratio = s.d / (s.d + s.gap);
-  msg += `<br><span class="muted" style="color:inherit;opacity:.85">${SCENES[s.scene].emoji} ${SCENES[s.scene].name} · ${s.n}명${s.n > 1 ? (s.arr === "depth" ? "(앞뒤로)" : "(나란히)") : ""}</span><br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${(ratio * 100).toFixed(0)}% 크기로 보여요.</span>`;
+  const s = quiz.s, mm = metrics(s);
+  msg += `<br><span class="muted" style="color:inherit;opacity:.85">${SCENES[s.scene].emoji} ${SCENES[s.scene].name} · ${s.n}명${s.n > 1 ? " (사이 " + fmtM(s.sp) + ", 초점 인물" + (focusIdx(s) + 1) + ")" : ""}</span><br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${Math.round(mm.ratio * 100)}% 크기로 보여요.</span>`;
   const r = $("#qResult"); r.className = "result " + cls; r.innerHTML = msg;
   $("#qNext").classList.remove("hide"); $("#qOpen").classList.remove("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = true);
@@ -623,19 +904,24 @@ function answer(v) {
 }
 LENSES.forEach(v => { const b = document.createElement("button"); b.textContent = v + "mm"; b.onclick = () => answer(v); $("#qChips").appendChild(b); });
 $("#qNext").onclick = newQuiz;
-$("#qOpen").onclick = () => { Object.assign(S, quiz.s, { lock: false }); S.d = Math.min(RANGES.d[1], S.d); setTab("lab"); };
+$("#qOpen").onclick = () => {
+  Object.assign(S, quiz.s, { lock: false, sit: null }); S.d = Math.min(RANGES.d[1], S.d); S.ev = 12; S.iso = 100;
+  S.shut = SHUTS.reduce((a, b) => Math.abs(expoStops({ ...S, shut: b })) < Math.abs(expoStops({ ...S, shut: a })) ? b : a);
+  setTab("lab");
+};
 
 function setTab(t) {
   mode = t;
-  $("#ctl").classList.toggle("hide", t !== "lab"); size();
   $("#tabLab").classList.toggle("on", t === "lab"); $("#tabQuiz").classList.toggle("on", t === "quiz");
   $("#lab").classList.toggle("hide", t !== "lab"); $("#quiz").classList.toggle("hide", t !== "quiz");
+  $("#ctl").classList.toggle("hide", t !== "lab"); $("#mini").classList.toggle("hide", t !== "lab"); size();
   if (t === "quiz") { showScore(); if (!quiz || quiz.revealed) newQuiz(); else refresh(); } else refresh();
 }
 $("#tabLab").onclick = () => setTab("lab");
 $("#tabQuiz").onclick = () => setTab("quiz");
 
 size(); window.addEventListener("resize", () => { size(); refresh(); });
+applySit("park");
 setTab("lab");
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
