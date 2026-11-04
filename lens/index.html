@@ -92,6 +92,9 @@
       <div class="row" style="margin-top:0"><span>🎬 상황</span></div>
       <div class="chips" id="sceneChips"></div>
       <div class="muted" id="sceneHint" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:12px"><span>👥 인원 / 배치</span></div>
+      <div class="chips" id="pChips"></div>
+      <div class="chips" id="arrChips" style="margin-top:6px"></div>
       <div class="row" style="margin-top:12px"><span>🔭 화각(초점거리) 바로 고르기</span></div>
       <div class="chips" id="fChips"></div>
       <div class="row" style="margin-top:12px"><span>◐ 조리개</span><b id="vN"></b></div>
@@ -149,9 +152,24 @@ const FRAME_FRAC = 0.7;              // 인물 고정 시 프레임 높이 대�
 const RANGES = { d:[0.5, 20], g:[0.5, 80], f:[14, 200] };
 const logVal = (p, [a, b]) => a * Math.pow(b / a, p / 1000);
 const logPos = (v, [a, b]) => Math.round(1000 * Math.log(v / a) / Math.log(b / a));
-const lockDist = f => f * SUBJ / (FRAME_FRAC * SENS_H);
+const PEOPLE = [
+  { h: 1.70, w: 1.00, top: "#e0703a", arm: "#c8552a", pants: "#2f3a4a", hair: "#3b2a22", skin: "#f0c9a4" },
+  { h: 1.62, w: 0.95, top: "#3f7fbf", arm: "#2f6399", pants: "#4a4540", hair: "#8a5a2b", skin: "#f4d2b4" },
+  { h: 1.76, w: 1.05, top: "#6aa84f", arm: "#4f8a38", pants: "#2b3a55", hair: "#1f1b19", skin: "#e8bb94" },
+  { h: 1.15, w: 0.75, top: "#f0c43a", arm: "#d2a51f", pants: "#3a5a8a", hair: "#5a3a22", skin: "#f4d2b4" }
+];
+// 배치: side = 나란히(같은 거리), depth = 앞뒤로(1m씩 뒤로)
+function layoutPeople(n, arr, d) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(arr === "depth" ? { p: PEOPLE[i], x: [0, 0.5, -0.55, 0.85][i], z: d + i } : { p: PEOPLE[i], x: (i - (n - 1) / 2) * 0.64, z: d });
+  return out;
+}
+const groupWidth = (n, arr) => { const xs = layoutPeople(n, arr, 0).map(o => o.x); return Math.max(...xs) - Math.min(...xs) + 0.6; };
+// 키와 폭 둘 다 프레임에 들어오는 가장 가까운 거리
+const fitDist = (f, frac, n, arr) => Math.max(f * SUBJ / (frac * SENS_H), f * groupWidth(n, arr) / (0.88 * SENS_W));
+const lockDist = (f, s = S) => fitDist(f, FRAME_FRAC, s.n || 1, s.arr || "side");
 
-const S = { f:35, d:2.5, gap:8, N:2.8, lock:false, scene:"cafe" };
+const S = { f:35, d:2.5, gap:8, N:2.8, lock:false, scene:"cafe", n:1, arr:"side" };
 let mode = "lab";
 let quiz = null;
 
@@ -436,21 +454,26 @@ function render(s) {
     }
   }
 
+  function drawPerson(c, p, x, Z) {
+    const k = p.h / SUBJ, w = p.w, rx = (col, x0, y0, x1, y1) => rect(c, col, x + x0 * w, y0 * k, x + x1 * w, y1 * k, Z);
+    c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(X(x, Z), Y(0, Z), 0.45 * w * sc(Z), 0.06 * sc(Z), 0, 0, 7); c.fill();
+    rx(p.pants, -0.19, 0.1, -0.03, 0.92); rx(p.pants, 0.03, 0.1, 0.19, 0.92);
+    rx("#f2efe9", -0.2, 0, -0.02, 0.1); rx("#f2efe9", 0.02, 0, 0.2, 0.1);
+    rx(p.arm, -0.31, 0.95, -0.22, 1.4); rx(p.arm, 0.22, 0.95, 0.31, 1.4);
+    c.fillStyle = p.top; c.beginPath(); c.roundRect(X(x - 0.23 * w, Z), Y(1.47 * k, Z), 0.46 * w * sc(Z), 0.6 * k * sc(Z), 0.08 * k * sc(Z)); c.fill();
+    rx(p.skin, -0.045, 1.46, 0.045, 1.52);
+    const hr = 0.105 * Math.sqrt(k), hc = 1.52 * k + hr * 0.8;
+    circ(c, p.skin, x, hc, hr, Z);
+    c.fillStyle = p.hair; c.beginPath(); c.arc(X(x, Z), Y(hc + 0.01, Z), (hr + 0.01) * sc(Z), Math.PI, 0); c.fill();
+  }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
   const e = { B, d, gap, W, H, cy, rect, circ, X, Y, sc, layer, lights, sky, ground, gz, gx };
   scene.draw(e);
 
-  // 인물 (초점이 맞는 곳 — 흐림 없음)
+  // 인물: 맨 앞 사람(거리 d)에 초점이 맞고, 뒤에 선 사람은 그 깊이만큼 흐려진다. 먼 사람부터 그린다
   {
-    const Z = d, o = ctx;
-    o.fillStyle = "rgba(0,0,0,.22)"; o.beginPath(); o.ellipse(X(0, Z), Y(0, Z), 0.45 * sc(Z), 0.1 * sc(Z) * 0.6, 0, 0, 7); o.fill();
-    rect(o, "#2f3a4a", -0.19, 0.1, -0.03, 0.92, Z); rect(o, "#2f3a4a", 0.03, 0.1, 0.19, 0.92, Z);
-    rect(o, "#f2efe9", -0.2, 0, -0.02, 0.1, Z); rect(o, "#f2efe9", 0.02, 0, 0.2, 0.1, Z);
-    rect(o, "#c8552a", -0.31, 0.95, -0.22, 1.4, Z); rect(o, "#c8552a", 0.22, 0.95, 0.31, 1.4, Z);
-    o.fillStyle = "#e0703a"; o.beginPath(); o.roundRect(X(-0.23, Z), Y(1.47, Z), 0.46 * sc(Z), 0.6 * sc(Z), 0.08 * sc(Z)); o.fill();
-    rect(o, "#f0c9a4", -0.045, 1.46, 0.045, 1.52, Z);
-    circ(o, "#f0c9a4", 0, 1.6, 0.105, Z);
-    o.fillStyle = "#3b2a22"; o.beginPath(); o.arc(X(0, Z), Y(1.61, Z), 0.115 * sc(Z), Math.PI, 0); o.fill();
+    const people = layoutPeople(s.n || 1, s.arr || "side", d), zs = [...new Set(people.map(o => o.z))].sort((p, q) => q - p);
+    for (const z of zs) layer(z, c => { for (const o of people) if (o.z === z) drawPerson(c, o.p, o.x, z); });
   }
   // 앞쪽 소품 (인물보다 가까워서 흐려짐)
   if (scene.front) scene.front(e);
@@ -478,8 +501,9 @@ function drawMap(s) {
   c.strokeStyle = "#dcc6a6"; c.lineWidth = 5 * dpr; c.beginPath(); c.moveTo(Math.max(0, bx0), by); c.lineTo(Math.min(w, bx1), by); c.stroke();
   c.fillStyle = "#dcc6a6"; c.textAlign = "left"; c.fillText("배경: " + sc0.bgLabel, 6 * dpr, by - 10 * dpr);
   // 인물
+  const crowd = layoutPeople(s.n || 1, s.arr || "side", s.d);
+  for (const o of crowd) { const [qx, qy] = P(o.x, o.z); c.fillStyle = o.p.top; c.beginPath(); c.arc(qx, qy, 5 * dpr, 0, 7); c.fill(); }
   const [px, py] = P(0, s.d);
-  c.fillStyle = "#e0703a"; c.beginPath(); c.arc(px, py, 6 * dpr, 0, 7); c.fill();
   // 카메라
   c.fillStyle = "#eef2f0"; c.fillRect(x0 - 8 * dpr, y0 - 5 * dpr, 16 * dpr, 10 * dpr);
   c.fillStyle = "#888"; c.fillRect(x0 - 3 * dpr, y0 - 9 * dpr, 6 * dpr, 4 * dpr);
@@ -499,6 +523,7 @@ function cocMm(s) { const S1 = s.d * 1000, S2 = (s.d + s.gap) * 1000; return s.f
 function updateInfo(s) {
   const frac = SUBJ * s.f / s.d / SENS_H;                 // 프레임 높이 중 인물 비율
   const ratio = s.d / (s.d + s.gap);                      // 인물 대비 배경 배율
+  const widthFrac = s.f * groupWidth(s.n || 1, s.arr || "side") / s.d / SENS_W;
   const blur = cocMm(s) / SENS_W * 100;                   // 화면 폭 대비 %
   const blurTxt = blur < 0.25 ? "거의 선명" : blur < 0.8 ? "살짝 흐림" : blur < 2 ? "흐림" : "아주 흐림";
   $("#stats").innerHTML =
@@ -506,7 +531,9 @@ function updateInfo(s) {
     `<div><span>프레임 속 인물 키</span><b>${Math.round(frac * 100)}%</b></div>` +
     `<div><span>배경 크기 (인물 대비)</span><b>${(ratio * 100).toFixed(0)}%</b></div>` +
     `<div><span>배경 흐림</span><b>${blurTxt}</b></div>` +
-    `<div><span>인물이 70%로 보이는 거리</span><b>${fmtM(lockDist(s.f))}</b></div>` +
+    `<div><span>인물이 70%로 보이는 거리</span><b>${fmtM(lockDist(s.f, s))}</b></div>` +
+    `<div><span>프레임 속 인물 폭</span><b>${Math.round(widthFrac * 100)}%</b></div>` +
+    `<div><span>초점이 맞는 사람</span><b>${(s.n || 1) > 1 && s.arr === "depth" ? "맨 앞 1명" : "전원"}</b></div>` +
     `<div><span>배경까지 거리</span><b>${fmtM(s.d + s.gap)}</b></div>`;
   const tips = [];
   if (s.f <= 28) tips.push("광각이에요. 시야가 넓고 원근이 강해서 배경이 멀리 퍼져 보여요. 인물에게 바싹 붙으면 얼굴·손이 크게 왜곡돼요.");
@@ -516,6 +543,9 @@ function updateInfo(s) {
   else if (ratio < 0.4) tips.push("카메라보다 배경이 훨씬 멀어서 배경이 작고 넓게 보여요.");
   if (blur >= 0.8) tips.push("배경이 많이 흐려요. 더 선명하게 하려면 조리개를 조이거나(숫자 크게) 화각을 넓혀 보세요.");
   else if (blur < 0.25) tips.push("배경이 거의 선명해요. 흐리게 하려면 조리개를 열거나, 망원으로 바꾸거나, 인물을 배경에서 떼어 보세요.");
+  if ((s.n || 1) > 1 && s.arr === "depth") tips.push("앞뒤로 선 단체예요. 초점은 맨 앞 사람에게 있고, 뒷사람은 흐려져요. 전원을 선명하게 하려면 나란히 세우거나 조리개를 조이세요(f/8 이상).");
+  else if ((s.n || 1) > 1) tips.push("나란히 선 단체예요. 모두 같은 거리라 전원 초점이 맞아요. 대신 폭이 넓어서 광각이거나 카메라를 뒤로 빼야 다 들어가요.");
+  if (widthFrac > 1.0) tips.push("⚠ 옆 사람이 프레임 밖으로 잘려요. 카메라를 뒤로 가거나 화각을 넓혀요.");
   if (frac > 0.95) tips.push("⚠ 인물이 프레임에 다 안 들어가요. 카메라를 뒤로 가거나 화각을 넓혀요.");
   $("#tips").innerHTML = "<h2>이렇게 보여요</h2>" + tips.map(t => "<p>" + t + "</p>").join("");
 }
@@ -539,10 +569,13 @@ function syncUI() {
   $("#lock").checked = S.lock;
   document.querySelectorAll("#sceneChips button").forEach(b => b.classList.toggle("on", b.dataset.v === S.scene));
   $("#sceneHint").textContent = SCENES[S.scene].hint;
+  document.querySelectorAll("#pChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === S.n));
+  document.querySelectorAll("#arrChips button").forEach(b => b.classList.toggle("on", b.dataset.v === S.arr));
+  $("#arrChips").classList.toggle("hide", S.n < 2);
   document.querySelectorAll("#fChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === Math.round(S.f)));
   document.querySelectorAll("#nChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === S.N));
 }
-function setF(f) { S.f = Math.max(RANGES.f[0], Math.min(RANGES.f[1], f)); if (S.lock) S.d = Math.max(RANGES.d[0], Math.min(RANGES.d[1], lockDist(S.f))); refresh(); }
+function setF(f) { S.f = Math.max(RANGES.f[0], Math.min(RANGES.f[1], f)); if (S.lock) S.d = Math.max(RANGES.d[0], Math.min(RANGES.d[1], lockDist(S.f, S))); refresh(); }
 
 /* ---------- 입력 ---------- */
 $("#sD").oninput = e => { if (!S.lock) { S.d = logVal(+e.target.value, RANGES.d); refresh(); } };
@@ -550,6 +583,8 @@ $("#sG").oninput = e => { S.gap = logVal(+e.target.value, RANGES.g); refresh(); 
 $("#sF").oninput = e => setF(logVal(+e.target.value, RANGES.f));
 $("#lock").onchange = e => { S.lock = e.target.checked; if (S.lock) setF(S.f); else refresh(); };
 SCENE_IDS.forEach(id => { const b = document.createElement("button"); b.textContent = SCENES[id].emoji + " " + SCENES[id].name; b.dataset.v = id; b.onclick = () => { S.scene = id; refresh(); }; $("#sceneChips").appendChild(b); });
+[1, 2, 3, 4].forEach(v => { const b = document.createElement("button"); b.textContent = v + "명"; b.dataset.v = v; b.onclick = () => { S.n = v; if (S.lock) setF(S.f); else refresh(); }; $("#pChips").appendChild(b); });
+[["side", "나란히 (같은 거리)"], ["depth", "앞뒤로 (거리 차)"]].forEach(([v, t]) => { const b = document.createElement("button"); b.textContent = t; b.dataset.v = v; b.onclick = () => { S.arr = v; if (S.lock) setF(S.f); else refresh(); }; $("#arrChips").appendChild(b); });
 LENSES.forEach(v => { const b = document.createElement("button"); b.textContent = v; b.dataset.v = v; b.onclick = () => setF(v); $("#fChips").appendChild(b); });
 APERTURES.forEach(v => { const b = document.createElement("button"); b.textContent = "f/" + v; b.dataset.v = v; b.onclick = () => { S.N = v; refresh(); }; $("#nChips").appendChild(b); });
 
@@ -560,9 +595,10 @@ function newQuiz() {
   const f = pick([16, 24, 35, 50, 85, 135, 200]);
   const fmin = Math.max(0.35, f * 0.00236 + 0.02);
   const frac = fmin + Math.random() * (0.85 - fmin);
-  const d = f * SUBJ / (frac * SENS_H);
+  const n = pick([1, 1, 2, 3, 4]), arr = pick(["side", "depth"]);
+  const d = fitDist(f, frac, n, arr);
   const gap = Math.exp(Math.log(2) + Math.random() * (Math.log(40) - Math.log(2)));
-  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false, scene: pick(SCENE_IDS) }, revealed: false, answer: f };
+  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false, scene: pick(SCENE_IDS), n, arr }, revealed: false, answer: f };
   $("#qResult").classList.add("hide"); $("#qNext").classList.add("hide"); $("#qOpen").classList.add("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = false);
   refresh();
@@ -579,7 +615,7 @@ function answer(v) {
   else { cls = "bad"; msg = `정답은 ${quiz.answer}mm (고른 값: ${v}mm)`; }
   store.set(t);
   const s = quiz.s, ratio = s.d / (s.d + s.gap);
-  msg += `<br><span class="muted" style="color:inherit;opacity:.85">${SCENES[s.scene].emoji} ${SCENES[s.scene].name}</span><br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${(ratio * 100).toFixed(0)}% 크기로 보여요.</span>`;
+  msg += `<br><span class="muted" style="color:inherit;opacity:.85">${SCENES[s.scene].emoji} ${SCENES[s.scene].name} · ${s.n}명${s.n > 1 ? (s.arr === "depth" ? "(앞뒤로)" : "(나란히)") : ""}</span><br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${(ratio * 100).toFixed(0)}% 크기로 보여요.</span>`;
   const r = $("#qResult"); r.className = "result " + cls; r.innerHTML = msg;
   $("#qNext").classList.remove("hide"); $("#qOpen").classList.remove("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = true);
@@ -587,7 +623,7 @@ function answer(v) {
 }
 LENSES.forEach(v => { const b = document.createElement("button"); b.textContent = v + "mm"; b.onclick = () => answer(v); $("#qChips").appendChild(b); });
 $("#qNext").onclick = newQuiz;
-$("#qOpen").onclick = () => { Object.assign(S, quiz.s, { lock: false }); setTab("lab"); };
+$("#qOpen").onclick = () => { Object.assign(S, quiz.s, { lock: false }); S.d = Math.min(RANGES.d[1], S.d); setTab("lab"); };
 
 function setTab(t) {
   mode = t;
