@@ -1,0 +1,17 @@
+{
+  "name": "렌즈 감각 연습",
+  "short_name": "렌즈감각",
+  "description": "카메라 거리, 배경 거리, 화각, 조리개를 움직여 보며 촬영 감각을 기르는 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1c2326",
+  "theme_color": "#1c2326",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
