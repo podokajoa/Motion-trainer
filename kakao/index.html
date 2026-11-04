@@ -42,23 +42,23 @@
     <div class="card">
       <h2>1. 카카오 개발자 사이트에서 앱 만들기 (처음 한 번)</h2>
       <ol>
-        <li><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener">developers.kakao.com</a>에 카카오 계정으로 로그인 → <b>앱 만들기</b>(이름은 아무거나, 예: "내 할 일 알림")</li>
-        <li><b>플랫폼 → Web</b>에 사이트 도메인 두 개 등록: <code>https://podokajoa.github.io</code>, <code>https://github.com</code></li>
-        <li><b>카카오 로그인</b>을 <b>사용(ON)</b>으로 켜기</li>
-        <li><b>리다이렉트 URI</b>에 아래 주소를 그대로 등록 <button class="copy" data-copy="redirect">복사</button>
+        <li><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener">developers.kakao.com</a>에 평소 카카오 계정으로 로그인 → <b>내 애플리케이션 → 애플리케이션 추가하기</b>(이름은 아무거나, 예: "내 할 일 알림")</li>
+        <li><b>앱 → 플랫폼 키 → REST API 키</b>: 키를 복사해 두고, 같은 화면의 <b>리다이렉트 URI</b>에 아래 주소를 그대로 등록 <button class="copy" data-copy="redirect">복사</button>
           <span class="box" id="redirect"></span></li>
-        <li><b>동의항목</b>에서 <b>카카오톡 메시지 전송</b>을 "선택 동의"로 설정</li>
-        <li><b>앱 키</b>(또는 플랫폼 키)에서 <b>REST API 키</b>를 복사. 클라이언트 시크릿이 켜져 있으면 그 코드도 복사</li>
+        <li>같은 화면의 <b>클라이언트 시크릿</b>: 새 앱은 기본으로 켜져 있어요. 코드를 복사해 두세요</li>
+        <li><b>앱 → 플랫폼 키 → JavaScript 키 → JavaScript SDK 도메인</b>에 <code>https://podokajoa.github.io</code> 등록</li>
+        <li><b>앱 → 제품 링크 관리 → 웹 도메인</b>에 <code>https://podokajoa.github.io</code>, <code>https://github.com</code> 등록</li>
+        <li><b>카카오 로그인 → 사용 설정</b> 상태를 ON, <b>카카오 로그인 → 동의항목</b>에서 <b>카카오톡 메시지 전송</b>을 "선택 동의"로 설정</li>
       </ol>
-      <div class="hint">메뉴 이름은 카카오가 가끔 바꿔요. 비슷한 이름을 찾으면 돼요.</div>
+      <div class="hint">2025년 12월 바뀐 메뉴 기준이에요. 폰에선 왼쪽 위 ☰를 눌러야 메뉴가 보여요. PC에서 하는 게 편해요.</div>
     </div>
 
     <div class="card">
       <h2>2. 카카오 로그인으로 허가하기</h2>
       <label for="key">REST API 키</label>
       <input id="key" autocomplete="off" spellcheck="false" placeholder="영문·숫자 32자">
-      <label for="secret">클라이언트 시크릿 (켜져 있을 때만)</label>
-      <input id="secret" autocomplete="off" spellcheck="false" placeholder="없으면 비워 두세요">
+      <label for="secret">클라이언트 시크릿 (꺼 두었다면 비워 두기)</label>
+      <input id="secret" autocomplete="off" spellcheck="false" placeholder="REST API 키 화면의 클라이언트 시크릿 코드">
       <button class="big kakao" id="login">카카오 로그인하고 허가하기</button>
       <div class="hint" style="margin-top:8px">"카카오톡 메시지 전송" 동의 화면이 나오면 체크하고 동의해 주세요. 입력한 키는 이 화면에서만 쓰이고 어디에도 저장되지 않아요.</div>
       <div class="warn" id="err"></div>
