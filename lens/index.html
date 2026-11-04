@@ -89,7 +89,10 @@
   <!-- 실험실 -->
   <section id="lab">
     <div class="card">
-      <div class="row" style="margin-top:0"><span>🔭 화각(초점거리) 바로 고르기</span></div>
+      <div class="row" style="margin-top:0"><span>🎬 상황</span></div>
+      <div class="chips" id="sceneChips"></div>
+      <div class="muted" id="sceneHint" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:12px"><span>🔭 화각(초점거리) 바로 고르기</span></div>
       <div class="chips" id="fChips"></div>
       <div class="row" style="margin-top:12px"><span>◐ 조리개</span><b id="vN"></b></div>
       <div class="chips" id="nChips"></div>
@@ -148,7 +151,7 @@ const logVal = (p, [a, b]) => a * Math.pow(b / a, p / 1000);
 const logPos = (v, [a, b]) => Math.round(1000 * Math.log(v / a) / Math.log(b / a));
 const lockDist = f => f * SUBJ / (FRAME_FRAC * SENS_H);
 
-const S = { f:35, d:2.5, gap:8, N:2.8, lock:false };
+const S = { f:35, d:2.5, gap:8, N:2.8, lock:false, scene:"cafe" };
 let mode = "lab";
 let quiz = null;
 
@@ -169,21 +172,182 @@ function size() {
   off.width = W + 2 * M; off.height = H + 2 * M;
 }
 
-/* ---------- 장면 (고정 난수) ---------- */
+/* ---------- 장면 데이터 (고정 난수) ---------- */
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
 const R = rng(7);
+const pickc = a => a[Math.floor(R() * a.length)];
 const BUILDINGS = [];
 for (let x = -150; x < 150; ) { const w = 8 + R() * 16; BUILDINGS.push({ x, w, h: 14 + R() * 34, c: R() }); x += w + R() * 3; }
-const FAR_LIGHTS = [];
-for (let i = 0; i < 130; i++) {
-  const col = ["#ffd98f", "#ffe9b8", "#ffc067", "#bcd8ff", "#ff9b86"][Math.floor(R() * 5)];
-  FAR_LIGHTS.push({ x: -45 + R() * 90, y: 2 + R() * 30, col, r: 0.25 + R() * 0.25 });
-}
+const FAR_LIGHTS = Array.from({ length: 130 }, () => ({ x: -45 + R() * 90, y: 2 + R() * 30, col: pickc(["#ffd98f", "#ffe9b8", "#ffc067", "#bcd8ff", "#ff9b86"]), r: 0.25 + R() * 0.25 }));
+const NIGHT_LIGHTS = Array.from({ length: 260 }, () => ({ x: -55 + R() * 110, y: 3 + R() * 38, col: pickc(["#ffd98f", "#fff1c9", "#ffb25e", "#9fc8ff", "#ff8fb0"]), r: 0.25 + R() * 0.3 }));
 const UP_WIN = Array.from({ length: 14 }, () => R() > 0.4);
+const NIGHT_WIN = Array.from({ length: 80 }, () => R() > 0.45);
+const TREES = Array.from({ length: 46 }, () => ({ x: -70 + R() * 140, h: 5 + R() * 5, r: 2 + R() * 1.6, c: R() }));
+const DAPPLE = Array.from({ length: 80 }, () => ({ x: -9 + R() * 18, y: 1.5 + R() * 8.5, col: pickc(["#fff3b0", "#fff8d0", "#d8f0a0"]), r: 0.12 + R() * 0.2 }));
+const GLITTER = Array.from({ length: 110 }, () => ({ k: R(), u: R() * 2 - 1, r: 0.1 + R() * 0.14 }));
+const CARS = Array.from({ length: 12 }, (_, i) => ({ k: i * 8.5 + R() * 4, side: R() > 0.4 ? 1 : -1, col: R() > 0.3 ? "#ff3b3b" : "#fff6d8" }));
+
+const bushFront = (e, d) => { if (e.d < 1.4) return; const Z = e.d * 0.5, { layer, circ } = e;
+  layer(Z, c => { for (const [x, y, r, col] of [[-0.62, 0.35, 0.38, "#4e7f45"], [-0.4, 0.5, 0.34, "#5f9552"], [-0.8, 0.55, 0.3, "#427239"], [-0.55, 0.78, 0.26, "#6aa35b"]]) circ(c, col, x, y, r, Z); }); };
+
+const SCENES = {
+  cafe: {
+    name: "카페 앞", emoji: "☕", bgLabel: "가게", bgW: 8,
+    hint: "황혼 무렵 가게 앞이에요. 전구줄과 가게 불빛이 보케 볼이 돼요. 배경을 멀리 두고 조리개를 열어 보세요.",
+    draw(e) {
+      const { B, gap, rect, circ, X, Y, sc, layer, lights, sky, ground, W } = e;
+      sky([[0, "#4d6fa6"], [0.7, "#c8a2a0"], [1, "#f6c98d"]]);
+      const Zs = B + 80;
+      layer(Zs, c => { for (const b of BUILDINGS) rect(c, b.c > 0.5 ? "#7b8ca5" : "#6f7f98", b.x, -2, b.x + b.w, b.h, Zs); });
+      lights(FAR_LIGHTS, Zs);
+      ground({ c0: "#c9b8a4", c1: "#8f8173", grid: "rgba(95,78,66,.55)" });
+      const Zside = B + 6;
+      layer(Zside, c => {
+        rect(c, "#b9a89a", -26, 0, -8, 5.5, Zside); rect(c, "#a8b5c0", 8, 0, 28, 9.5, Zside);
+        for (let y = 1.2; y < 9; y += 2.4) for (let x = 9.5; x < 27; x += 2.6) rect(c, "#8a99a8", x, y, x + 1.2, y + 1.3, Zside);
+        for (let x = -24.5; x < -9; x += 2.6) rect(c, "#8f7f73", x, 1.5, x + 1.2, 2.8, Zside);
+      });
+      layer(B, c => {
+        rect(c, "#dcc6a6", -8, 0, 8, 7.4, B); rect(c, "#b79f82", -8.2, 7.2, 8.2, 7.7, B);
+        rect(c, "#3a2e2a", -6, 0, 6, 3.2, B);
+        rect(c, "#ffcf7a", -5.6, 0.3, -0.6, 2.7, B); rect(c, "#ffcf7a", 0.6, 0.3, 5.6, 2.7, B);
+        rect(c, "#ffe7a8", -5.6, 1.6, -0.6, 2.7, B); rect(c, "#ffe7a8", 0.6, 1.6, 5.6, 2.7, B);
+        rect(c, "#6b4a35", -0.5, 0, 0.5, 2.6, B);
+        for (let i = 0; i < 12; i++) rect(c, i % 2 ? "#f4efe6" : "#d9493a", -6 + i, 2.7, -5 + i, 3.3, B);
+        rect(c, "#2a2420", -1.6, 3.5, 1.6, 4.3, B);
+        c.fillStyle = "#ffd36b"; c.font = "700 " + Math.max(4, 0.5 * sc(B)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText("CAFE", X(0, B), Y(3.9, B));
+        for (let i = 0; i < 14; i++) { const x = -7 + i; rect(c, UP_WIN[i] ? "#ffd98f" : "#56677c", x, 4.8, x + 0.7, 6.4, B); }
+      });
+      const Zt = B - Math.min(1.5, gap * 0.2);
+      layer(Zt, c => { rect(c, "#5b4636", -4.45, 0, -4.15, 3.3, Zt); circ(c, "#577f47", -4.3, 4.3, 1.8, Zt); circ(c, "#6f9a5a", -4.9, 4.0, 1.3, Zt); circ(c, "#6f9a5a", -3.7, 4.6, 1.3, Zt); });
+      const Zl = B - Math.min(4, gap * 0.5);
+      layer(Zl, c => { rect(c, "#2a2f33", 3.55, 0, 3.69, 4.2, Zl); circ(c, "#2a2f33", 3.62, 4.4, 0.22, Zl); });
+      const strings = [];
+      for (let i = -6; i <= 6; i += 0.5) strings.push({ x: i, y: 3.95 - 0.35 * (1 - (i / 6) * (i / 6)), col: "#ffd27a", r: 0.07 });
+      lights(strings, B - 0.4);
+      lights([{ x: 3.62, y: 4.4, col: "#fff0c2", r: 0.22 }], Zl);
+    },
+    front: bushFront
+  },
+
+  subway: {
+    name: "지하철 승강장", emoji: "🚇", bgLabel: "열차", bgW: 14,
+    hint: "형광등이 길게 늘어선 승강장이에요. 건너편 열차를 배경으로, 노란 안전선이 앞쪽에 있어요. 실내라 조리개를 열면 천장 불빛이 흐려져요.",
+    draw(e) {
+      const { B, d, gap, rect, X, Y, sc, layer, lights, sky, ground, W } = e;
+      sky([[0, "#4a5558"], [1, "#b9c6c0"]]);
+      const Zy = d + gap * 0.4;
+      ground({ c0: "#8d9a98", c1: "#6f7c7a", grid: "rgba(40,50,50,.22)", extra: (c, Zn, Zf) => {
+        e.gz(c, "#2b3033", Zy + 0.35, B - 0.5, Zn, Zf); e.gz(c, "#f2c230", Zy, Zy + 0.35, Zn, Zf);
+        const a = Math.max(Zn, Zy + 0.35), b = Math.min(Zf, B - 0.5);
+        e.gx(c, "#7b8388", -0.85, -0.7, a, b); e.gx(c, "#7b8388", 0.7, 0.85, a, b);
+      } });
+      const Zw = B + 5;
+      layer(Zw, c => {
+        rect(c, "#e9e1c8", -40, 0, 40, 4.8, Zw); rect(c, "#e0702e", -40, 2.3, 40, 2.7, Zw); rect(c, "#47524f", -40, 4.8, 40, 40, Zw);
+        c.strokeStyle = "#cdc3a3"; c.lineWidth = Math.max(0.6, 0.02 * sc(Zw)); c.beginPath();
+        for (let x = -30; x <= 30; x += 0.6) { const px = X(x, Zw); if (px < -M || px > W + M) continue; c.moveTo(px, Y(0, Zw)); c.lineTo(px, Y(4.8, Zw)); }
+        for (let y = 0; y <= 4.8; y += 0.6) { c.moveTo(-M, Y(y, Zw)); c.lineTo(W + M, Y(y, Zw)); }
+        c.stroke();
+        for (const x of [-6, 4]) { rect(c, "#f3f3f0", x, 3.3, x + 1.8, 4.1, Zw); rect(c, "#2c6fb5", x + 0.1, 3.4, x + 1.7, 4.0, Zw); }
+      });
+      layer(B, c => {
+        rect(c, "#44494c", -14, 0.4, 14, 0.9, B); rect(c, "#e9eef0", -14, 0.9, 14, 3.8, B); rect(c, "#e0702e", -14, 1.2, 14, 1.6, B);
+        for (let x = -13.5; x < 13; x += 3.4) { rect(c, "#3a4a55", x, 2.0, x + 1.2, 3.2, B); rect(c, "#3a4a55", x + 1.5, 2.0, x + 2.7, 3.2, B); rect(c, "#cfd6d9", x + 1.2, 0.9, x + 1.5, 3.8, B); }
+      });
+      const Zp = d + gap * 0.4;
+      layer(Zp, c => {
+        rect(c, "#c9d3cd", -3.0, 0, -2.4, 4.8, Zp); rect(c, "#2c6fb5", -3.0, 2.6, -2.4, 3.5, Zp);
+        c.fillStyle = "#fff"; c.font = "700 " + Math.max(3, 0.22 * sc(Zp)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("달빛역", X(-2.7, Zp), Y(3.05, Zp));
+      });
+      const tubes = [];
+      for (let z = d + 2, i = 0; z < d + gap + 70 && i < 22; i++, z += 4 + i * 1.2) { tubes.push({ x: -1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }, { x: 1.4, y: 4.6, col: "#f4fff0", r: 0.35, z }); }
+      lights(tubes, B);
+    },
+    front() {}
+  },
+
+  park: {
+    name: "공원 산책로", emoji: "🌳", bgLabel: "나무", bgW: 6,
+    hint: "낮의 공원이에요. 나뭇잎 사이로 들어오는 햇빛이 둥근 보케가 돼요. 망원+열린 조리개일수록 크게 번져요.",
+    draw(e) {
+      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      sky([[0, "#8fc3ea"], [1, "#dff0f7"]]);
+      const Zh = B + 150;
+      layer(Zh, c => { circ(c, "#9bbfa8", -40, -20, 52, Zh); circ(c, "#86b295", 45, -22, 55, Zh); });
+      const Zf = B + 30;
+      layer(Zf, c => { for (const t of TREES) { rect(c, "#6b5a46", t.x - 0.2, 0, t.x + 0.2, t.h * 0.6, Zf); circ(c, t.c > 0.5 ? "#6d9c63" : "#5a8b52", t.x, t.h * 0.8, t.r, Zf); } });
+      ground({ c0: "#a8d083", c1: "#6a9b4c", extra: (c, Zn, Zfr) => { e.gx(c, "#dccba0", -1.7, 1.7, Zn, Zfr); e.gx(c, "#c9b88a", -1.7, -1.5, Zn, Zfr); e.gx(c, "#c9b88a", 1.5, 1.7, Zn, Zfr); } });
+      const Zt2 = B - Math.min(5, gap * 0.5);
+      layer(Zt2, c => { rect(c, "#5b4636", 3.5, 0, 4.1, 5.5, Zt2); circ(c, "#4f8a47", 3.8, 7.5, 2.8, Zt2); circ(c, "#62a055", 5.2, 6.4, 2.2, Zt2); });
+      const Zt1 = B - Math.min(2, gap * 0.25);
+      layer(Zt1, c => { rect(c, "#574231", -3.4, 0, -2.8, 6, Zt1); circ(c, "#43803f", -3.1, 8, 3.0, Zt1); circ(c, "#58963f", -4.6, 6.6, 2.2, Zt1); });
+      lights(DAPPLE, B);
+    },
+    front(e) {
+      if (e.d < 1.4) return; const Z = e.d * 0.5, { layer, X, Y } = e;
+      layer(Z, c => { c.fillStyle = "#4e8a3a"; for (let i = 0; i < 16; i++) { const x = -1.0 + i * 0.1, h = 0.45 + (i * 37 % 7) * 0.06, bx = X(x, Z), by = Y(0, Z), s = e.sc(Z); c.beginPath(); c.moveTo(bx - 0.05 * s, by); c.lineTo(bx + 0.03 * s * (i % 2 ? 1 : -1), by - h * s); c.lineTo(bx + 0.05 * s, by); c.fill(); } e.circ(c, "#5aa046", -0.55, 0.15, 0.3, Z); });
+    }
+  },
+
+  beach: {
+    name: "해변", emoji: "🏖️", bgLabel: "바다", bgW: 12,
+    hint: "해변이에요. 멀리 수평선과 바다, 햇빛이 물결에 반짝여서 작은 보케가 돼요. 인물과 바다 사이를 멀리 해 보세요.",
+    draw(e) {
+      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      sky([[0, "#7fb8e6"], [0.65, "#bfe0f2"], [1, "#fbe5c8"]]);
+      const Zc = 700;
+      layer(Zc, c => { for (const [x, y, r] of [[-60, 140, 22], [-40, 135, 28], [-20, 142, 20], [70, 190, 24], [95, 185, 30], [120, 192, 22]]) { c.globalAlpha = 0.85; circ(c, "#ffffff", x, y, r, Zc); } c.globalAlpha = 1; });
+      layer(900, c => { circ(c, "rgba(255,244,200,.35)", 22, 55, 40, 900); circ(c, "#fff5cf", 22, 55, 22, 900); });
+      const Zsh = B;
+      ground({ c0: "#ecd9b0", c1: "#cfb98a", extra: (c, Zn, Zf) => {
+        e.gz(c, "#3f9fc4", Zsh + 0.6, 1e9, Zn, Zf); e.gz(c, "#f4fbff", Zsh, Zsh + 0.6, Zn, Zf); e.gz(c, "#b9a27a", Zsh - 1.4, Zsh, Zn, Zf);
+      } });
+      const Zu1 = B - Math.min(3, gap * 0.4);
+      layer(Zu1, c => { for (const [x, col] of [[-3.2, "#e84a4a"], [4.2, "#f2c14e"]]) { rect(c, "#8a6f4a", x - 0.04, 0, x + 0.04, 2.3, Zu1); c.fillStyle = col; c.beginPath(); c.ellipse(X(x, Zu1), Y(2.3, Zu1), 1.2 * sc(Zu1), 0.55 * sc(Zu1), 0, Math.PI, 0); c.fill(); } });
+      const Zu2 = B - Math.min(6, gap * 0.6);
+      layer(Zu2, c => { rect(c, "#8a6f4a", 7.0 - 0.04, 0, 7.04, 2.3, Zu2); c.fillStyle = "#4aa3e8"; c.beginPath(); c.ellipse(X(7, Zu2), Y(2.3, Zu2), 1.2 * sc(Zu2), 0.55 * sc(Zu2), 0, Math.PI, 0); c.fill(); });
+      lights(GLITTER.map(g => { const z = B + 3 + g.k * g.k * 90; return { x: g.u * z * 0.45, y: 0, col: "#fff6d8", r: g.r, z }; }), B);
+    },
+    front() {}
+  },
+
+  night: {
+    name: "야경 거리", emoji: "🌃", bgLabel: "상점", bgW: 12,
+    hint: "밤거리예요. 가로등, 창문, 자동차 불빛이 전부 보케 볼이 돼요. 조리개를 열고 망원으로 가면 가장 크게 번져요.",
+    draw(e) {
+      const { B, d, gap, rect, circ, X, Y, sc, layer, lights, sky, ground } = e;
+      sky([[0, "#070a18"], [0.6, "#1c2247"], [1, "#5a3d62"]]);
+      const Zs = B + 90;
+      layer(Zs, c => { for (const b of BUILDINGS) rect(c, "#141a30", b.x, -2, b.x + b.w, b.h, Zs); });
+      lights(NIGHT_LIGHTS, Zs);
+      ground({ c0: "#3a3f4d", c1: "#1d2029", extra: (c, Zn, Zf) => {
+        e.gx(c, "#59606e", -60, 1.2, Zn, Zf); e.gx(c, "#6c7384", 1.15, 1.3, Zn, Zf);
+        for (let z = Math.ceil(Zn / 6) * 6; z < Zf; z += 6) e.gx(c, "#d9d9d0", 3.6, 3.75, z, Math.min(z + 3, Zf));
+      } });
+      layer(B, c => {
+        rect(c, "#232a45", -12, 0, 12, 10, B);
+        for (let i = 0; i < 8; i++) for (let j = 0; j < 3; j++) rect(c, NIGHT_WIN[i * 3 + j] ? "#ffd98f" : "#2e3656", -10.5 + i * 2.6, 4 + j * 1.9, -9.4 + i * 2.6, 5.2 + j * 1.9, B);
+        rect(c, "#161a2c", -6, 0, 6, 3.2, B); rect(c, "#ffb866", -5.4, 0.3, -0.6, 2.8, B); rect(c, "#ffb866", 0.6, 0.3, 5.4, 2.8, B); rect(c, "#ffd9a0", -0.5, 0, 0.5, 2.6, B);
+        rect(c, "#ff4f9a", -2.2, 3.6, 2.2, 4.4, B);
+        c.fillStyle = "#fff"; c.font = "800 " + Math.max(4, 0.55 * sc(B)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("OPEN", X(0, B), Y(4.0, B));
+      });
+      const L = [];
+      for (let i = 0, z = d + gap * 0.25; i < 7; i++, z += 13) { L.push({ x: -1.3, y: 5.2, col: "#ffe2a0", r: 0.28, z }, { x: 1.9, y: 5.0, col: "#ffe2a0", r: 0.28, z: z + 6 }); }
+      lights(L, B);
+      lights([{ x: -2, y: 4.0, col: "#ff7ab8", r: 0.3 }, { x: 2, y: 4.0, col: "#ff7ab8", r: 0.3 }, { x: -3, y: 1.5, col: "#ffcf8a", r: 0.4 }, { x: 3, y: 1.5, col: "#ffcf8a", r: 0.4 }], B - 0.3);
+      lights(CARS.map(c => ({ x: c.side > 0 ? 4.4 : 2.9, y: 0.75, col: c.col, r: 0.13, z: d + gap * 0.3 + c.k })).flatMap(l => [l, { ...l, x: l.x + 0.9 }]), B);
+    },
+    front() {}
+  }
+};
+const SCENE_IDS = Object.keys(SCENES);
 
 /* ---------- 렌더 ---------- */
 function render(s) {
   const { f, d, gap, N } = s;
+  const scene = SCENES[s.scene] || SCENES.cafe;
   const B = d + gap, fk = f * K, cx = W / 2;
   // 인물 몸통 중앙(0.95m)이 프레임 중앙에 오도록 센서를 위로 시프트 (수직선이 평행하게 유지됨)
   const cy = H / 2 - fk * (CAMH - 0.95) / d;
@@ -193,6 +357,7 @@ function render(s) {
   // 착란원(보케) 지름 px: c = f²/(N(S1-f)) × |S2-S1|/S2  (얇은 렌즈 공식)
   const coc = Z => { const S1 = d * 1000, S2 = Z * 1000; return f * f / (N * (S1 - f)) * Math.abs(S2 - S1) / S2 * K; };
   const sig = Z => Math.min(30, coc(Z) * 0.3);
+  const Zfar = 600;
 
   const rect = (c, col, x0, y0, x1, y1, Z) => { c.fillStyle = col; c.fillRect(X(x0, Z), Y(y1, Z), X(x1, Z) - X(x0, Z), Y(y0, Z) - Y(y1, Z)); };
   const circ = (c, col, x, y, r, Z) => { c.fillStyle = col; c.beginPath(); c.arc(X(x, Z), Y(y, Z), Math.max(0.4, r * sc(Z)), 0, 7); c.fill(); };
@@ -208,14 +373,15 @@ function render(s) {
     ctx.drawImage(off, 0, y0, off.width, y1 - y0 + 2 * M, -M, y0 - M, off.width, y1 - y0 + 2 * M);
     ctx.restore();
   }
-  // 빛 점은 깊이에 맞는 크기의 원판(보케 볼)으로 직접 그림
+  const hex = a => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
+  // 빛 점은 깊이에 맞는 크기의 원판(보케 볼)으로 직접 그림 (점마다 z를 따로 줄 수 있음)
   function lights(list, Z) {
-    const cd = coc(Z) / 2;
     ctx.save(); ctx.globalCompositeOperation = "screen";
     for (const l of list) {
-      const r0 = Math.max(0.5, l.r * sc(Z));
+      const z = l.z || Z, cd = coc(z) / 2;
+      const r0 = Math.max(0.5, l.r * sc(z));
       const r = Math.sqrt(r0 * r0 + cd * cd);
-      const px = X(l.x, Z), py = Y(l.y, Z);
+      const px = X(l.x, z), py = Y(l.y, z);
       if (px < -r || px > W + r || py < -r || py > H + r) continue;
       const a = Math.min(0.95, 0.9 * (r0 * r0 + 1.2) / (r * r));
       const g = ctx.createRadialGradient(px, py, 0, px, py, r);
@@ -224,86 +390,55 @@ function render(s) {
     }
     ctx.restore();
   }
-  const hex = a => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0");
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-
-  // 하늘 (황혼)
-  const sky = ctx.createLinearGradient(0, 0, 0, Math.max(10, cy));
-  sky.addColorStop(0, "#4d6fa6"); sky.addColorStop(0.7, "#c8a2a0"); sky.addColorStop(1, "#f6c98d");
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-
-  // 먼 스카이라인
-  const Zs = B + 80;
-  layer(Zs, c => { for (const b of BUILDINGS) rect(c, b.c > 0.5 ? "#7b8ca5" : "#6f7f98", b.x, -2, b.x + b.w, b.h, Zs); });
-  lights(FAR_LIGHTS.map(l => ({ ...l, x: l.x, y: l.y })), Zs);
-
-  // 바닥 기본색
-  const gh = Math.max(0, Math.min(H, cy));
-  const gg = ctx.createLinearGradient(0, gh, 0, H);
-  gg.addColorStop(0, "#c9b8a4"); gg.addColorStop(1, "#8f8173");
-  ctx.fillStyle = gg; ctx.fillRect(0, gh, W, H - gh);
-
-  // 바닥 타일 선: 깊이 구간으로 나눠 구간마다 그 깊이의 흐림을 적용
-  const Znear = Math.max(0.3, fk * CAMH / Math.max(1, H - cy)) * 0.9, Zfar = 600, NB = 14;
-  const rr = Math.pow(Zfar / Znear, 1 / NB);
-  for (let i = NB - 1; i >= 0; i--) {
-    const Zn = Znear * Math.pow(rr, i), Zf = Zn * rr, Zm = Math.sqrt(Zn * Zf);
-    const yTop = Math.max(0, Y(0, Zf) - 1), yBot = Math.min(H, Y(0, Zn) + 1);
-    if (yBot <= yTop) continue;
-    layer(Zm, c => {
-      c.strokeStyle = "rgba(95,78,66,.55)";
-      c.lineWidth = Math.max(0.7, 0.05 * sc(Zm));
-      c.beginPath();
-      for (let x = -60; x <= 60; x++) {
-        const a = X(x, Zn), b = X(x, Zf);
-        if ((a < -M && b < -M) || (a > W + M && b > W + M)) continue;
-        c.moveTo(a, Y(0, Zn)); c.lineTo(b, Y(0, Zf));
-      }
-      let step = 1;
-      while (fk * CAMH / (Zn * Zn) * step < 3 && step < 512) step *= 2;
-      for (let z = Math.ceil(Zn / step) * step; z < Zf; z += step) { const y = Y(0, z); c.moveTo(-M, y); c.lineTo(W + M, y); }
-      c.stroke();
-    }, yTop, yBot);
+  function sky(stops) {
+    const g = ctx.createLinearGradient(0, 0, 0, Math.max(10, cy));
+    for (const [p, col] of stops) g.addColorStop(p, col);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  // 바닥에서 깊이 za~zb 구간 전체(가로 띠), x축 구간(세로 띠)을 칠하는 도우미
+  const gz = (c, col, za, zb, Zn, Zf) => {
+    const a = Math.max(za, Zn), b = Math.min(zb, Zf); if (a >= b) return;
+    const yb = zb >= Zfar * 0.999 && Zf >= Zfar * 0.999 ? cy - 1 : Y(0, b);
+    c.fillStyle = col; c.fillRect(-M, yb, W + 2 * M, Y(0, a) - yb + 1);
+  };
+  const gx = (c, col, xa, xb, Zn, Zf) => {
+    if (Zn >= Zf) return;
+    c.fillStyle = col; c.beginPath();
+    c.moveTo(X(xa, Zn), Y(0, Zn)); c.lineTo(X(xb, Zn), Y(0, Zn)); c.lineTo(X(xb, Zf), Y(0, Zf)); c.lineTo(X(xa, Zf), Y(0, Zf)); c.fill();
+  };
+  // 바닥: 기본색 + 깊이 구간별로 나눈 무늬(타일 선 등)에 그 깊이의 흐림 적용
+  function ground(o) {
+    const gh = Math.max(0, Math.min(H, cy));
+    const gg = ctx.createLinearGradient(0, gh, 0, H); gg.addColorStop(0, o.c0); gg.addColorStop(1, o.c1);
+    ctx.fillStyle = gg; ctx.fillRect(0, gh, W, H - gh);
+    if (!o.grid && !o.extra) return;
+    const Znear = Math.max(0.3, fk * CAMH / Math.max(1, H - cy)) * 0.9, NB = 14;
+    const rr = Math.pow(Zfar / Znear, 1 / NB);
+    for (let i = NB - 1; i >= 0; i--) {
+      const Zn = Znear * Math.pow(rr, i), Zf = Zn * rr, Zm = Math.sqrt(Zn * Zf);
+      let yTop = Math.max(0, Y(0, Zf) - 1); const yBot = Math.min(H, Y(0, Zn) + 1);
+      if (i === NB - 1) yTop = Math.max(0, Math.min(yTop, cy - 1));
+      if (yBot <= yTop) continue;
+      layer(Zm, c => {
+        if (o.extra) o.extra(c, Zn, Zf, Zm);
+        if (!o.grid) return;
+        c.strokeStyle = o.grid; c.lineWidth = Math.max(0.7, 0.05 * sc(Zm)); c.beginPath();
+        for (let x = -60; x <= 60; x++) {
+          const a = X(x, Zn), b = X(x, Zf);
+          if ((a < -M && b < -M) || (a > W + M && b > W + M)) continue;
+          c.moveTo(a, Y(0, Zn)); c.lineTo(b, Y(0, Zf));
+        }
+        let step = 1;
+        while (fk * CAMH / (Zn * Zn) * step < 3 && step < 512) step *= 2;
+        for (let z = Math.ceil(Zn / step) * step; z < Zf; z += step) { const y = Y(0, z); c.moveTo(-M, y); c.lineTo(W + M, y); }
+        c.stroke();
+      }, yTop, yBot);
+    }
   }
 
-  // 옆 건물
-  const Zside = B + 6;
-  layer(Zside, c => {
-    rect(c, "#b9a89a", -26, 0, -8, 5.5, Zside); rect(c, "#a8b5c0", 8, 0, 28, 9.5, Zside);
-    for (let y = 1.2; y < 9; y += 2.4) for (let x = 9.5; x < 27; x += 2.6) rect(c, "#8a99a8", x, y, x + 1.2, y + 1.3, Zside);
-    for (let x = -24.5; x < -9; x += 2.6) rect(c, "#8f7f73", x, 1.5, x + 1.2, 2.8, Zside);
-  });
-
-  // 배경 가게 건물 (Z = B)
-  layer(B, c => {
-    rect(c, "#dcc6a6", -8, 0, 8, 7.4, B);
-    rect(c, "#b79f82", -8.2, 7.2, 8.2, 7.7, B);
-    rect(c, "#3a2e2a", -6, 0, 6, 3.2, B);
-    rect(c, "#ffcf7a", -5.6, 0.3, -0.6, 2.7, B); rect(c, "#ffcf7a", 0.6, 0.3, 5.6, 2.7, B);
-    rect(c, "#ffe7a8", -5.6, 1.6, -0.6, 2.7, B); rect(c, "#ffe7a8", 0.6, 1.6, 5.6, 2.7, B);
-    rect(c, "#6b4a35", -0.5, 0, 0.5, 2.6, B);
-    for (let i = 0; i < 12; i++) rect(c, i % 2 ? "#f4efe6" : "#d9493a", -6 + i, 2.7, -5 + i, 3.3, B);
-    rect(c, "#2a2420", -1.6, 3.5, 1.6, 4.3, B);
-    c.fillStyle = "#ffd36b"; c.font = "700 " + Math.max(4, 0.5 * sc(B)) + "px system-ui"; c.textAlign = "center"; c.textBaseline = "middle";
-    c.fillText("CAFE", X(0, B), Y(3.9, B));
-    for (let i = 0; i < 14; i++) { const x = -7 + i * 1.0; rect(c, UP_WIN[i] ? "#ffd98f" : "#56677c", x, 4.8, x + 0.7, 6.4, B); }
-  });
-
-  // 나무, 가로등
-  const Zt = B - Math.min(1.5, gap * 0.2);
-  layer(Zt, c => {
-    rect(c, "#5b4636", -4.45, 0, -4.15, 3.3, Zt);
-    circ(c, "#577f47", -4.3, 4.3, 1.8, Zt); circ(c, "#6f9a5a", -4.9, 4.0, 1.3, Zt); circ(c, "#6f9a5a", -3.7, 4.6, 1.3, Zt);
-  });
-  const Zl = B - Math.min(4, gap * 0.5);
-  layer(Zl, c => { rect(c, "#2a2f33", 3.55, 0, 3.69, 4.2, Zl); circ(c, "#2a2f33", 3.62, 4.4, 0.22, Zl); });
-
-  // 배경의 빛: 가게 앞 전구줄, 가로등
-  const strings = [];
-  for (let i = -6; i <= 6; i += 0.5) strings.push({ x: i, y: 3.95 - 0.35 * (1 - (i / 6) * (i / 6)), col: "#ffd27a", r: 0.07 });
-  lights(strings, B - 0.4);
-  lights([{ x: 3.62, y: 4.4, col: "#fff0c2", r: 0.22 }], Zl);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
+  const e = { B, d, gap, W, H, cy, rect, circ, X, Y, sc, layer, lights, sky, ground, gz, gx };
+  scene.draw(e);
 
   // 인물 (초점이 맞는 곳 — 흐림 없음)
   {
@@ -317,12 +452,8 @@ function render(s) {
     circ(o, "#f0c9a4", 0, 1.6, 0.105, Z);
     o.fillStyle = "#3b2a22"; o.beginPath(); o.arc(X(0, Z), Y(1.61, Z), 0.115 * sc(Z), Math.PI, 0); o.fill();
   }
-
-  // 앞쪽 수풀 (인물보다 가까워서 흐려짐)
-  if (d >= 1.4) {
-    const Z = d * 0.5;
-    layer(Z, c => { for (const [x, y, r, col] of [[-0.62, 0.35, 0.38, "#4e7f45"], [-0.4, 0.5, 0.34, "#5f9552"], [-0.8, 0.55, 0.3, "#427239"], [-0.55, 0.78, 0.26, "#6aa35b"]]) circ(c, col, x, y, r, Z); });
-  }
+  // 앞쪽 소품 (인물보다 가까워서 흐려짐)
+  if (scene.front) scene.front(e);
 }
 
 /* ---------- 위에서 본 지도 ---------- */
@@ -343,9 +474,9 @@ function drawMap(s) {
   c.beginPath(); c.moveTo(x0, y0); c.lineTo(xa, ya); c.lineTo(xb, yb); c.closePath(); c.fill();
   c.beginPath(); c.moveTo(xa, ya); c.lineTo(x0, y0); c.lineTo(xb, yb); c.stroke();
   // 배경 건물
-  const [bx0, by] = P(-8, B), [bx1] = P(8, B);
+  const sc0 = SCENES[s.scene] || SCENES.cafe, [bx0, by] = P(-sc0.bgW, B), [bx1] = P(sc0.bgW, B);
   c.strokeStyle = "#dcc6a6"; c.lineWidth = 5 * dpr; c.beginPath(); c.moveTo(Math.max(0, bx0), by); c.lineTo(Math.min(w, bx1), by); c.stroke();
-  c.fillStyle = "#dcc6a6"; c.textAlign = "left"; c.fillText("배경", 6 * dpr, by - 10 * dpr);
+  c.fillStyle = "#dcc6a6"; c.textAlign = "left"; c.fillText("배경: " + sc0.bgLabel, 6 * dpr, by - 10 * dpr);
   // 인물
   const [px, py] = P(0, s.d);
   c.fillStyle = "#e0703a"; c.beginPath(); c.arc(px, py, 6 * dpr, 0, 7); c.fill();
@@ -406,6 +537,8 @@ function syncUI() {
   $("#sD").value = logPos(S.d, RANGES.d); $("#sG").value = logPos(S.gap, RANGES.g); $("#sF").value = logPos(S.f, RANGES.f);
   $("#sD").disabled = S.lock; $("#vD").parentElement.classList.toggle("auto", S.lock);
   $("#lock").checked = S.lock;
+  document.querySelectorAll("#sceneChips button").forEach(b => b.classList.toggle("on", b.dataset.v === S.scene));
+  $("#sceneHint").textContent = SCENES[S.scene].hint;
   document.querySelectorAll("#fChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === Math.round(S.f)));
   document.querySelectorAll("#nChips button").forEach(b => b.classList.toggle("on", +b.dataset.v === S.N));
 }
@@ -416,6 +549,7 @@ $("#sD").oninput = e => { if (!S.lock) { S.d = logVal(+e.target.value, RANGES.d)
 $("#sG").oninput = e => { S.gap = logVal(+e.target.value, RANGES.g); refresh(); };
 $("#sF").oninput = e => setF(logVal(+e.target.value, RANGES.f));
 $("#lock").onchange = e => { S.lock = e.target.checked; if (S.lock) setF(S.f); else refresh(); };
+SCENE_IDS.forEach(id => { const b = document.createElement("button"); b.textContent = SCENES[id].emoji + " " + SCENES[id].name; b.dataset.v = id; b.onclick = () => { S.scene = id; refresh(); }; $("#sceneChips").appendChild(b); });
 LENSES.forEach(v => { const b = document.createElement("button"); b.textContent = v; b.dataset.v = v; b.onclick = () => setF(v); $("#fChips").appendChild(b); });
 APERTURES.forEach(v => { const b = document.createElement("button"); b.textContent = "f/" + v; b.dataset.v = v; b.onclick = () => { S.N = v; refresh(); }; $("#nChips").appendChild(b); });
 
@@ -428,7 +562,7 @@ function newQuiz() {
   const frac = fmin + Math.random() * (0.85 - fmin);
   const d = f * SUBJ / (frac * SENS_H);
   const gap = Math.exp(Math.log(2) + Math.random() * (Math.log(40) - Math.log(2)));
-  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false }, revealed: false, answer: f };
+  quiz = { s: { f, d, gap, N: pick([1.8, 2.8, 4, 8]), lock: false, scene: pick(SCENE_IDS) }, revealed: false, answer: f };
   $("#qResult").classList.add("hide"); $("#qNext").classList.add("hide"); $("#qOpen").classList.add("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = false);
   refresh();
@@ -445,7 +579,7 @@ function answer(v) {
   else { cls = "bad"; msg = `정답은 ${quiz.answer}mm (고른 값: ${v}mm)`; }
   store.set(t);
   const s = quiz.s, ratio = s.d / (s.d + s.gap);
-  msg += `<br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${(ratio * 100).toFixed(0)}% 크기로 보여요.</span>`;
+  msg += `<br><span class="muted" style="color:inherit;opacity:.85">${SCENES[s.scene].emoji} ${SCENES[s.scene].name}</span><br><span class="muted" style="color:inherit;opacity:.85">카메라 ${fmtM(s.d)} · 배경까지 +${fmtM(s.gap)} · f/${s.N}. 배경은 인물 대비 ${(ratio * 100).toFixed(0)}% 크기로 보여요.</span>`;
   const r = $("#qResult"); r.className = "result " + cls; r.innerHTML = msg;
   $("#qNext").classList.remove("hide"); $("#qOpen").classList.remove("hide");
   document.querySelectorAll("#qChips button").forEach(b => b.disabled = true);
