@@ -20,13 +20,13 @@
   .tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
   .tabs button { background:var(--card); padding:11px; }
   .tabs button.on { background:var(--accent); color:#fff; }
-  .frame { position:relative; width:100%; display:flex; justify-content:center; }
+  .frame { position:sticky; top:0; z-index:5; width:100%; display:flex; justify-content:center; background:var(--bg); padding:6px 0; }
   #view { border-radius:12px; display:block; background:#000; }
   .hud { position:absolute; left:50%; transform:translateX(-50%); pointer-events:none; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); }
-  .frame::before { content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:min(100%,400px); height:90px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:1; }
+  .frame::before { content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:var(--cw,100%); height:90px; top:6px; border-radius:12px 12px 0 0; background:linear-gradient(rgba(10,14,16,.7),rgba(10,14,16,0)); pointer-events:none; z-index:1; }
   .hud { z-index:2; }
-  .hud-top { top:8px; width:calc(100% - 20px); max-width:380px; display:flex; justify-content:space-between; align-items:flex-start; }
-  .big { font-size:38px; font-weight:800; line-height:1; }
+  .hud-top { top:14px; width:calc(var(--cw,100%) - 20px); display:flex; justify-content:space-between; align-items:flex-start; }
+  .big { font-size:30px; font-weight:800; line-height:1; }
   .big small { font-size:16px; font-weight:700; margin-left:2px; }
   .sub { font-size:13px; opacity:.9; text-align:right; line-height:1.5; }
   .card { background:var(--card); border-radius:14px; padding:12px; margin-top:10px; }
@@ -155,10 +155,11 @@ const off = document.createElement("canvas"), octx = off.getContext("2d");
 const M = 48;                         // 흐림 번짐용 여백
 let W, H, K;
 function size() {
-  const css = Math.min(cv.parentElement.clientWidth, 400);
+  // 미리보기는 위에 고정되므로 화면 높이의 약 42%까지만 쓴다 (슬라이더와 같이 보이게)
+  const css = Math.max(150, Math.min(cv.parentElement.clientWidth, 400, window.innerHeight * 0.42 / 1.5));
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   W = Math.round(css * dpr); H = Math.round(W * 1.5); K = W / SENS_W;
-  cv.width = W; cv.height = H; cv.style.width = css + "px"; cv.style.height = css * 1.5 + "px";
+  cv.width = W; cv.height = H; cv.style.width = css + "px"; cv.parentElement.style.setProperty("--cw", css + "px"); cv.style.height = css * 1.5 + "px";
   off.width = W + 2 * M; off.height = H + 2 * M;
 }
 
