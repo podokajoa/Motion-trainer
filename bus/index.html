@@ -220,7 +220,7 @@ async function search() {
   $("addErr").textContent = ""; $("res").innerHTML = "<div class='hint'>찾는 중…</div>"; $("pick").hidden = true; $("addSave").disabled = true;
   try {
     const j = await api("/search", { city, q });
-    if (!j.stops.length) { $("res").innerHTML = ""; $("addErr").textContent = "찾은 정류장이 없어요. 이름을 줄여서 다시 찾아보세요 (예: 양재역)."; return; }
+    if (!j.stops.length) { $("res").innerHTML = ""; $("addErr").textContent = "찾은 정류장이 없어요. 이름을 줄여서 다시 찾아보세요 (예: 양재역)." + (j.info ? "\n[서버 응답] " + j.info : "");$("addErr").style.whiteSpace = "pre-wrap";$("addErr").style.wordBreak = "break-all"; return; }
     $("res").innerHTML = j.stops.slice(0, 20).map((s, i) => `<button type="button" data-i="${i}">${esc(s.name)}<small>${esc(s.dir)}</small></button>`).join("");
     $("res").onclick = e => { const b = e.target.closest("button"); if (b) choose(j.stops[+b.dataset.i]); };
   } catch (e) { $("res").innerHTML = ""; $("addErr").textContent = e.message; }
