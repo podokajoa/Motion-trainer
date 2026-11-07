@@ -1,0 +1,17 @@
+{
+  "name": "한 발짝 뒤",
+  "short_name": "한 발짝 뒤",
+  "description": "화난 일 하나를 거기 있던 사람들 의자에 한 번씩 앉아 다시 보고, 내 선을 정리하는 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16181d",
+  "theme_color": "#16181d",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

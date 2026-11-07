@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>한 발짝 뒤</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16181d">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#16181d; --fg:#f1ede6; --muted:#a49d94; --card:#20232a; --line:#353943; --accent:#e9c46a; --me:#f4845f; --warn:#ef6f6c; --good:#7ccf9a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 56px; }
+  h1 { font-size:24px; margin:0; }
+  h2 { font-size:19px; margin:0 0 6px; line-height:1.4; }
+  p { line-height:1.6; }
+  .sub { color:var(--muted); font-size:14px; margin:4px 0 16px; line-height:1.55; }
+  .muted { color:var(--muted); }
+  button, input, textarea { font:inherit; color:var(--fg); }
+  button { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; font-size:16px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#16181d; border:none; font-weight:800; font-size:17px; padding:15px 18px; }
+  button.ghost { background:none; border:none; color:var(--muted); padding:8px; }
+  button.wide { width:100%; }
+  button:disabled { opacity:.35; }
+  input[type=text], textarea { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:16px; line-height:1.5; }
+  textarea { resize:vertical; min-height:76px; }
+  input:focus, textarea:focus { outline:2px solid var(--accent); border-color:transparent; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+  .stack > * + * { margin-top:10px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { flex:1; }
+  .top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .top h1 { flex:1; font-size:18px; color:var(--muted); font-weight:600; }
+  .back { font-size:22px; padding:6px 12px; }
+  .view { display:none; } .view.on { display:block; }
+  .q { font-weight:800; font-size:16px; margin:22px 0 4px; line-height:1.45; }
+  .hint { font-size:13px; color:var(--muted); margin:0 0 8px; line-height:1.5; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { padding:9px 13px; font-size:15px; border-radius:99px; }
+  .chips button.on { background:var(--accent); color:#16181d; border-color:var(--accent); font-weight:800; }
+  .nav { display:grid; grid-template-columns:1fr 2fr; gap:10px; margin-top:26px; }
+  .warn { color:var(--warn); font-size:14px; min-height:1.4em; margin-top:8px; }
+
+  /* 탁자 */
+  .table { display:block; margin:4px auto 10px; width:220px; height:220px; }
+  .table text { font-size:13px; font-weight:700; fill:var(--fg); }
+  .seatlabel { text-align:center; font-size:14px; color:var(--muted); margin:-4px 0 14px; }
+  .seatlabel b { color:var(--fg); }
+
+  /* 온도 */
+  .temp { display:flex; align-items:center; gap:12px; }
+  .temp input { flex:1; accent-color:var(--me); height:28px; }
+  .temp b { font-size:28px; min-width:2.2ch; text-align:right; color:var(--me); }
+  .templabel { font-size:13px; color:var(--muted); margin-top:2px; }
+
+  /* 홈 */
+  .item { display:block; width:100%; text-align:left; margin-top:8px; }
+  .item .t { font-weight:700; font-size:16px; line-height:1.4; }
+  .item .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .item.draft { border-style:dashed; }
+  .empty { text-align:center; padding:22px 10px; color:var(--muted); line-height:1.6; font-size:14px; }
+  .how { font-size:14px; line-height:1.7; color:var(--muted); }
+  .how b { color:var(--fg); }
+  .sec { margin:24px 0 6px; font-size:15px; font-weight:800; }
+
+  /* 사람 */
+  .person { display:flex; align-items:center; gap:10px; margin-top:8px; }
+  .dot { width:14px; height:14px; border-radius:50%; flex:none; }
+  .person .n { flex:1; font-weight:700; }
+  .person .r { color:var(--muted); font-size:13px; font-weight:400; margin-left:4px; }
+  .safe { border-color:var(--warn); }
+  .safe label { display:flex; gap:10px; align-items:flex-start; line-height:1.5; font-size:15px; }
+  .safe input { width:20px; height:20px; margin-top:2px; accent-color:var(--warn); flex:none; }
+  .safenote { display:none; margin-top:10px; font-size:14px; line-height:1.6; color:var(--fg); }
+  .safenote a { color:var(--accent); }
+
+  /* 거울 */
+  .mirror { border-left:4px solid var(--me); font-size:15px; line-height:1.65; }
+  .mirror q { font-weight:700; quotes:"“" "”"; }
+
+  /* 내려다보기 */
+  .grid { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; line-height:1.45; }
+  .gridwrap { overflow-x:auto; margin:0 -4px; padding:0 4px; }
+  .grid th, .grid td { text-align:left; vertical-align:top; padding:8px; border-bottom:1px solid var(--line); }
+  .grid th { color:var(--muted); font-weight:600; white-space:nowrap; }
+  .grid td.who { font-weight:800; white-space:nowrap; }
+  .grid .none { color:var(--muted); font-style:italic; }
+  .sure { font-size:11px; color:var(--muted); display:block; margin-top:2px; }
+  .clash { margin-top:8px; font-size:14px; line-height:1.6; }
+  .clash b { color:var(--accent); }
+  .ref { font-size:14px; color:var(--muted); line-height:1.6; white-space:pre-wrap; max-height:9em; overflow:auto; }
+
+  /* 결과 */
+  .res h3 { font-size:14px; color:var(--muted); margin:18px 0 6px; font-weight:700; }
+  .res .box { white-space:pre-wrap; line-height:1.6; font-size:15px; }
+  .res .line { border-left:4px solid var(--warn); }
+  .res .und { border-left:4px solid var(--good); }
+  .temps { display:flex; gap:6px; align-items:flex-end; height:80px; margin-top:6px; }
+  .temps div { flex:1; background:var(--me); border-radius:6px 6px 0 0; position:relative; min-height:4px; }
+  .temps span { position:absolute; top:-18px; left:0; right:0; text-align:center; font-size:12px; font-weight:700; }
+  .temps + .tlabels { display:flex; gap:6px; font-size:11px; color:var(--muted); margin-top:4px; }
+  .tlabels div { flex:1; text-align:center; }
+  .danger { color:var(--warn); }
+</style>
+</head>
+<body>
+<main>
+
+<!-- 홈 -->
+<section class="view on" id="v-home">
+  <h1>한 발짝 뒤</h1>
+  <p class="sub">화난 일 하나를, 거기 있던 사람들 의자에 한 번씩 앉아서 다시 봐. 편 들어주는 앱도, 참으라고 하는 앱도 아니야. 위에서 내려다보면 뭐가 보이는지 보려는 거야.</p>
+  <button class="primary wide" id="btn-new">＋ 새 상황 돌아보기</button>
+  <div id="home-list"></div>
+  <div class="sec">이렇게 흘러가</div>
+  <div class="how">
+    <b>1. 내 의자</b> 먼저 내 쪽 얘기를 다 해. 여기선 공정할 필요 없어.<br>
+    <b>2. 다른 의자</b> 한 사람씩 자리를 옮겨서, 그 사람 눈에 뭐가 보였을지 추측해. 앉기 싫은 의자는 건너뛰어도 돼.<br>
+    <b>3. 천장</b> 위에서 다 같이 놓고 봐. 실제로 있었던 일이랑 각자 붙인 해석을 나눠.<br>
+    <b>4. 내 선</b> 이해되는 것과, 그래도 안 괜찮은 것을 따로 적어. 이해한다고 다 괜찮아지는 건 아니니까.
+  </div>
+  <div class="row" style="margin-top:24px">
+    <button id="btn-backup">💾 백업</button>
+    <button id="btn-restore">📂 불러오기</button>
+  </div>
+  <input type="file" id="restore-file" accept="application/json" hidden>
+  <p class="hint" style="margin-top:10px">적은 건 이 폰(브라우저)에만 저장돼. 어디로도 안 보내.</p>
+</section>
+
+<!-- 1. 상황 -->
+<section class="view" id="v-setup">
+  <div class="top"><button class="ghost back" data-go="home">‹</button><h1>상황 적기</h1></div>
+  <h2>무슨 일이었는지 한 줄로</h2>
+  <p class="hint">나중에 목록에서 알아볼 정도면 돼.</p>
+  <input type="text" id="s-title" maxlength="60" placeholder="예) 단톡방에서 내 말만 읽씹당함">
+  <div class="q">그 자리에 누가 있었어?</div>
+  <p class="hint">나는 이미 있어. 직접 말한 사람, 옆에서 본 사람, 그 자리에 없었지만 얽힌 사람도 넣어도 돼. 이름 대신 별명도 괜찮아.</p>
+  <div class="row">
+    <input type="text" id="s-name" maxlength="12" placeholder="이름이나 별명" style="flex:2">
+    <input type="text" id="s-rel" maxlength="12" placeholder="나와의 관계 (선택)" style="flex:2">
+    <button id="s-add" style="flex:1">추가</button>
+  </div>
+  <div id="s-people"></div>
+  <div class="card safe" style="margin-top:22px">
+    <label><input type="checkbox" id="s-safe"> 맞거나 위협받은 일이야, 아니면 같은 사람한테 계속 반복해서 당하는 일이야.</label>
+    <div class="safenote" id="s-safenote">그런 일이면 상대 마음을 헤아리는 건 네 몫이 아니야. 이번엔 다른 사람 의자는 빼고, 내 의자와 내 선 정리만 할게.<br>지금 위험하면 <a href="tel:112">112</a>에 바로 전화해.</div>
+  </div>
+  <div class="warn" id="s-warn"></div>
+  <div class="nav"><button data-go="home">취소</button><button class="primary" id="s-next">내 의자에 앉기</button></div>
+</section>
+
+<!-- 2. 내 의자 -->
+<section class="view" id="v-me">
+  <div class="top"><button class="ghost back" id="me-back">‹</button><h1>1 · 내 의자</h1></div>
+  <div id="me-table"></div>
+  <div class="seatlabel">지금은 <b>내 자리</b>야. 여기선 공정하지 않아도 돼.</div>
+  <div class="q">지금 화가 몇 도야?</div>
+  <div class="temp"><input type="range" id="me-temp" min="0" max="10" value="6"><b id="me-temp-v">6</b></div>
+  <div class="templabel" id="me-temp-l"></div>
+  <div class="q">무슨 일이 있었어? 내 쪽에서 본 대로.</div>
+  <textarea id="me-what" placeholder="편하게 다 써. 욕해도 돼, 아무도 안 봐."></textarea>
+  <div class="q">제일 걸리는 한 장면, 한 마디는?</div>
+  <p class="hint">계속 머릿속에서 다시 재생되는 거.</p>
+  <textarea id="me-sting" style="min-height:56px"></textarea>
+  <div class="q">그때 나는 뭘 바랐어?</div>
+  <p class="hint">"사과"처럼 짧아도 돼. 이게 나중에 다른 사람들이 바란 거랑 나란히 놓여.</p>
+  <textarea id="me-wanted" style="min-height:56px" placeholder="예) 내 얘기도 끝까지 들어주길 바랐어"></textarea>
+  <div class="nav"><button id="me-prev">이전</button><button class="primary" id="me-next">다음</button></div>
+</section>
+
+<!-- 2-1. 거울 -->
+<section class="view" id="v-mirror">
+  <div class="top"><button class="ghost back" data-go="me">‹</button><h1>1 · 내 의자</h1></div>
+  <h2>네 쪽 얘기, 이렇게 받아 적었어</h2>
+  <div class="card mirror" id="mirror-box"></div>
+  <p class="sub" style="margin-top:14px" id="mirror-next-hint"></p>
+  <div class="nav"><button data-go="me">고칠래</button><button class="primary" id="mirror-next">의자 옮기기</button></div>
+</section>
+
+<!-- 3. 다른 의자 -->
+<section class="view" id="v-seat">
+  <div class="top"><button class="ghost back" id="seat-back">‹</button><h1 id="seat-h">2 · 다른 의자</h1></div>
+  <div id="seat-table"></div>
+  <div class="seatlabel" id="seat-label"></div>
+  <p class="hint" style="text-align:center">맞히는 게 아니라 추측이야. 모르면 모른다고 해도 돼.</p>
+  <div class="q" id="seat-q1"></div>
+  <p class="hint">그 사람 자리에서 보였던 장면, 들었던 말.</p>
+  <textarea id="seat-saw"></textarea>
+  <div class="q" id="seat-q2"></div>
+  <p class="hint">내 사정이나 앞뒤 맥락 중에, 그 사람한텐 안 보였을 것.</p>
+  <textarea id="seat-unknown" style="min-height:56px"></textarea>
+  <div class="q" id="seat-q3"></div>
+  <div class="chips" id="seat-guard"></div>
+  <input type="text" id="seat-guard-t" maxlength="40" placeholder="직접 적기 (선택)" style="margin-top:8px">
+  <div class="q">이 추측, 얼마나 자신 있어?</div>
+  <div class="chips" id="seat-sure"></div>
+  <div class="nav"><button id="seat-skip">이 의자는 건너뛸래</button><button class="primary" id="seat-next">다음</button></div>
+</section>
+
+<!-- 4. 천장 -->
+<section class="view" id="v-top">
+  <div class="top"><button class="ghost back" id="top-back">‹</button><h1>3 · 천장에서</h1></div>
+  <div id="top-table"></div>
+  <div class="seatlabel">이제 <b>위에서</b> 다 같이 놓고 봐.</div>
+  <div id="top-gridbox">
+    <div class="gridwrap"><table class="grid" id="top-grid"></table></div>
+    <div class="card clash" id="top-clash" style="margin-top:14px"></div>
+  </div>
+  <div class="q">카메라가 천장에서 찍고 있었다면, 화면에 남는 건 뭐야?</div>
+  <p class="hint">누가 무슨 말을 했고 무슨 행동을 했는지만. "무시했다", "일부러" 같은 건 화면에 안 찍혀.</p>
+  <textarea id="top-facts" placeholder="예) 내가 질문했고, 그 사람은 대답 없이 다른 얘기를 꺼냈다"></textarea>
+  <div class="q">그 위에 내가 붙인 해석은 뭐야?</div>
+  <p class="hint">해석이 틀렸다는 게 아니야. 사실이랑 붙어 있으면 둘 다 흐려지니까 떼어 놓는 거야.</p>
+  <textarea id="top-interp" style="min-height:56px" placeholder="예) 날 우습게 본다고 느꼈다"></textarea>
+  <details style="margin-top:12px"><summary class="muted" style="font-size:14px">내가 처음 적은 거 다시 보기</summary><div class="card ref" id="top-ref" style="margin-top:8px"></div></details>
+  <div class="nav"><button id="top-prev">이전</button><button class="primary" id="top-next">내 선 정리하기</button></div>
+</section>
+
+<!-- 5. 내 선 -->
+<section class="view" id="v-end">
+  <div class="top"><button class="ghost back" data-go="top">‹</button><h1>4 · 내 선</h1></div>
+  <h2>이해되는 것과 안 괜찮은 것, 따로</h2>
+  <p class="sub">둘 다 동시에 참일 수 있어. 하나가 다른 하나를 지우지 않아.</p>
+  <div class="q" style="color:var(--good)">조금이라도 이해되는 부분</div>
+  <p class="hint">없으면 비워 둬도 돼. 억지로 찾을 필요 없어.</p>
+  <textarea id="end-und" style="min-height:56px"></textarea>
+  <div class="q" style="color:var(--warn)">그래도 안 괜찮은 것</div>
+  <p class="hint">이유가 있었든 없었든, 다음에도 받아들이지 않을 것.</p>
+  <textarea id="end-line" style="min-height:56px" placeholder="예) 사람들 앞에서 그런 말투로 말하는 건 안 돼"></textarea>
+  <div class="q">그래서, 다음엔 어떻게 할래?</div>
+  <div class="chips" id="end-next"></div>
+  <input type="text" id="end-next-t" maxlength="80" placeholder="구체적으로 (선택) 예) 내일 따로 불러서 그 말투만 짚기" style="margin-top:8px">
+  <div class="q">지금 화는 몇 도야?</div>
+  <div class="temp"><input type="range" id="end-temp" min="0" max="10" value="6"><b id="end-temp-v">6</b></div>
+  <div class="templabel" id="end-temp-l"></div>
+  <div class="nav"><button data-go="top">이전</button><button class="primary" id="end-save">다 했어</button></div>
+</section>
+
+<!-- 결과 -->
+<section class="view" id="v-done">
+  <div class="top"><button class="ghost back" data-go="home">‹</button><h1 id="done-date"></h1></div>
+  <h2 id="done-title"></h2>
+  <div id="done-table"></div>
+  <div class="res" id="done-body"></div>
+  <div class="card" style="margin-top:22px">
+    <div style="font-weight:800">며칠 지나고 다시 열어봤어?</div>
+    <p class="hint" style="margin:6px 0 10px">지금 온도를 하나 더 남겨 둘 수 있어. 안 내려가도 괜찮아.</p>
+    <div class="temp"><input type="range" id="re-temp" min="0" max="10" value="5"><b id="re-temp-v">5</b></div>
+    <button class="wide" id="re-save" style="margin-top:10px">지금 온도 남기기</button>
+  </div>
+  <div class="row" style="margin-top:14px">
+    <button id="done-edit">다시 고치기</button>
+    <button id="done-del" class="danger">지우기</button>
+  </div>
+</section>
+
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const KEY = "stepback-v1";
+const COLORS = ["#6cb4ee", "#b892ff", "#7ccf9a", "#f2a6c8", "#e9c46a", "#5ec2c2"];
+const ME_COLOR = "#f4845f";
+const MAX_PEOPLE = 6;
+const GUARDS = ["자기 체면", "일정·마감", "자기 일·책임", "관계·분위기", "규칙·원칙", "피곤함·여유 없음", "다른 사람", "자기 감정", "잘 모르겠어"];
+const SURE = [["guess", "그냥 짐작"], ["some", "어느 정도"], ["heard", "직접 들은 적 있어"]];
+const NEXT = ["직접 말할래", "거리를 둘래", "그냥 둘래", "더 알아볼래", "아직 모르겠어"];
+const TEMP_L = ["다 식었어", "거의 괜찮아", "살짝 남았어", "조금 거슬려", "신경 쓰여", "꽤 화나", "많이 화나", "속이 끓어", "참기 힘들어", "폭발 직전", "머리끝까지"];
+
+// ---------- 저장 ----------
+let db = load();
+function load() {
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && Array.isArray(d.items)) return d; } catch (e) {}
+  return { items: [] };
+}
+function persist() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { alert("저장 공간이 부족해서 저장을 못 했어."); } }
+
+let cur = null;     // 지금 돌아보는 상황
+let seatIdx = 0;    // 몇 번째 다른 의자
+
+function blank() {
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: Date.now(), done: false,
+    title: "", safe: false, people: [], me: { temp: 6, what: "", sting: "", wanted: "" }, seats: {},
+    top: { facts: "", interp: "" }, end: { und: "", line: "", next: [], nextT: "", temp: null }, temps: [] };
+}
+function saveCur() {
+  if (!cur) return;
+  const i = db.items.findIndex(x => x.id === cur.id);
+  if (i < 0) db.items.unshift(cur); else db.items[i] = cur;
+  persist();
+}
+
+// ---------- 한국어 조사 ----------
+function hasBatchim(w) {
+  const c = (w || "").trim().slice(-1).charCodeAt(0);
+  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
+  if (/[0-9]$/.test(w)) return "013678".includes(w.slice(-1));
+  return /[a-z]$/i.test(w) ? /[lmnr]$/i.test(w) : false;
+}
+const josa = (w, a, b) => w + (hasBatchim(w) ? a : b);   // josa(이름,"은","는")
+
+// ---------- 화면 전환 ----------
+function show(v) {
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  window.scrollTo(0, 0);
+  if (v === "home") renderHome();
+}
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => {
+  const v = b.dataset.go;
+  if (v === "me") openMe(); else if (v === "top") openTop(); else show(v);
+});
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = t => { const d = new Date(t); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`; };
+const short = d => { const x = new Date(d); return `${x.getMonth() + 1}/${x.getDate()}`; };
+
+// ---------- 위에서 본 탁자 ----------
+function tableSVG(people, active, opts = {}) {
+  const all = [{ id: "me", name: "나", color: ME_COLOR }, ...people];
+  const n = all.length, cx = 110, cy = 110, R = 78;
+  let s = `<svg class="table" viewBox="0 0 220 220" aria-hidden="true">`;
+  s += `<circle cx="${cx}" cy="${cy}" r="44" fill="#2a2e37" stroke="#3d424d" stroke-width="2"/>`;
+  if (active === "top") s += `<circle cx="${cx}" cy="${cy}" r="104" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 6"/>`;
+  all.forEach((p, i) => {
+    const a = Math.PI / 2 + (2 * Math.PI * i) / n;   // 나는 맨 아래
+    const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+    const on = active === p.id, skipped = opts.skipped && opts.skipped.includes(p.id);
+    const rot = (a * 180) / Math.PI + 90;
+    s += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rot.toFixed(1)})" opacity="${skipped ? 0.3 : on || active === "top" || !active ? 1 : 0.55}">`;
+    s += `<rect x="-15" y="-13" width="30" height="24" rx="7" fill="${p.color}"/>`;
+    s += `<rect x="-15" y="9" width="30" height="7" rx="3" fill="${p.color}" opacity=".6"/>`;
+    if (on) s += `<rect x="-20" y="-18" width="40" height="39" rx="10" fill="none" stroke="#fff" stroke-width="2.5"/>`;
+    s += `</g>`;
+    const lx = cx + (R - 32) * Math.cos(a), ly = cy + (R - 32) * Math.sin(a) + 4;
+    s += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${esc(p.name.slice(0, 4))}</text>`;
+  });
+  return s + `</svg>`;
+}
+
+// ---------- 홈 ----------
+function renderHome() {
+  const box = $("home-list");
+  if (!db.items.length) { box.innerHTML = `<div class="empty">아직 돌아본 상황이 없어.<br>지금 마음에 걸리는 일 하나로 시작해 봐.</div>`; return; }
+  box.innerHTML = `<div class="sec">돌아본 상황</div>` + db.items.map(it => {
+    const t0 = it.me.temp, tl = it.temps.length ? it.temps[it.temps.length - 1].t : it.end.temp;
+    const meta = it.done
+      ? `${fmt(it.created)} · ${it.people.length + 1}명 · 화 ${t0}도 → ${tl ?? "?"}도`
+      : `${fmt(it.created)} · 쓰다 말았어`;
+    return `<button class="card item ${it.done ? "" : "draft"}" data-id="${it.id}"><div class="t">${esc(it.title || "(제목 없음)")}</div><div class="meta">${meta}</div></button>`;
+  }).join("");
+  box.querySelectorAll(".item").forEach(b => b.onclick = () => {
+    cur = db.items.find(x => x.id === b.dataset.id);
+    if (cur.done) openDone(); else openSetup();
+  });
+}
+$("btn-new").onclick = () => { cur = blank(); openSetup(); };
+
+// ---------- 1. 상황 ----------
+function openSetup() {
+  $("s-title").value = cur.title;
+  $("s-safe").checked = cur.safe;
+  $("s-safenote").style.display = cur.safe ? "block" : "none";
+  $("s-warn").textContent = "";
+  renderPeople();
+  show("setup");
+}
+function renderPeople() {
+  $("s-people").innerHTML = cur.people.map((p, i) =>
+    `<div class="card person"><span class="dot" style="background:${p.color}"></span><span class="n">${esc(p.name)}<span class="r">${esc(p.rel)}</span></span><button class="ghost" data-i="${i}" aria-label="빼기">✕</button></div>`).join("");
+  $("s-people").querySelectorAll("button").forEach(b => b.onclick = () => {
+    const p = cur.people.splice(+b.dataset.i, 1)[0]; delete cur.seats[p.id]; renderPeople();
+  });
+  $("s-add").disabled = cur.people.length >= MAX_PEOPLE;
+}
+function addPerson() {
+  const name = $("s-name").value.trim();
+  if (!name) { $("s-name").focus(); return; }
+  if (name === "나" || cur.people.some(p => p.name === name)) { $("s-warn").textContent = "이미 있는 이름이야."; return; }
+  if (cur.people.length >= MAX_PEOPLE) return;
+  const used = cur.people.map(p => p.color);
+  cur.people.push({ id: "p" + Date.now().toString(36), name, rel: $("s-rel").value.trim(), color: COLORS.find(c => !used.includes(c)) || COLORS[0] });
+  $("s-name").value = ""; $("s-rel").value = ""; $("s-warn").textContent = "";
+  renderPeople(); $("s-name").focus();
+}
+$("s-add").onclick = addPerson;
+$("s-name").onkeydown = $("s-rel").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addPerson(); } };
+$("s-safe").onchange = () => { $("s-safenote").style.display = $("s-safe").checked ? "block" : "none"; };
+$("s-next").onclick = () => {
+  const t = $("s-title").value.trim();
+  if ($("s-name").value.trim()) addPerson();
+  if (!t) { $("s-warn").textContent = "무슨 일이었는지 한 줄만 적어 줘."; $("s-title").focus(); return; }
+  if (!cur.people.length) { $("s-warn").textContent = "나 말고 한 사람은 있어야 의자를 바꿔 앉을 수 있어."; return; }
+  cur.title = t; cur.safe = $("s-safe").checked;
+  saveCur(); openMe();
+};
+
+// ---------- 2. 내 의자 ----------
+function bindTemp(inp, out, lab) {
+  const f = () => { out.textContent = inp.value; lab.textContent = TEMP_L[+inp.value]; };
+  inp.oninput = f; f();
+}
+function openMe() {
+  $("me-table").innerHTML = tableSVG(cur.people, "me");
+  $("me-temp").value = cur.me.temp;
+  bindTemp($("me-temp"), $("me-temp-v"), $("me-temp-l"));
+  $("me-what").value = cur.me.what; $("me-sting").value = cur.me.sting; $("me-wanted").value = cur.me.wanted;
+  show("me");
+}
+function readMe() {
+  cur.me = { temp: +$("me-temp").value, what: $("me-what").value.trim(), sting: $("me-sting").value.trim(), wanted: $("me-wanted").value.trim() };
+}
+$("me-back").onclick = $("me-prev").onclick = () => { readMe(); saveCur(); openSetup(); };
+$("me-next").onclick = () => {
+  readMe(); saveCur();
+  if (!cur.me.what && !cur.me.sting) { $("me-what").focus(); $("me-what").placeholder = "한 줄이라도 내 쪽 얘기를 먼저 적어 줘."; return; }
+  openMirror();
+};
+function openMirror() {
+  const m = cur.me, parts = [];
+  parts.push(`지금 화는 <b>${m.temp}도</b>, ${TEMP_L[m.temp]}.`);
+  if (m.sting) parts.push(`제일 걸리는 건 <q>${esc(m.sting)}</q> 이 장면.`);
+  if (m.wanted) parts.push(`그때 넌 <q>${esc(m.wanted)}</q> 이걸 바랐어.`);
+  if (m.wanted && m.sting) parts.push(`바란 거랑 실제로 일어난 일, 그 사이에 벌어진 틈이 오늘 들여다볼 거야.`);
+  else if (!m.wanted) parts.push(`뭘 바랐는지는 아직 비어 있어. 나중에 채워도 돼.`);
+  $("mirror-box").innerHTML = parts.join("<br>");
+  $("mirror-next-hint").textContent = cur.safe
+    ? "이번엔 다른 의자는 건너뛰고 바로 천장으로 올라갈게."
+    : `이 얘기는 그대로 여기 둬. 이제 ${cur.people.map(p => p.name).join(", ")} 자리에 한 번씩 앉아 볼 거야. 네 얘기가 틀렸다는 뜻이 아니야.`;
+  $("mirror-next").textContent = cur.safe ? "천장으로" : "의자 옮기기";
+  show("mirror");
+}
+$("mirror-next").onclick = () => { if (cur.safe) openTop(); else { seatIdx = 0; openSeat(); } };
+
+// ---------- 3. 다른 의자 ----------
+function seatOf(p) { return cur.seats[p.id] || (cur.seats[p.id] = { saw: "", unknown: "", guard: [], guardT: "", sure: "", skipped: false }); }
+function chipGroup(el, list, sel, multi) {
+  el.innerHTML = list.map(([v, l]) => `<button type="button" data-v="${esc(v)}" class="${sel.includes(v) ? "on" : ""}">${esc(l)}</button>`).join("");
+  el.querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (!multi) el.querySelectorAll("button").forEach(x => x !== b && x.classList.remove("on"));
+    b.classList.toggle("on");
+  });
+}
+const chipVals = el => [...el.querySelectorAll("button.on")].map(b => b.dataset.v);
+function openSeat() {
+  const p = cur.people[seatIdx], s = seatOf(p), n = p.name;
+  $("seat-h").textContent = `2 · 다른 의자 (${seatIdx + 1}/${cur.people.length})`;
+  $("seat-table").innerHTML = tableSVG(cur.people, p.id);
+  $("seat-label").innerHTML = `지금은 <b style="color:${p.color}">${esc(n)}</b> 자리야.${p.rel ? ` <span class="muted">(${esc(p.rel)})</span>` : ""}`;
+  $("seat-q1").textContent = `${josa(n, "이", "가")} 앉은 자리에선 뭐가 보였을까?`;
+  $("seat-q2").textContent = `${josa(n, "이", "가")} 몰랐을 수도 있는 건?`;
+  $("seat-q3").textContent = `${josa(n, "은", "는")} 그때 뭘 지키려고, 아니면 뭘 걱정했을까?`;
+  $("seat-saw").value = s.saw; $("seat-unknown").value = s.unknown; $("seat-guard-t").value = s.guardT;
+  chipGroup($("seat-guard"), GUARDS.map(g => [g, g]), s.guard, true);
+  chipGroup($("seat-sure"), SURE, s.sure ? [s.sure] : [], false);
+  $("seat-next").textContent = seatIdx === cur.people.length - 1 ? "천장으로" : "다음 의자";
+  show("seat");
+}
+function readSeat(skipped) {
+  const p = cur.people[seatIdx], s = seatOf(p);
+  Object.assign(s, { saw: $("seat-saw").value.trim(), unknown: $("seat-unknown").value.trim(), guard: chipVals($("seat-guard")),
+    guardT: $("seat-guard-t").value.trim(), sure: chipVals($("seat-sure"))[0] || "" });
+  s.skipped = skipped;
+  saveCur();
+}
+function seatFwd() { if (seatIdx < cur.people.length - 1) { seatIdx++; openSeat(); } else openTop(); }
+$("seat-next").onclick = () => { readSeat(false); seatFwd(); };
+$("seat-skip").onclick = () => { readSeat(true); seatFwd(); };
+$("seat-back").onclick = () => { readSeat(seatOf(cur.people[seatIdx]).skipped); if (seatIdx > 0) { seatIdx--; openSeat(); } else openMirror(); };
+
+// ---------- 4. 천장 ----------
+const seated = () => cur.safe ? [] : cur.people.filter(p => cur.seats[p.id] && !cur.seats[p.id].skipped);
+const skippedIds = () => cur.safe ? cur.people.map(p => p.id) : cur.people.filter(p => !cur.seats[p.id] || cur.seats[p.id].skipped).map(p => p.id);
+const guardText = s => [...s.guard.filter(g => g !== "잘 모르겠어"), s.guardT].filter(Boolean).join(", ");
+function gridHTML() {
+  const none = `<span class="none">모르겠어</span>`;
+  let h = `<tr><th></th><th>보였던 것</th><th>몰랐을 것</th><th>지키려던 것</th></tr>`;
+  h += `<tr><td class="who" style="color:${ME_COLOR}">나</td><td>${esc(cur.me.sting || cur.me.what) || none}</td><td class="none">-</td><td>${esc(cur.me.wanted) || none}</td></tr>`;
+  cur.people.forEach(p => {
+    const s = cur.seats[p.id];
+    if (cur.safe || !s || s.skipped) { h += `<tr><td class="who" style="color:${p.color}">${esc(p.name)}</td><td colspan="3" class="none">이 의자엔 안 앉았어</td></tr>`; return; }
+    const sure = SURE.find(x => x[0] === s.sure);
+    h += `<tr><td class="who" style="color:${p.color}">${esc(p.name)}${sure ? `<span class="sure">${sure[1]}</span>` : ""}</td><td>${esc(s.saw) || none}</td><td>${esc(s.unknown) || none}</td><td>${esc(guardText(s)) || none}</td></tr>`;
+  });
+  return h;
+}
+function clashHTML() {
+  const ps = seated().filter(p => guardText(cur.seats[p.id]));
+  if (!ps.length) return `<span class="muted">다른 사람이 뭘 지키려 했는지 적은 게 없어서, 부딪힌 곳은 아직 안 보여.</span>`;
+  const mine = cur.me.wanted ? `<b>${esc(cur.me.wanted)}</b>` : "<span class='muted'>(바란 것 비어 있음)</span>";
+  let h = `<div style="font-weight:800;margin-bottom:6px">서로 지키려던 게 이렇게 놓여 있어</div>나는 ${mine}<br>`;
+  h += ps.map(p => `${esc(josa(p.name, "은", "는"))} <b>${esc(guardText(cur.seats[p.id]))}</b>`).join("<br>");
+  const unk = ps.filter(p => cur.seats[p.id].unknown).length;
+  h += `<p class="hint" style="margin:10px 0 0">누가 나빴는지 말고, 이것들이 한 자리에서 동시에 부딪혔다는 것만 봐.${unk ? ` ${unk}명은 모르는 게 있었을 거라고 네가 적었어.` : ""}</p>`;
+  return h;
+}
+function openTop() {
+  $("top-table").innerHTML = tableSVG(cur.people, "top", { skipped: skippedIds() });
+  $("top-gridbox").style.display = cur.safe ? "none" : "block";
+  if (!cur.safe) { $("top-grid").innerHTML = gridHTML(); $("top-clash").innerHTML = clashHTML(); }
+  $("top-facts").value = cur.top.facts; $("top-interp").value = cur.top.interp;
+  $("top-ref").textContent = [cur.me.what, cur.me.sting].filter(Boolean).join("\n\n") || "(비어 있음)";
+  show("top");
+}
+function readTop() { cur.top = { facts: $("top-facts").value.trim(), interp: $("top-interp").value.trim() }; saveCur(); }
+$("top-back").onclick = $("top-prev").onclick = () => {
+  readTop();
+  if (cur.safe) openMirror(); else { seatIdx = cur.people.length - 1; openSeat(); }
+};
+$("top-next").onclick = () => { readTop(); openEnd(); };
+
+// ---------- 5. 내 선 ----------
+function openEnd() {
+  $("end-und").value = cur.end.und; $("end-line").value = cur.end.line; $("end-next-t").value = cur.end.nextT;
+  chipGroup($("end-next"), NEXT.map(x => [x, x]), cur.end.next, false);
+  $("end-temp").value = cur.end.temp ?? cur.me.temp;
+  bindTemp($("end-temp"), $("end-temp-v"), $("end-temp-l"));
+  $("end-und").placeholder = cur.safe ? "이번엔 안 적어도 돼." : "예) 그 사람도 위에서 압박받고 있었을 수는 있겠다";
+  show("end");
+}
+function readEnd() {
+  cur.end = { und: $("end-und").value.trim(), line: $("end-line").value.trim(), next: chipVals($("end-next")), nextT: $("end-next-t").value.trim(), temp: +$("end-temp").value };
+}
+$("end-save").onclick = () => {
+  readEnd();
+  const first = !cur.done;
+  cur.done = true;
+  if (first) cur.temps = [{ t: cur.me.temp, d: cur.created, k: "처음" }, { t: cur.end.temp, d: Date.now(), k: "돌아본 뒤" }];
+  else if (cur.temps.length >= 2) cur.temps[1].t = cur.end.temp;
+  saveCur(); openDone();
+};
+
+// ---------- 결과 ----------
+function openDone() {
+  const c = cur;
+  $("done-date").textContent = fmt(c.created);
+  $("done-title").textContent = c.title;
+  $("done-table").innerHTML = tableSVG(c.people, "top", { skipped: skippedIds() });
+  let h = "";
+  const t = c.temps.length ? c.temps : [{ t: c.me.temp, d: c.created, k: "처음" }];
+  h += `<h3>화 온도</h3><div class="temps">${t.map(x => `<div style="height:${Math.max(4, x.t * 10)}%"><span>${x.t}</span></div>`).join("")}</div>`;
+  h += `<div class="tlabels">${t.map(x => `<div>${esc(x.k || short(x.d))}</div>`).join("")}</div>`;
+  if (t.length >= 2 && t[t.length - 1].t >= t[0].t) h += `<p class="hint" style="margin-top:8px">안 내려갔어도 괜찮아. 내리려고 하는 앱이 아니라, 잘 보려고 하는 앱이야.</p>`;
+  h += `<h3>그래도 안 괜찮은 것</h3><div class="card box line">${esc(c.end.line) || "<span class='muted'>(비어 있음)</span>"}</div>`;
+  if (c.end.und) h += `<h3>조금이라도 이해되는 부분</h3><div class="card box und">${esc(c.end.und)}</div>`;
+  const nx = [c.end.next.join(", "), c.end.nextT].filter(Boolean).join(" · ");
+  if (nx) h += `<h3>다음엔</h3><div class="card box">${esc(nx)}</div>`;
+  if (c.top.facts || c.top.interp) {
+    h += `<h3>천장에서 본 것</h3><div class="card box">`;
+    if (c.top.facts) h += `<b>찍혔을 것</b>\n${esc(c.top.facts)}`;
+    if (c.top.facts && c.top.interp) h += "\n\n";
+    if (c.top.interp) h += `<b>내가 붙인 해석</b>\n${esc(c.top.interp)}`;
+    h += `</div>`;
+  }
+  if (!c.safe) h += `<h3>의자별로</h3><div class="gridwrap"><table class="grid">${gridHTML()}</table></div>`;
+  $("done-body").innerHTML = h;
+  $("re-temp").value = t[t.length - 1].t;
+  bindTemp($("re-temp"), $("re-temp-v"), { set textContent(v) {} });
+  show("done");
+}
+$("re-save").onclick = () => {
+  cur.temps.push({ t: +$("re-temp").value, d: Date.now() });
+  saveCur(); openDone();
+};
+$("done-edit").onclick = () => openSetup();
+$("done-del").onclick = () => {
+  if (!confirm("이 기록을 지울까? 되돌릴 수 없어.")) return;
+  db.items = db.items.filter(x => x.id !== cur.id); persist(); cur = null; show("home");
+};
+
+// ---------- 백업 ----------
+$("btn-backup").onclick = () => {
+  const blob = new Blob([JSON.stringify(db, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `한발짝뒤-백업-${fmt(Date.now())}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$("btn-restore").onclick = () => $("restore-file").click();
+$("restore-file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d || !Array.isArray(d.items)) throw 0;
+    const have = new Set(db.items.map(x => x.id));
+    const add = d.items.filter(x => x && x.id && !have.has(x.id));
+    db.items = [...add, ...db.items].sort((a, b) => b.created - a.created);
+    persist(); renderHome(); alert(`${add.length}개 불러왔어.`);
+  } catch (err) { alert("이 파일은 못 읽겠어. 이 앱에서 백업한 파일이 맞아?"); }
+  e.target.value = "";
+};
+
+renderHome();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
