@@ -5,11 +5,17 @@ import java.util.TimeZone
 import kotlin.math.max
 
 /** One trip in the album: one or more classifier candidates merged together. */
-data class Trip(val key: String, val photos: List<PhotoPoint>, val lat: Double, val lng: Double, val abroad: Boolean) {
+data class Trip(
+ val key: String, val photos: List<PhotoPoint>, val lat: Double, val lng: Double, val abroad: Boolean,
+ /** Set by the user: the photo shown as the cover, and the trip's own title. */
+ val coverId: Long? = null, val title: String? = null,
+ /** When the user cut one trip in two: the day (local midnight) where this later part begins, and the key of the whole trip it came from. */
+ val cutAt: Long? = null, val baseKey: String = key
+) {
  val start: Long get() = photos.first().date
  val end: Long get() = photos.last().date
- /** A photo from the middle of the trip tends to show the place, not the departure gate. */
- val cover: PhotoPoint get() = photos[photos.size / 2]
+ /** The chosen cover; otherwise a photo from the middle, which tends to show the place, not the departure gate. */
+ val cover: PhotoPoint get() = coverId?.let { id -> photos.firstOrNull { it.id == id } } ?: photos[photos.size / 2]
 }
 
 data class TripDay(val dayNumber: Int, val dayStart: Long, val photos: List<PhotoPoint>)
