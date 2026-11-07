@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>브레인 덤프 노트</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#e9e4dd">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --desk:#e9e4dd; --paper:#fbf9f4; --dot:#d3ccc2; --ink:#2d3140; --ink2:#5b5f6b;
+    --pencil:#9d968c; --orange:#e7a35e; --hl:#f7c58a; --hl2:#d9d2c8; --red:#c9583c;
+    --hand:"Nanum Pen Script","Gaegu",cursive; --ui:"Gaegu","Nanum Pen Script",system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { background:var(--desk); }
+  body { margin:0; background:var(--desk); color:var(--ink); font-family:var(--ui); font-size:18px; min-height:100vh; }
+  main { max-width:560px; margin:0 auto; padding:14px 14px 40px 22px; }
+  button, input, textarea { font:inherit; color:inherit; }
+
+  /* 노트지: 점 격자 + 종이 결 + 왼쪽 스프링 */
+  .paper { position:relative; background-color:var(--paper);
+    background-image:radial-gradient(circle at 1px 1px, var(--dot) 1.1px, transparent 1.4px);
+    background-size:22px 22px; background-position:12px 10px;
+    border-radius:4px 10px 10px 4px; padding:22px 18px 26px 26px; min-height:calc(100vh - 60px);
+    box-shadow:0 1px 0 #fff inset, 0 10px 24px rgba(70,55,40,.13), 0 2px 4px rgba(70,55,40,.08); }
+  .paper::after { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; opacity:.5; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .5 0 0 0 0 .44 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .spiral { position:absolute; left:-15px; top:16px; bottom:16px; width:30px; pointer-events:none; z-index:2;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Ccircle cx='21' cy='15' r='3.2' fill='%23cfc8bd'/%3E%3Cpath d='M21 13.5 C 10 12, 2 13, 3 16.5 C 4 19, 12 18.5, 20 17' fill='none' stroke='%23a9a49d' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M20 13.2 C 10 11.6, 3.2 12.6, 3.6 15.4' fill='none' stroke='%23eeece8' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E") repeat-y 0 0 / 30px 30px; }
+
+  .hand { font-family:var(--hand); }
+  .hw { font-family:var(--hand); }
+  .hw .wd { white-space:nowrap; }
+  .hw .ch { display:inline-block; transform:translateY(var(--y)) rotate(var(--r)); opacity:var(--o); }
+  .hw.writing .ch { animation:ink .22s var(--d) both ease-out; }
+  @keyframes ink { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+
+  /* 손그림 장식(svg) */
+  [data-deco] { position:relative; }
+  svg.deco { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+  svg.deco path { fill:none; stroke:var(--ink); stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  svg.deco path.thin { stroke-width:.8; opacity:.55; }
+  svg.deco path.pencil { stroke:var(--pencil); stroke-width:1.3; }
+  svg.deco path.orange { stroke:var(--orange); stroke-width:1.8; }
+  svg.deco path.hlp { stroke:var(--hl); stroke-linecap:butt; opacity:.72; }
+  svg.deco path.hlg { stroke:var(--hl2); stroke-linecap:butt; opacity:.7; }
+  svg.deco path.red { stroke:var(--red); stroke-width:1.9; }
+  svg.deco.under { z-index:-1; }
+  .hlwrap { position:relative; isolation:isolate; display:inline-block; }
+  .hlwrap > svg.deco { z-index:-1; }
+  svg.deco path.anim { stroke-dasharray:1; stroke-dashoffset:1; animation:draw var(--t,.5s) var(--dl,0s) ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset:0; } }
+
+  /* 공통 */
+  .muted { color:var(--ink2); }
+  .pencilc { color:var(--pencil); }
+  .note-s { font-family:var(--ui); color:var(--ink2); font-size:16px; line-height:1.45; margin:4px 0 14px; }
+  .hb { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:transparent; border:none; padding:10px 18px; cursor:pointer; font-family:var(--ui); font-weight:700; font-size:18px; color:var(--ink); min-height:46px; isolation:isolate; }
+  .hb.big { font-size:21px; padding:12px 22px; }
+  .hb.wide { width:100%; }
+  .hb:active { transform:translateY(1px) rotate(-.4deg); }
+  .hb.ghost { font-weight:400; color:var(--ink2); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .between { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+
+  /* 표지 */
+  .title { font-family:var(--hand); font-size:54px; font-weight:400; color:#8f897f; margin:8px 0 0; letter-spacing:6px; line-height:1.1; display:flex; align-items:flex-end; gap:6px; }
+  .cloud { display:inline-block; width:64px; height:36px; margin-bottom:12px; }
+  .dots3 { display:inline-block; width:22px; height:14px; margin-bottom:10px; }
+  .cover-sub { font-family:var(--hand); font-size:24px; color:var(--ink2); margin:6px 0 22px; }
+  .steps-list { list-style:none; padding:0; margin:0 0 22px; }
+  .steps-list li { font-family:var(--hand); font-size:24px; line-height:44px; display:flex; gap:10px; align-items:center; }
+  .steps-list .n { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; font-size:21px; flex:none; }
+  .steps-list small { font-size:19px; color:var(--pencil); }
+  .sec { font-family:var(--hand); font-size:26px; margin:26px 0 6px; display:inline-block; }
+  .page-link { display:block; width:100%; text-align:left; background:none; border:none; padding:10px 4px 12px; cursor:pointer; border-bottom:1px dashed #d8d1c6; }
+  .page-link .d { font-family:var(--hand); font-size:20px; color:var(--pencil); }
+  .page-link .q { font-family:var(--hand); font-size:24px; display:block; margin-top:2px; }
+  .page-link .c { font-size:15px; color:var(--ink2); }
+  .local { font-size:14px; color:var(--pencil); margin-top:26px; }
+
+  /* 단계 탭 */
+  .topbar { display:flex; align-items:center; gap:4px; margin:-6px 0 6px; }
+  .topbar .back { font-family:var(--ui); background:none; border:none; font-size:17px; color:var(--ink2); padding:8px 6px; cursor:pointer; }
+  .tabs { display:flex; gap:2px; margin-left:auto; }
+  .tab { width:40px; height:40px; background:none; border:none; font-family:var(--hand); font-size:24px; color:var(--pencil); cursor:pointer; padding:0; }
+  .tab.on { color:var(--ink); }
+  .tab.done { color:var(--ink2); }
+  .step-h { font-family:var(--hand); font-size:34px; margin:10px 0 0; font-weight:400; display:inline-block; }
+  .step-h .num { color:var(--orange); }
+
+  /* 생각 줄 */
+  .list { position:relative; margin:10px 0 0; padding:2px 0 10px; min-height:88px; }
+  .list.pen { touch-action:none; }
+  .item { display:flex; align-items:flex-start; gap:6px; min-height:44px; padding:4px 0; transform:rotate(var(--tilt)); transform-origin:left center; }
+  .mk { width:28px; height:28px; flex:none; margin-top:4px; position:relative; }
+  .txt { font-family:var(--hand); font-size:var(--fs,26px); line-height:1.25; padding:2px 4px; display:inline-block; max-width:calc(100% - 36px); cursor:pointer; }
+  .item .edit { flex:1; font-family:var(--hand); font-size:26px; border:none; border-bottom:1.5px solid var(--ink2); background:transparent; outline:none; padding:2px 4px; }
+  .empty { font-family:var(--hand); font-size:22px; color:var(--pencil); padding:8px 0 4px 34px; }
+  .lasso { position:absolute; inset:0; overflow:visible; pointer-events:none; }
+  .lasso path { fill:none; stroke:var(--red); stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+
+  .writebar { position:sticky; bottom:0; margin:14px -6px 0; padding:10px 6px 12px; background:linear-gradient(to bottom, rgba(251,249,244,0), var(--paper) 30%); display:flex; gap:6px; align-items:flex-end; z-index:3; }
+  .line { flex:1; width:100%; font-family:var(--hand); font-size:26px; border:none; background:transparent; outline:none; padding:4px 4px 2px; border-bottom:1.5px solid #8f897f; border-radius:0; }
+  .line::placeholder { color:#b8b0a5; }
+  textarea.line { resize:none; line-height:1.3; }
+
+  /* 기호 펜 */
+  .pens { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin:12px 0 4px; position:sticky; top:0; z-index:4; background:var(--paper); padding:6px 0; }
+  .pen-b { background:none; border:none; padding:6px 2px 4px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; touch-action:none; font-family:var(--hand); font-size:18px; line-height:1.05; color:var(--ink2); isolation:isolate; }
+  .pen-b .sy { width:30px; height:30px; display:block; }
+  .pen-b.on { color:var(--ink); }
+  .ghost-drag { position:fixed; z-index:50; pointer-events:none; transform:translate(-50%,-60%) rotate(-6deg); filter:drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
+  .tally { font-family:var(--hand); font-size:22px; color:var(--ink2); display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
+  .tally span { display:inline-flex; align-items:center; gap:3px; }
+  .tally .sy { width:20px; height:20px; display:inline-block; }
+
+  .tool { display:flex; gap:6px; margin:8px 0 0; }
+  .tool button { background:none; border:none; font-family:var(--ui); font-size:16px; color:var(--pencil); padding:6px 10px; cursor:pointer; isolation:isolate; }
+  .tool button.on { color:var(--ink); font-weight:700; }
+
+  /* 뿌리 찾기 질문 */
+  .qcard { margin:18px 0 6px; padding:14px 12px 12px 14px; isolation:isolate; }
+  .qcard .who { font-family:var(--hand); font-size:26px; display:inline-block; padding:2px 6px; }
+  .q { font-family:var(--hand); font-size:22px; color:var(--ink2); margin:12px 0 0; }
+  .chips { display:flex; flex-wrap:wrap; gap:2px 6px; margin:4px 0 2px; }
+  .chip { background:none; border:none; font-family:var(--hand); font-size:23px; padding:4px 9px; cursor:pointer; color:var(--ink2); }
+  .chip.on { color:var(--ink); }
+
+  /* 통제의 원 */
+  .board { width:100%; max-width:440px; aspect-ratio:1; margin:8px auto 0; position:relative; }
+  .board .lb { position:absolute; left:50%; transform:translateX(-50%); font-family:var(--hand); white-space:nowrap; pointer-events:none; }
+  .board .lb-out { top:5.5%; font-size:20px; color:#8f897f; }
+  .board .lb-in { top:27.5%; font-size:20px; color:#c4823f; }
+  .board .note { position:absolute; transform:translate(-50%,-50%) rotate(var(--tilt)); font-family:var(--hand); font-size:18px; line-height:1.1; width:max-content; max-width:40%; text-align:left; touch-action:none; cursor:grab; padding:2px; display:flex; gap:2px; align-items:flex-start; }
+  .board .note .msym { width:14px; height:14px; flex:none; margin-top:3px; }
+  .board .note .bul { flex:none; }
+  .board.ro .note { cursor:default; }
+  .tray { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 0; min-height:40px; }
+  .tchip { font-family:var(--hand); font-size:21px; padding:6px 10px; touch-action:none; cursor:grab; display:inline-flex; gap:4px; align-items:center; background:rgba(251,249,244,.85); }
+  .tchip .msym { width:16px; height:16px; flex:none; }
+  .action { font-family:var(--hand); font-size:28px; margin:8px 0 0; display:flex; gap:8px; align-items:center; }
+  .arrow { display:inline-block; width:36px; height:20px; flex:none; }
+
+  /* 처방 */
+  .rx { font-family:var(--hand); font-size:32px; text-align:center; padding:20px 16px; margin:18px 4px 6px; line-height:1.35; isolation:isolate; }
+  .sugs { display:flex; flex-direction:column; align-items:flex-start; gap:0; margin:8px 0; }
+  .sugs .chip { font-size:22px; text-align:left; }
+
+  .foot { display:flex; justify-content:space-between; align-items:center; margin-top:26px; gap:8px; }
+
+  /* 완성 페이지 */
+  .date { font-family:var(--hand); font-size:22px; color:var(--pencil); text-align:right; margin:-4px 0 0; }
+  .sum .item { min-height:38px; }
+  .sum .txt { cursor:default; }
+  .why { font-family:var(--hand); font-size:20px; color:#8f897f; margin:-4px 0 6px 40px; line-height:1.25; }
+  .sum h3 { font-family:var(--hand); font-weight:400; font-size:24px; color:#8f897f; margin:22px 0 0; }
+  .view-in { animation:pagein .35s ease-out; }
+  @keyframes pagein { from { opacity:0; transform:translateX(14px) rotate(.4deg); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+<main><div id="app"></div></main>
+<script>
+"use strict";
+/* ---------- 저장 (폰에만) ---------- */
+const KEY = "braindump.v1";
+let db = { pages: [], cur: null };
+try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.pages)) db = s; } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fresh = new Set();   // 방금 생긴 것만 그려지는 애니메이션
+let view = "home", viewId = null;
+const cur = () => db.pages.find(p => p.id === db.cur);
+
+/* ---------- 손그림 도구 ---------- */
+function hash(s) { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) { let a = hash(seed); return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const f = n => Math.round(n * 10) / 10;
+const P = p => f(p[0]) + "," + f(p[1]);
+function smooth(p) {
+  let d = "M" + P(p[0]);
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
+    d += "C" + P([p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6]) + " " + P([p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6]) + " " + P(p2);
+  }
+  return d;
+}
+// 손으로 그린 원: 시작점과 끝점이 딱 맞지 않고 조금 겹쳐 지나감
+function ellipse(cx, cy, rx, ry, r, over = 0.35) {
+  const a0 = r() * Math.PI * 2, ov = over + r() * 0.4, n = 30, p1 = r() * 6, p2 = r() * 6, drift = (r() - .5) * .12, tilt = (r() - .5) * .12;
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = a0 + t * (Math.PI * 2 + ov);
+    const k = (1 + .035 * Math.sin(2 * a + p1) + .025 * Math.sin(3 * a + p2)) * (1 + (t - .5) * drift);
+    let x = Math.cos(a) * rx * k, y = Math.sin(a) * ry * k;
+    pts.push([cx + x * Math.cos(tilt) - y * Math.sin(tilt), cy + x * Math.sin(tilt) + y * Math.cos(tilt)]);
+  }
+  return smooth(pts);
+}
+function bend(a, b, r, j) { const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, o = (r() - .5) * 2 * j; return "Q" + P([mx - dy / L * o, my + dx / L * o]) + " " + P(b); }
+function strokeThrough(pts, r, j, close) { // 한 획으로 이어 그린 다각형(마지막은 살짝 넘어감)
+  let d = "M" + P(pts[0]);
+  const seq = close ? pts.slice(1).concat([pts[0]]) : pts.slice(1);
+  let prev = pts[0];
+  seq.forEach((p, i) => {
+    let q = p;
+    if (close && i === seq.length - 1) { const dx = p[0] - prev[0], dy = p[1] - prev[1], L = Math.hypot(dx, dy) || 1, e = 2 + r() * 2.5; q = [p[0] + dx / L * e, p[1] + dy / L * e]; }
+    d += bend(prev, q, r, j); prev = p;
+  });
+  return d;
+}
+function box(w, h, r) { // 변마다 따로 그은 스케치 사각형
+  const j = () => (r() - .5) * 3.2;
+  const c = [[3 + j(), 3 + j()], [w - 3 + j(), 3 + j()], [w - 3 + j(), h - 3 + j()], [3 + j(), h - 3 + j()]];
+  let d = "";
+  for (let i = 0; i < 4; i++) {
+    const a = c[i], b = c[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, e1 = (r() * 4) / L, e2 = (1 + r() * 5) / L;
+    const A = [a[0] - dx * e1, a[1] - dy * e1], B = [b[0] + dx * e2, b[1] + dy * e2];
+    d += "M" + P(A) + bend(A, B, r, Math.min(2.4, L * .025));
+  }
+  return d;
+}
+function wline(x1, y1, x2, y2, r, j = 1.6) {
+  const n = 5, pts = [], bow = (r() - .5) * j * 2;
+  for (let i = 0; i <= n; i++) { const t = i / n; pts.push([x1 + (x2 - x1) * t + (r() - .5) * .6, y1 + (y2 - y1) * t + Math.sin(t * Math.PI) * bow + (r() - .5) * j * .6]); }
+  return smooth(pts);
+}
+function symPath(type, r, s = 26) {
+  const j = v => (r() - .5) * v, k = s / 26;
+  const sc = pts => pts.map(p => [p[0] * k, p[1] * k]);
+  if (type === "sq") return strokeThrough(sc([[5 + j(2), 6 + j(2)], [21 + j(2), 5 + j(2)], [21 + j(2), 21 + j(2)], [5 + j(2), 21 + j(2)]]), r, 1.2 * k, true);
+  if (type === "tri") return strokeThrough(sc([[13 + j(2), 3.5 + j(1.5)], [23 + j(1.5), 21.5 + j(1.5)], [3 + j(1.5), 21 + j(1.5)]]), r, 1.2 * k, true);
+  if (type === "star") {
+    const o = [];
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5; o.push([13 + Math.cos(a) * 10.5 + j(1.4), 14 + Math.sin(a) * 10.5 + j(1.4)]); }
+    return strokeThrough(sc([o[0], o[2], o[4], o[1], o[3]]), r, .8 * k, true);
+  }
+  if (type === "heart") {
+    const q = [[13 + j(1), 22.5 + j(1)], [4 + j(2), 16 + j(2)], [1.5 + j(1), 7 + j(2)], [7.5 + j(1), 4.5 + j(1)], [11.5 + j(1), 4 + j(1)], [13 + j(.6), 7.5 + j(1)], [13 + j(.6), 9.5 + j(.6)], [13.4 + j(.6), 7 + j(1)], [15 + j(1), 4.2 + j(1)], [19 + j(1), 4.5 + j(1)], [25 + j(1), 6 + j(2)], [22.5 + j(1), 15 + j(2)], [13.6 + j(1), 23 + j(1)]].map(p => [p[0] * k, p[1] * k]);
+    return "M" + P(q[0]) + "C" + P(q[1]) + " " + P(q[2]) + " " + P(q[3]) + "C" + P(q[4]) + " " + P(q[5]) + " " + P(q[6]) + "C" + P(q[7]) + " " + P(q[8]) + " " + P(q[9]) + "C" + P(q[10]) + " " + P(q[11]) + " " + P(q[12]);
+  }
+  if (type === "dash") return wline(8 * k, 15 * k + j(2), 19 * k, 14 * k + j(2), r, .8);
+  return "";
+}
+function cloud(w, h, r) {
+  const cx = w / 2, cy = h / 2 + 2, rx = w / 2 - 4, ry = h / 2 - 4, n = 60, pts = [], a0 = Math.PI * .6, bumps = 6 + Math.floor(r() * 2);
+  for (let i = 0; i <= n; i++) { const t = i / n, a = a0 + t * Math.PI * 2.08, b = Math.abs(Math.sin(t * Math.PI * bumps)); const k = .78 + .28 * b; pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k * (Math.sin(a) > 0 ? .8 : 1)]); }
+  return smooth(pts);
+}
+function highlighter(w, h, r) {
+  const y = h * .6 + (r() - .5) * 2, s = (r() - .5) * 3;
+  return "M" + P([-3, y - s]) + bend([-3, y - s], [w + 3, y + s], r, 1.5) + bend([w + 3, y + s], [w - 10 - r() * 10, y + s + 1.5], r, .5);
+}
+const SYM_NAME = { sq: "해야 할 일", tri: "지금 해결 못 함", star: "하고 싶은 일", heart: "마음에 걸리는 일" };
+
+// data-deco 가 붙은 요소에 손그림 svg 를 입힘. 같은 key → 같은 모양(다시 그려도 그대로)
+function deco(root = document) {
+  root.querySelectorAll("[data-deco]").forEach(el => {
+    const w = el.offsetWidth, h = el.offsetHeight;
+    if (!w || !h) return;
+    const old = el.querySelector(":scope > svg.deco");
+    if (old && +old.dataset.w === w && +old.dataset.h === h) return;
+    if (old) old.remove();
+    const kind = el.dataset.deco, key = el.dataset.key || (kind + ":" + (el.textContent || "").slice(0, 20)), r = rng(kind + key);
+    const anim = fresh.has(key); if (anim) fresh.delete(key);
+    const paths = []; // [d, class, delay, duration]
+    if (kind === "box") paths.push([box(w, h, r), "", 0, .55]);
+    else if (kind === "boxp") paths.push([box(w, h, r), "pencil", 0, .55]);
+    else if (kind === "circle" || kind === "circlep" || kind === "circlered") {
+      const cls = kind === "circlep" ? "pencil" : kind === "circlered" ? "red" : "";
+      const padx = +(el.dataset.px || 8), pady = +(el.dataset.py || 5);
+      paths.push([ellipse(w / 2, h / 2, w / 2 + padx, h / 2 + pady, r), cls, 0, .55]);
+      if (el.dataset.twice) paths.push([ellipse(w / 2, h / 2, w / 2 + padx + 1.5, h / 2 + pady + 1, r, .1), cls + " thin", .45, .4]);
+    }
+    else if (kind === "loop") {
+      let pts = null; try { pts = JSON.parse(el.dataset.pts || "null"); } catch (e) {}
+      if (pts && pts.length > 3) paths.push([smooth(pts.map(p => [p[0] * w, p[1] * h])), "red", 0, .5]);
+      else paths.push([ellipse(w / 2, h / 2, w / 2 + 9, h / 2 + 6, r), "red", 0, .55]);
+    }
+    else if (kind === "hl" || kind === "hlg") {
+      const lh = parseFloat(getComputedStyle(el).lineHeight) || 30, n = Math.max(1, Math.round(h / Math.max(lh, 24)));
+      for (let i = 0; i < n; i++) { const hh = h / n; paths.push([highlighter(w, hh, r).replace(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g, (m, x, y) => x + "," + f(+y + i * hh)), kind === "hl" ? "hlp" : "hlg", i * .4, .4, Math.max(10, hh * .55)]); }
+    }
+    else if (kind === "ul") paths.push([wline(-2, h - 2, w + 4, h - 1, r), "pencil", 0, .4]);
+    else if (kind === "sym") paths.push([symPath(el.dataset.sym, r, w), "", 0, .45]);
+    else if (kind === "cloud") { paths.push([cloud(w, h, r), "pencil", 0, .8]); }
+    else if (kind === "dots") { [3, 10, 18].forEach((x, i) => paths.push([ellipse(x, h - 4 - i * 1.5, 1.4 + i * .6, 1.4 + i * .6, r, .1), "pencil", i * .15, .2])); }
+    else if (kind === "arrow") { const y = h / 2; paths.push([wline(2, y + 1, w - 3, y, r, 1), "", 0, .3]); paths.push(["M" + P([w - 11, y - 6]) + bend([w - 11, y - 6], [w - 2, y], r, .8) + bend([w - 2, y], [w - 12, y + 6], r, .8), "", .28, .2]); }
+    else if (kind === "board") {
+      paths.push([ellipse(w / 2, h / 2, w * .47, h * .47, r, .2), "pencil", 0, .9]);
+      paths.push([ellipse(w / 2, h / 2, w * .26, h * .26, r, .25), "orange", .5, .7]);
+    }
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "deco" + (kind.startsWith("hl") ? " under" : ""));
+    svg.setAttribute("width", w); svg.setAttribute("height", h); svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.dataset.w = w; svg.dataset.h = h;
+    paths.forEach(([d, cls, dl, t, sw]) => {
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d); p.setAttribute("pathLength", "1");
+      p.setAttribute("class", (cls || "") + (anim ? " anim" : ""));
+      if (sw) p.style.strokeWidth = sw;
+      if (anim) { p.style.setProperty("--dl", dl + "s"); p.style.setProperty("--t", t + "s"); }
+      svg.appendChild(p);
+    });
+    el.insertBefore(svg, el.firstChild);
+  });
+}
+
+// 글자마다 조금씩 기울고 오르내리는 손글씨. 방금 쓴 줄은 한 글자씩 써지는 애니메이션
+function hw(t, key) {
+  const r = rng("hw" + t), anim = key && fresh.has("w:" + key);
+  if (anim) fresh.delete("w:" + key);
+  let i = 0;
+  const parts = String(t).split(/(\s+)/).map(w => /^\s*$/.test(w) ? (w ? " " : "") :
+    '<span class="wd">' + [...w].map(ch => `<span class="ch" style="--r:${f((r() - .5) * 5)}deg;--y:${f((r() - .5) * 2.4)}px;--o:${f(.8 + r() * .2)};--d:${(i++) * 32}ms">${esc(ch)}</span>`).join("") + "</span>");
+  return `<span class="hw${anim ? " writing" : ""}">${parts.join("")}</span>`;
+}
+const symSpan = (type, key, cls = "msym") => type ? `<span class="${cls}" data-deco="sym" data-sym="${type}" data-key="${key}"></span>` : "";
+const lineStyle = id => { const r = rng("line" + id); return `--tilt:${f((r() - .5) * 1.1)}deg;--fs:${f(25 + r() * 2.5)}px`; };
+
+/* ---------- 화면 ---------- */
+const app = document.getElementById("app");
+function render(anim) {
+  let html = "";
+  if (view === "home") html = homeView();
+  else if (view === "page") html = pageView();
+  else if (view === "sum") html = sumView();
+  app.innerHTML = `<div class="paper ${view === "sum" ? "sum" : ""}${anim ? " view-in" : ""}"><div class="spiral"></div>${html}</div>`;
+  afterRender();
+  requestAnimationFrame(() => deco());
+}
+function go(v, id) { view = v; viewId = id || null; render(true); window.scrollTo(0, 0); }
+
+function fmtDate(ts) { const d = new Date(ts); return `${d.getMonth() + 1}월 ${d.getDate()}일 (${"일월화수목금토"[d.getDay()]})`; }
+const NUM = ["", "①", "②", "③", "④", "⑤"];
+
+function homeView() {
+  const draft = cur();
+  const done = db.pages.filter(p => p.done).sort((a, b) => b.created - a.created);
+  return `
+  <h1 class="title"><span>${hw("브레인 덤프")}</span><span class="dots3" data-deco="dots" data-key="dots"></span><span class="cloud" data-deco="cloud" data-key="cloud"></span></h1>
+  <div class="cover-sub">${hw("머릿속이 복잡한 날, 쏟아내고 찾기")}</div>
+  <ul class="steps-list">
+    ${[["생각 쏟아내기", "순서 없이 다 적기"], ["이름 붙이기", "□ △ ☆ ♡"], ["생각의 뿌리 찾기", "맴도는 생각에 동그라미"], ["통제의 원 그리기", "바꿀 수 있는 것 / 없는 것"], ["나에게 한 문장 처방", "지금 필요한 말 선물하기"]]
+      .map((s, i) => `<li><span class="n">${NUM[i + 1]}</span><span>${hw(s[0])} <small>${esc(s[1])}</small></span></li>`).join("")}
+  </ul>
+  ${draft ? `<button class="hb big wide" data-deco="box" data-key="btn-cont" data-act="cont"><span class="hlwrap" data-deco="hl" data-key="hl-cont">이어 쓰기 · ${fmtDate(draft.created)}</span></button>
+             <div style="text-align:center;margin-top:4px"><button class="hb ghost" data-act="new">새 페이지 펴기</button></div>`
+          : `<button class="hb big wide" data-deco="box" data-key="btn-new" data-act="new"><span class="hlwrap" data-deco="hl" data-key="hl-new">새 페이지 펴기</span></button>`}
+  ${done.length ? `<div><span class="sec" data-deco="ul" data-key="sec-past">${hw("지난 페이지")}</span></div>
+    ${done.map(p => `<button class="page-link" data-act="open" data-id="${p.id}"><span class="d">${fmtDate(p.created)}</span><span class="q">${p.rx ? hw("“" + p.rx + "”") : hw("(처방 없음)")}</span><span class="c">생각 ${p.items.filter(i => !i.extra).length}개 · 동그라미 ${p.items.filter(i => i.loop).length}개</span></button>`).join("")}` : ""}
+  <div class="local">기록은 이 폰(브라우저)에만 저장돼. 어디에도 올라가지 않아.</div>`;
+}
+
+function itemRow(it, mode) {
+  const mark = it.mark ? symSpan(it.mark, "mk:" + it.id + it.mark, "mk") : `<span class="mk" data-deco="sym" data-sym="dash" data-key="dash:${it.id}"></span>`;
+  const loop = it.loop ? ` data-deco="loop" data-key="loop:${it.id}" data-pts='${it.loop === true ? "" : JSON.stringify(it.loop)}'` : "";
+  return `<div class="item" data-id="${it.id}" style="${lineStyle(it.id)}">${mark}<span class="txt"${loop}>${hw(it.t, it.id)}</span></div>`;
+}
+
+function pageView() {
+  const pg = cur(); if (!pg) { view = "home"; return homeView(); }
+  const s = pg.step;
+  const tabs = [1, 2, 3, 4, 5].map(i => `<button class="tab ${i === s ? "on" : i < s ? "done" : ""}" data-act="step" data-n="${i}" ${i === s ? `data-deco="circlep" data-px="-6" data-py="-6" data-key="tab${i}"` : ""}>${NUM[i]}</button>`).join("");
+  const body = [null, step1, step2, step3, step4, step5][s](pg);
+  return `<div class="topbar"><button class="back" data-act="home">← 목차</button><div class="tabs">${tabs}</div></div>
+    <div class="date">${fmtDate(pg.created)}</div>${body}`;
+}
+const dumpItems = pg => pg.items.filter(i => !i.extra);
+
+function nav(pg, prevLabel, nextLabel, nextAct = "next") {
+  return `<div class="foot">${pg.step > 1 ? `<button class="hb ghost" data-act="prev">← ${prevLabel || "앞으로"}</button>` : "<span></span>"}
+    <button class="hb" data-deco="box" data-key="nx${pg.step}" data-act="${nextAct}">${nextLabel} →</button></div>`;
+}
+
+function step1(pg) {
+  const items = dumpItems(pg);
+  return `<h2 class="step-h" data-deco="ul" data-key="h1"><span class="num">①</span> ${hw("생각 쏟아내기")}</h2>
+  <p class="note-s">떠오르는 생각을 순서 없이 전부 적어. 검열하지 말고, 정리하지도 말고. 적은 줄을 누르면 고칠 수 있어.</p>
+  <div class="list" id="list">${items.length ? items.map(it => itemRow(it, 1)).join("") : `<div class="empty">${hw("아직 비어 있어. 아무거나 하나 적어 봐")}</div>`}</div>
+  <form class="writebar" id="wform" autocomplete="off"><input class="line" id="win" placeholder="머릿속에 떠오르는 것…" enterkeyhint="enter"><button class="hb" data-deco="box" data-key="wbtn" type="submit">적기</button></form>
+  ${items.length ? nav(pg, "", "다 쏟았어") : ""}`;
+}
+
+let pen = "sq";
+function step2(pg) {
+  const items = dumpItems(pg);
+  const cnt = t => items.filter(i => i.mark === t).length;
+  return `<h2 class="step-h" data-deco="ul" data-key="h2"><span class="num">②</span> ${hw("생각에 이름 붙이기")}</h2>
+  <p class="note-s">기호를 고르고 줄을 톡 누르거나, 기호를 줄 위로 끌어다 놔. 같은 기호로 한 번 더 누르면 지워져.</p>
+  <div class="pens">${["sq", "tri", "star", "heart"].map(t => `<button class="pen-b ${pen === t ? "on" : ""}" data-pen="${t}"><span class="hlwrap" ${pen === t ? `data-deco="hl" data-key="pen-${t}"` : ""}><span class="sy" data-deco="sym" data-sym="${t}" data-key="pen:${t}"></span></span>${SYM_NAME[t]}</button>`).join("")}</div>
+  <div class="list" id="list">${items.map(it => itemRow(it, 2)).join("")}</div>
+  <div class="tally">${["sq", "tri", "star", "heart"].map(t => `<span><span class="sy" data-deco="sym" data-sym="${t}" data-key="tl:${t}"></span>${cnt(t)}</span>`).join("")}<span class="pencilc">· 안 붙임 ${items.filter(i => !i.mark).length}</span></div>
+  ${nav(pg, "쏟아내기", "뿌리 찾기")}`;
+}
+
+let penMode = true;
+const FEELS = ["불안", "걱정", "조급함", "서운함", "억울함", "미안함", "외로움", "두려움", "지침", "답답함", "부담", "기대", "아쉬움", "부끄러움"];
+function step3(pg) {
+  const items = dumpItems(pg), looped = items.filter(i => i.loop);
+  return `<h2 class="step-h" data-deco="ul" data-key="h3"><span class="num">③</span> ${hw("생각의 뿌리 찾기")}</h2>
+  <p class="note-s">자꾸 맴도는 생각에 손가락으로 동그라미를 쳐 봐. 톡 눌러도 되고, 동그라미를 한 번 더 누르면 지워져.</p>
+  <div class="tool"><button class="${penMode ? "on" : ""}" data-act="penmode" data-v="1" ${penMode ? 'data-deco="hl" data-key="tool-pen"' : ""}>✎ 펜으로 동그라미</button><button class="${penMode ? "" : "on"}" data-act="penmode" data-v="0" ${penMode ? "" : 'data-deco="hl" data-key="tool-hand"'}>✋ 화면 넘기기</button></div>
+  <div class="list ${penMode ? "pen" : ""}" id="list">${items.map(it => itemRow(it, 3)).join("")}<svg class="lasso" id="lasso"></svg></div>
+  ${looped.map(it => `<div class="qcard" data-deco="boxp" data-key="qc:${it.id}">
+      <span class="who" data-deco="loop" data-key="qloop:${it.id}" data-pts='${it.loop === true ? "" : JSON.stringify(it.loop)}'>${hw(it.t)}</span>
+      <div class="q">나는 왜 이 생각을 계속할까?</div>
+      <textarea class="line" rows="1" data-field="why" data-id="${it.id}" placeholder="그냥 떠오르는 대로…">${esc(it.why || "")}</textarea>
+      <div class="q">이 생각 뒤에 숨은 감정은 뭘까?</div>
+      <div class="chips">${FEELS.map(fe => { const on = (it.feel || []).includes(fe); return `<button class="chip ${on ? "on" : ""}" data-act="feel" data-id="${it.id}" data-v="${fe}" ${on ? `data-deco="circle" data-px="1" data-py="0" data-key="fe:${it.id}:${fe}"` : ""}>${hw(fe)}</button>`; }).join("")}</div>
+      <input class="line" data-field="feelx" data-id="${it.id}" placeholder="다른 말로 적기" value="${esc(it.feelx || "")}" style="font-size:22px">
+    </div>`).join("")}
+  ${looped.length ? "" : `<div class="empty">${hw("동그라미 친 생각이 생기면 여기에 질문이 나와")}</div>`}
+  ${nav(pg, "이름 붙이기", "통제의 원")}`;
+}
+
+function boardHTML(pg, ro) {
+  const notes = pg.items.filter(i => i.zone).map(it => `<div class="note" data-id="${it.id}" style="left:${f(it.x * 100)}%;top:${f(it.y * 100)}%;--tilt:${f((rng("nt" + it.id)() - .5) * 6)}deg">${it.mark ? symSpan(it.mark, "nm:" + it.id + it.mark) : '<span class="bul">•</span>'}${hw(it.t, "n" + it.id)}</div>`).join("");
+  return `<div class="board ${ro ? "ro" : ""}" id="board" data-deco="board" data-key="board:${pg.id}"><span class="lb lb-out">${hw("내가 바꿀 수 없는 것")}</span><span class="lb lb-in">${hw("내가 바꿀 수 있는 것")}</span>${notes}</div>`;
+}
+function actionText(pg) { if (!pg.action) return ""; if (pg.action.id) { const it = pg.items.find(i => i.id === pg.action.id); return it ? it.t : ""; } return pg.action.t || ""; }
+function step4(pg) {
+  const rank = i => (i.loop ? 0 : 3) + ({ tri: 0, heart: 1, sq: 2, star: 2 }[i.mark] ?? 3) * .5;
+  const tray = pg.items.filter(i => !i.zone).sort((a, b) => rank(a) - rank(b));
+  const inner = pg.items.filter(i => i.zone === "in");
+  const at = actionText(pg);
+  return `<h2 class="step-h" data-deco="ul" data-key="h4"><span class="num">④</span> ${hw("통제의 원 그리기")}</h2>
+  <p class="note-s">아래 생각을 끌어서 원 안에 놔. 안쪽 원은 내가 바꿀 수 있는 것, 바깥 원은 바꿀 수 없는 것. 원 밖으로 빼면 다시 아래로 돌아와.</p>
+  ${boardHTML(pg)}
+  <div class="tray" id="tray">${tray.map(it => `<span class="tchip" data-id="${it.id}" data-deco="boxp" data-key="tc:${it.id}">${it.mark ? symSpan(it.mark, "tm:" + it.id + it.mark) : ""}${hw(it.t)}</span>`).join("") || `<span class="empty" style="padding-left:0">${hw("다 옮겼어!")}</span>`}</div>
+  <form class="writebar" id="xform" autocomplete="off" style="position:static"><input class="line" id="xin" placeholder="원에 더 적을 것 (예: 다른 사람의 반응)" style="font-size:22px"><button class="hb" data-deco="box" data-key="xbtn" type="submit">보태기</button></form>
+  <div><span class="sec" data-deco="ul" data-key="sec-act">${hw("오늘 해 볼 행동 하나")}</span></div>
+  ${inner.length ? `<div class="chips">${inner.map(it => { const on = pg.action && pg.action.id === it.id; return `<button class="chip ${on ? "on" : ""}" data-act="pick" data-id="${it.id}" ${on ? `data-deco="circle" data-px="2" data-py="0" data-key="pk:${it.id}"` : ""}>${hw(it.t)}</button>`; }).join("")}</div>` : `<p class="note-s">안쪽 원에 넣은 것 중에서 고를 수 있어. 직접 적어도 돼.</p>`}
+  <form class="writebar" id="aform" autocomplete="off" style="position:static"><input class="line" id="ain" placeholder="오늘 할 수 있는 작은 행동" value="${pg.action && !pg.action.id ? esc(pg.action.t) : ""}"><button class="hb" data-deco="box" data-key="abtn" type="submit">정하기</button></form>
+  ${at ? `<div class="action"><span class="arrow" data-deco="arrow" data-key="arrow:${at}"></span><span class="hlwrap" data-deco="hl" data-key="act:${at}">${hw(at)}</span></div>` : ""}
+  ${nav(pg, "뿌리 찾기", "한 문장 처방")}`;
+}
+
+const RX = ["모든 걸 오늘 해결하지 않아도 괜찮아.", "오늘은 쉬는 것도 중요한 일이야.", "한 번에 하나씩이면 충분해.", "못 한 것 말고 한 것을 세어 보자.", "바꿀 수 없는 건 내려놓고, 바꿀 수 있는 것에 힘 쓰자.", "지금 이만큼 해낸 나, 잘하고 있어."];
+function step5(pg) {
+  return `<h2 class="step-h" data-deco="ul" data-key="h5"><span class="num">⑤</span> ${hw("나에게 한 문장 처방")}</h2>
+  <p class="note-s">오늘의 기록을 돌아보고, 지금 나에게 필요한 문장을 하나 선물해 줘.</p>
+  <textarea class="line" id="rxin" rows="2" placeholder="나에게 하고 싶은 말…">${esc(pg.rx || "")}</textarea>
+  <div class="q" style="margin-top:14px">떠오르지 않으면 빌려 와도 돼</div>
+  <div class="sugs">${RX.map(s => `<button class="chip" data-act="rx" data-v="${esc(s)}">${hw("“" + s + "”")}</button>`).join("")}</div>
+  <div id="rxprev">${rxBlock(pg)}</div>
+  ${nav(pg, "통제의 원", "페이지 완성", "finish")}`;
+}
+const rxBlock = pg => pg.rx ? `<div class="rx" data-deco="box" data-key="rxbox:${pg.id}"><span class="hlwrap" data-deco="hl" data-key="rxhl:${pg.rx}">${hw("“" + pg.rx + "”", "rx" + pg.rx)}</span></div>` : "";
+
+function sumView() {
+  const pg = db.pages.find(p => p.id === viewId); if (!pg) { view = "home"; return homeView(); }
+  const items = dumpItems(pg), at = actionText(pg);
+  const roots = items.filter(i => i.loop && (i.why || (i.feel || []).length || i.feelx));
+  return `<div class="topbar"><button class="back" data-act="home">← 목차</button></div>
+  <div class="date">${fmtDate(pg.created)}</div>
+  <h1 class="title" style="font-size:46px"><span>${hw("브레인 덤프")}</span><span class="dots3" data-deco="dots" data-key="dots"></span><span class="cloud" data-deco="cloud" data-key="cloud"></span></h1>
+  <div class="list">${items.map(it => itemRow(it, 0)).join("")}</div>
+  ${roots.length ? `<h3>${hw("생각의 뿌리")}</h3>${roots.map(it => `<div class="why">${hw("○ " + it.t + (it.why ? " — " + it.why : ""))}${(it.feel || []).concat(it.feelx ? [it.feelx] : []).length ? "<br>" + hw("숨은 감정: " + (it.feel || []).concat(it.feelx ? [it.feelx] : []).join(", ")) : ""}</div>`).join("")}` : ""}
+  ${pg.items.some(i => i.zone) ? `<h3>${hw("통제의 원")}</h3>${boardHTML(pg, true)}` : ""}
+  ${at ? `<div class="action"><span class="arrow" data-deco="arrow" data-key="arrow:${at}"></span><span class="hlwrap" data-deco="hl" data-key="act:${at}">${hw(at)}</span></div>` : ""}
+  ${rxBlock(pg)}
+  <div class="foot"><button class="hb ghost" data-act="del" data-id="${pg.id}">이 페이지 지우기</button><button class="hb" data-deco="box" data-key="edit-btn" data-act="edit" data-id="${pg.id}">고쳐 쓰기</button></div>`;
+}
+
+/* ---------- 동작 ---------- */
+function setStep(n) { const pg = cur(); pg.step = Math.max(1, Math.min(5, n)); fresh.add("tab" + pg.step); save(); render(true); window.scrollTo(0, 0); }
+const acts = {
+  home: () => go("home"),
+  new: () => { const pg = { id: uid(), created: Date.now(), items: [], step: 1, rx: "", action: null, done: false }; db.pages.push(pg); db.cur = pg.id; save(); go("page"); },
+  cont: () => go("page"),
+  open: el => go("sum", el.dataset.id),
+  edit: el => { const pg = db.pages.find(p => p.id === el.dataset.id); pg.step = 5; db.cur = pg.id; save(); go("page"); },
+  del: el => { if (!confirm("이 페이지를 지울까? 되돌릴 수 없어.")) return; db.pages = db.pages.filter(p => p.id !== el.dataset.id); if (db.cur === el.dataset.id) db.cur = null; save(); go("home"); },
+  step: el => setStep(+el.dataset.n),
+  next: () => setStep(cur().step + 1),
+  prev: () => setStep(cur().step - 1),
+  finish: () => { const pg = cur(); pg.done = true; db.cur = null; save(); fresh.add("rxbox:" + pg.id); go("sum", pg.id); },
+  penmode: el => { penMode = el.dataset.v === "1"; fresh.add(penMode ? "tool-pen" : "tool-hand"); render(); },
+  feel: el => { const it = cur().items.find(i => i.id === el.dataset.id); it.feel = it.feel || []; const v = el.dataset.v; if (it.feel.includes(v)) it.feel = it.feel.filter(x => x !== v); else { it.feel.push(v); fresh.add("fe:" + it.id + ":" + v); } save(); keepScroll(render); },
+  pick: el => { const pg = cur(); const id = el.dataset.id; if (pg.action && pg.action.id === id) pg.action = null; else { pg.action = { id }; const t = actionText(pg); fresh.add("pk:" + id); fresh.add("act:" + t); fresh.add("arrow:" + t); } save(); keepScroll(render); },
+  rx: el => { const pg = cur(); pg.rx = el.dataset.v; document.getElementById("rxin").value = pg.rx; fresh.add("rxhl:" + pg.rx); fresh.add("w:rx" + pg.rx); save(); updateRx(); },
+};
+function keepScroll(fn) { const y = window.scrollY; fn(); window.scrollTo(0, y); }
+function updateRx() { const pg = cur(); const box = document.getElementById("rxprev"); box.innerHTML = rxBlock(pg); requestAnimationFrame(() => deco(box)); }
+
+app.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const fn = acts[el.dataset.act]; if (fn) fn(el);
+});
+
+function afterRender() {
+  const pg = cur();
+  // ① 적기
+  const wf = document.getElementById("wform");
+  if (wf) wf.onsubmit = e => {
+    e.preventDefault();
+    const inp = document.getElementById("win"), t = inp.value.trim(); if (!t) return;
+    const it = { id: uid(), t }; pg.items.push(it); fresh.add("w:" + it.id); fresh.add("dash:" + it.id); save();
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+    const ni = document.getElementById("win"); ni.focus({ preventScroll: true });
+    const row = document.querySelector(`.item[data-id="${it.id}"]`); if (row) row.scrollIntoView({ block: "nearest" });
+  };
+  if (pg && view === "page" && pg.step === 1) {
+    document.querySelectorAll("#list .txt").forEach(tx => tx.onclick = () => editItem(tx.closest(".item")));
+  }
+  if (pg && view === "page" && pg.step === 2) bindPens(pg);
+  if (pg && view === "page" && pg.step === 3) bindLasso(pg);
+  if (pg && view === "page" && pg.step === 4) bindBoard(pg);
+  // 입력 즉시 저장
+  document.querySelectorAll("[data-field]").forEach(inp => {
+    const fit = () => { if (inp.tagName === "TEXTAREA") { inp.style.height = "auto"; inp.style.height = inp.scrollHeight + "px"; } };
+    fit();
+    inp.oninput = () => { const it = pg.items.find(i => i.id === inp.dataset.id); it[inp.dataset.field] = inp.value; save(); fit(); };
+  });
+  const rxin = document.getElementById("rxin");
+  if (rxin) {
+    let tmr; rxin.oninput = () => { pg.rx = rxin.value.trim(); save(); clearTimeout(tmr); tmr = setTimeout(() => { fresh.add("rxhl:" + pg.rx); updateRx(); }, 700); };
+  }
+  const xf = document.getElementById("xform");
+  if (xf) xf.onsubmit = e => {
+    e.preventDefault(); const inp = document.getElementById("xin"), t = inp.value.trim(); if (!t) return;
+    pg.items.push({ id: uid(), t, extra: true }); save(); keepScroll(render);
+  };
+  const af = document.getElementById("aform");
+  if (af) af.onsubmit = e => {
+    e.preventDefault(); const t = document.getElementById("ain").value.trim();
+    pg.action = t ? { t } : null; if (t) { fresh.add("act:" + t); fresh.add("arrow:" + t); } save(); keepScroll(render);
+  };
+}
+
+function editItem(row) {
+  const pg = cur(), it = pg.items.find(i => i.id === row.dataset.id);
+  row.innerHTML = `<span class="mk"></span><input class="edit" value="${esc(it.t)}" enterkeyhint="done">`;
+  const inp = row.querySelector("input"); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+  let doneOnce = false;
+  const fin = () => { if (doneOnce) return; doneOnce = true; const t = inp.value.trim(); if (!t) pg.items = pg.items.filter(i => i !== it); else if (t !== it.t) { it.t = t; fresh.add("w:" + it.id); } save(); keepScroll(render); };
+  inp.onblur = fin; inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); fin(); } };
+}
+
+/* ② 기호 펜: 고르고 탭 / 끌어다 놓기 */
+function stamp(pg, id, t) {
+  const it = pg.items.find(i => i.id === id); if (!it) return;
+  if (it.mark === t) it.mark = null; else { it.mark = t; fresh.add("mk:" + it.id + t); }
+  save(); keepScroll(render);
+}
+function bindPens(pg) {
+  document.querySelectorAll("#list .item").forEach(row => row.onclick = () => stamp(pg, row.dataset.id, pen));
+  document.querySelectorAll(".pen-b").forEach(b => {
+    b.onpointerdown = e => {
+      const t = b.dataset.pen, sx = e.clientX, sy = e.clientY; let ghost = null;
+      b.setPointerCapture(e.pointerId);
+      b.onpointermove = ev => {
+        if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 8) return;
+        if (!ghost) { ghost = document.createElement("div"); ghost.className = "ghost-drag"; ghost.innerHTML = `<span style="display:block;width:38px;height:38px" data-deco="sym" data-sym="${t}" data-key="gh${t}"></span>`; document.body.appendChild(ghost); deco(ghost); }
+        ghost.style.left = ev.clientX + "px"; ghost.style.top = ev.clientY + "px";
+        document.querySelectorAll("#list .item").forEach(r => r.style.background = "");
+        const hit = document.elementFromPoint(ev.clientX, ev.clientY); const row = hit && hit.closest("#list .item"); if (row) row.style.background = "rgba(247,197,138,.25)";
+      };
+      b.onpointerup = ev => {
+        b.onpointermove = b.onpointerup = null;
+        if (!ghost) { pen = t; fresh.add("pen-" + t); keepScroll(render); return; }
+        ghost.remove();
+        const hit = document.elementFromPoint(ev.clientX, ev.clientY), row = hit && hit.closest("#list .item");
+        pen = t;
+        if (row) stamp(pg, row.dataset.id, t); else keepScroll(render);
+      };
+      b.onpointercancel = () => { b.onpointermove = b.onpointerup = null; if (ghost) ghost.remove(); };
+    };
+  });
+}
+
+/* ③ 손가락으로 동그라미 치기 */
+function inPoly(x, y, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function bindLasso(pg) {
+  const list = document.getElementById("list"), svg = document.getElementById("lasso");
+  let pts = null, path = null;
+  const toggleTap = (x, y) => {
+    const hit = document.elementFromPoint(x, y), row = hit && hit.closest("#list .item"); if (!row) return;
+    const it = pg.items.find(i => i.id === row.dataset.id);
+    if (it.loop) it.loop = null; else { it.loop = true; fresh.add("loop:" + it.id); }
+    save(); keepScroll(render);
+  };
+  list.onpointerdown = e => {
+    if (!penMode) { return; }
+    e.preventDefault(); list.setPointerCapture(e.pointerId);
+    const r = list.getBoundingClientRect();
+    pts = [[e.clientX - r.left, e.clientY - r.top]];
+    svg.innerHTML = ""; path = document.createElementNS("http://www.w3.org/2000/svg", "path"); svg.appendChild(path);
+  };
+  list.onpointermove = e => {
+    if (!pts) return; const r = list.getBoundingClientRect(); const p = [e.clientX - r.left, e.clientY - r.top];
+    const l = pts[pts.length - 1]; if (Math.hypot(p[0] - l[0], p[1] - l[1]) < 2.5) return;
+    pts.push(p); path.setAttribute("d", smooth(pts));
+  };
+  list.onpointerup = e => {
+    if (!penMode) { toggleTap(e.clientX, e.clientY); return; }
+    if (!pts) return; const stroke = pts; pts = null;
+    let len = 0; for (let i = 1; i < stroke.length; i++) len += Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]);
+    const lr = list.getBoundingClientRect();
+    if (len < 24) { svg.innerHTML = ""; toggleTap(e.clientX, e.clientY); return; }
+    // 동그라미 안에 들어온 줄 찾기
+    const rows = [...list.querySelectorAll(".item")].map(row => { const tx = row.querySelector(".txt"), b = tx.getBoundingClientRect(); return { id: row.dataset.id, x: b.left - lr.left, y: b.top - lr.top, w: b.width, h: b.height }; });
+    let inside = rows.filter(o => inPoly(o.x + Math.min(o.w / 2, 60), o.y + o.h / 2, stroke) || inPoly(o.x + o.w / 2, o.y + o.h / 2, stroke));
+    if (!inside.length) { // 덜 닫힌 동그라미: 획이 가장 많이 걸친 줄
+      const xs = stroke.map(p => p[0]), ys = stroke.map(p => p[1]), bx = [Math.min(...xs), Math.max(...xs)], by = [Math.min(...ys), Math.max(...ys)];
+      let best = null, bo = 0;
+      rows.forEach(o => { const ov = Math.max(0, Math.min(bx[1], o.x + o.w) - Math.max(bx[0], o.x)) * Math.max(0, Math.min(by[1], o.y + o.h) - Math.max(by[0], o.y)); if (ov > bo) { bo = ov; best = o; } });
+      if (best) inside = [best];
+    }
+    inside.forEach(o => {
+      const it = pg.items.find(i => i.id === o.id);
+      it.loop = inside.length === 1 ? stroke.filter((_, i) => i % 2 === 0 || i === stroke.length - 1).map(p => [f((p[0] - o.x) / o.w * 1000) / 1000, f((p[1] - o.y) / o.h * 1000) / 1000]) : true;
+      if (inside.length > 1) fresh.add("loop:" + it.id);
+    });
+    save();
+    // 손으로 그린 획은 그대로 남기고 다시 그림
+    setTimeout(() => keepScroll(render), inside.length ? 120 : 0);
+    if (!inside.length) svg.innerHTML = "";
+  };
+  list.onpointercancel = () => { pts = null; svg.innerHTML = ""; };
+}
+
+/* ④ 통제의 원: 끌어서 분류 */
+function bindBoard(pg) {
+  const board = document.getElementById("board");
+  const startDrag = (src, id, e) => {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY; let ghost = null;
+    src.setPointerCapture(e.pointerId);
+    src.onpointermove = ev => {
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      if (!ghost) { const it = pg.items.find(i => i.id === id); ghost = document.createElement("div"); ghost.className = "ghost-drag"; ghost.style.cssText += ";font-family:var(--hand);font-size:20px;background:rgba(251,249,244,.9);padding:4px 8px;transform:translate(-50%,-50%) rotate(-3deg)"; ghost.innerHTML = hw(it.t); document.body.appendChild(ghost); src.style.opacity = .25; }
+      ghost.style.left = ev.clientX + "px"; ghost.style.top = ev.clientY + "px";
+    };
+    src.onpointerup = ev => {
+      src.onpointermove = src.onpointerup = null;
+      if (!ghost) return; ghost.remove();
+      const b = board.getBoundingClientRect(), it = pg.items.find(i => i.id === id);
+      const fx = (ev.clientX - b.left) / b.width, fy = (ev.clientY - b.top) / b.height, d = Math.hypot(fx - .5, fy - .5);
+      if (d <= .25) it.zone = "in"; else if (d <= .48) it.zone = "out"; else it.zone = null;
+      if (it.zone) {
+        it.x = Math.min(.86, Math.max(.14, fx)); it.y = Math.min(.92, Math.max(.08, fy));
+        // 다른 메모와 겹치면 위아래로 살짝 비켜 적기
+        const others = pg.items.filter(o => o.zone && o !== it);
+        const zoneOf = (x, y) => { const d = Math.hypot(x - .5, y - .5); return d <= .25 ? "in" : d <= .48 ? "out" : null; };
+        const labels = [{ x: .5, y: .07, w: .5 }, { x: .5, y: .29, w: .45 }]; // 원 이름표 자리
+        const hits = (x, y) => others.some(o => Math.abs(o.x - x) < .3 && Math.abs(o.y - y) < .16) || labels.some(l => Math.abs(l.x - x) < l.w / 2 + .15 && Math.abs(l.y - y) < .07);
+        if (hits(it.x, it.y)) {
+          const cand = [];
+          for (const dy of [0, .08, -.08, .16, -.16, .24, -.24, .32, -.32]) for (const dx of [0, .12, -.12, .24, -.24]) cand.push([it.x + dx, it.y + dy]);
+          const ok = cand.find(([x, y]) => x > .12 && x < .88 && y > .1 && y < .92 && zoneOf(x, y) === it.zone && !hits(x, y));
+          if (ok) { it.x = ok[0]; it.y = ok[1]; }
+        }
+        fresh.add("w:n" + it.id);
+      }
+      if (it.zone !== "in" && pg.action && pg.action.id === it.id) pg.action = null;
+      save(); keepScroll(render);
+    };
+    src.onpointercancel = () => { src.onpointermove = src.onpointerup = null; if (ghost) ghost.remove(); src.style.opacity = ""; };
+  };
+  document.querySelectorAll(".tchip, .board .note").forEach(el => el.onpointerdown = e => startDrag(el, el.dataset.id, e));
+}
+
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => deco(), 150); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => deco());
+render(true);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
