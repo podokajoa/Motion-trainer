@@ -490,14 +490,19 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   titleRow.addView(Y2k.text(context, tripTitle(t), 24f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
   titleRow.addView(Y2k.text(context, "${Trips.dayCount(t)}일 · 사진 ${"%,d".format(t.photos.size)}장", 12f, Y2k.MUTED, true))
   addView(titleRow)
-  val editRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(10)) }
-  editRow.addView(Y2k.button(context, "제목 ✎", false, 12f) { openTitleEditor(t) })
-  editRow.addView(Y2k.button(context, if (pickingCover) "대표사진 고르는 중 (취소)" else "대표사진 ✎", pickingCover, 12f) {
+  // quiet text links: the photo and the trip title stay the first thing you see
+  val editRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 0, dp(4), dp(2)) }
+  fun link(label: String, strong: Boolean = false, action: () -> Unit) = Y2k.text(context, label, 11f, if (strong) ink else Y2k.MUTED, false).apply {
+   paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+   setPadding(dp(10), dp(8), dp(10), dp(8)); setOnClickListener { action() }
+  }
+  editRow.addView(link("제목 바꾸기") { openTitleEditor(t) })
+  editRow.addView(link(if (pickingCover) "대표사진 고르는 중 (취소)" else "대표사진 바꾸기", pickingCover) {
    pickingCover = !pickingCover
    if (pickingCover) Toast.makeText(this@MainActivity, "아래에서 대표로 쓸 사진을 눌러 주세요", Toast.LENGTH_LONG).show()
    albumRefresh?.invoke()
-  }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(6) })
-  editRow.addView(Y2k.button(context, "숨기기", false, 12f) { hideTrip(t) }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(6) })
+  })
+  editRow.addView(link("숨기기") { hideTrip(t) })
   addView(editRow)
   addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${plan.stops.size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
