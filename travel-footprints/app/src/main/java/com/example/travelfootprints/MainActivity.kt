@@ -82,6 +82,9 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private val points = mutableListOf<PhotoPoint>()
  private var candidates = emptyList<TravelCandidate>()
  private var trips = emptyList<Trip>()
+ private var hiddenTrips = emptyList<Trip>()
+ private val edits = TripEdits()
+ private var pickingCover = false
  private var asks = emptyList<TravelCandidate>()
  private val decisions = mutableMapOf<String, Boolean>()
  private val placeNames = mutableMapOf<String, String>()
@@ -176,7 +179,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    }
   })
   mapView.onCreate(savedInstanceState); mapView.getMapAsync(this)
-  loadDecisions(); loadPlaceNames(); loadBook(); loadCache()
+  loadDecisions(); loadPlaceNames(); loadBook(); loadEdits(); loadCache()
   (homeList.adapter as HomeAdapter).submit()
  }
 
@@ -195,7 +198,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun tripYears() = trips.flatMap { listOfNotNull(PhotoYears.yearOf(it.start)) }.distinct().sortedDescending()
 
  private fun rebuild() {
-  trips = Trips.build(candidates, decisions)
+  val edited = TripEditing.apply(Trips.build(candidates, decisions), edits)
+  trips = edited.shown; hiddenTrips = edited.hidden
   asks = Trips.toAsk(candidates, decisions).sortedByDescending { it.photos.size }
   if (selectedYear != null && selectedYear !in tripYears()) selectedYear = null
   requestPlaces(trips.map { it.lat to it.lng } + asks.take(10).map { it.latitude to it.longitude })
@@ -208,7 +212,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   if (mapWindow.visibility == View.VISIBLE) { renderMapYears(); updateMapPins() }
  }
 
- private fun tripTitle(t: Trip) = placeFor(t.lat, t.lng) ?: CoarsePlaceLabel.forPoint(t.lat, t.lng)?.removeSuffix(" 부근") ?: "여행"
+ private fun tripTitle(t: Trip) = t.title?.takeIf { it.isNotBlank() } ?: placeFor(t.lat, t.lng) ?: CoarsePlaceLabel.forPoint(t.lat, t.lng)?.removeSuffix(" 부근") ?: "여행"
  private fun askTitle(c: TravelCandidate) = placeFor(c.latitude, c.longitude) ?: CoarsePlaceLabel.forPoint(c.latitude, c.longitude) ?: "어딘가"
  private fun dateRange(start: Long, end: Long): String {
   val full = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA); val short = SimpleDateFormat("MM.dd", Locale.KOREA)
@@ -222,6 +226,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   object AskHeader : Row()
   class AskRow(val c: TravelCandidate) : Row()
   object MoreAsks : Row()
+  object Hidden : Row()
   object Empty : Row()
   object Footer : Row()
  }
@@ -237,6 +242,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
     (if (showAllAsks) a else a.take(5)).forEach { list.add(Row.AskRow(it)) }
     if (!showAllAsks && a.size > 5) list.add(Row.MoreAsks)
    }
+   if (hiddenTrips.isNotEmpty()) list.add(Row.Hidden)
    list.add(Row.Footer)
    rows = list; notifyDataSetChanged()
   }
@@ -276,6 +282,8 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   Row.MoreAsks -> Y2k.button(this, "애매한 기록 모두 보기", false, 13f) {
    showAllAsks = true; (homeList.adapter as HomeAdapter).submit()
   }.apply { layoutParams = FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(8); bottomMargin = dp(8) } }
+  Row.Hidden -> Y2k.button(this, "숨긴 여행 ${hiddenTrips.size}개 보기", false, 13f) { openHiddenList() }
+   .apply { layoutParams = FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(8); bottomMargin = dp(8) } }
   Row.Footer -> footerView()
   else -> View(this)
  }
@@ -409,6 +417,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
 
  private fun openTrip(t: Trip) {
   openTrip = t
+  pickingCover = false
   val days = Trips.days(t)
   val plan = Trips.plan(days)
   requestPlaces(plan.stops.map { it.lat to it.lng })
@@ -447,7 +456,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
       val cap = fl.getChildAt(2) as TextView
       val c0 = tripBook(t).captions[r.p.id]
       if (c0 != null && !c0.isEmpty()) { cap.text = c0.text; cap.visibility = View.VISIBLE } else cap.visibility = View.GONE
-      loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { openViewer(t, ordered, r.index) }
+      loadThumb(iv, r.p.uri, cell); iv.setOnClickListener { if (pickingCover) setCover(t, r.p) else openViewer(t, ordered, r.index) }
       fun paintStar() { val on = r.p.id in tripBook(t).stars; st.text = if (on) "★" else "☆"; st.setTextColor(if (on) Y2k.YELLOW else Color.WHITE) }
       paintStar(); st.setOnClickListener { toggleStar(t, r.p.id); paintStar() }
      }
@@ -481,6 +490,15 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   titleRow.addView(Y2k.text(context, tripTitle(t), 24f, ink, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, -2, 1f))
   titleRow.addView(Y2k.text(context, "${Trips.dayCount(t)}일 · 사진 ${"%,d".format(t.photos.size)}장", 12f, Y2k.MUTED, true))
   addView(titleRow)
+  val editRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(10)) }
+  editRow.addView(Y2k.button(context, "제목 ✎", false, 12f) { openTitleEditor(t) })
+  editRow.addView(Y2k.button(context, if (pickingCover) "대표사진 고르는 중 (취소)" else "대표사진 ✎", pickingCover, 12f) {
+   pickingCover = !pickingCover
+   if (pickingCover) Toast.makeText(this@MainActivity, "아래에서 대표로 쓸 사진을 눌러 주세요", Toast.LENGTH_LONG).show()
+   albumRefresh?.invoke()
+  }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(6) })
+  editRow.addView(Y2k.button(context, "숨기기", false, 12f) { hideTrip(t) }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(6) })
+  addView(editRow)
   addView(statRow(listOf("${Trips.dayCount(t)}일" to "여행 기간", "${plan.stops.size}곳" to "방문한 곳", "${"%,d".format(t.photos.size)}장" to "사진")),
    LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
   addView(Y2k.button(context, "책 만들기 ▶  (사진 고르기 · 글 · PDF)", true, 14f) { openBookPreview(t, days, plan) },
@@ -534,6 +552,105 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   row.addView(Y2k.button(context, if (hasNote) "글 고치기 ✎" else "글 쓰기 ✎", hasNote, 12f) { openNoteEditor(t, d) })
   row.addView(Y2k.text(context, if (starCount > 0) "  ★ ${starCount}장 선택" else "  사진 오른쪽 위 ☆로 고르기", 12f, Y2k.MUTED, true))
   addView(row)
+  if (d.dayNumber == 1 && t.cutAt != null) {
+   addView(Y2k.button(context, "◀ 앞 여행과 합치기", false, 12f) { mergeWithPrevious(t) }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+  } else if (d.dayNumber > 1) {
+   addView(Y2k.button(context, "여기서 여행 나누기", false, 12f) { splitTrip(t, d) }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
+  }
+ }
+
+// ---------- trip edits ----------
+ /** Moves the stars, captions and day notes that belong to [toDays] from one trip's book to another's. */
+ private fun moveBookData(from: TripBook, fromDays: List<TripDay>, to: TripBook, toDays: List<TripDay>) {
+  val ids = toDays.flatMap { d -> d.photos.map { it.id } }.toSet()
+  from.stars.filter { it in ids }.forEach { from.stars.remove(it); to.stars.add(it) }
+  from.captions.keys.filter { it in ids }.forEach { id -> from.captions.remove(id)?.let { to.captions[id] = it } }
+  val newNumber = toDays.associate { it.dayStart to it.dayNumber }
+  fromDays.forEach { d ->
+   val n = newNumber[d.dayStart]; val note = from.notes[d.dayNumber]
+   if (n != null && note != null) { to.notes[n] = note; from.notes.remove(d.dayNumber) }
+  }
+ }
+
+ private fun afterTripEdit(message: String, reopenKey: String? = null) {
+  saveEdits(); saveBook()
+  closeTrip()
+  rebuild()
+  Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+  if (reopenKey != null) trips.firstOrNull { it.key == reopenKey }?.let { openTrip(it) }
+ }
+
+ private fun splitTrip(t: Trip, d: TripDay) {
+  val cut = d.dayStart
+  val newKey = "${t.key}@$cut"
+  val fromDays = Trips.days(t)
+  val laterPhotos = t.photos.filter { it.date >= cut }
+  val later = Trip(newKey, laterPhotos, t.lat, t.lng, t.abroad)
+  moveBookData(tripBook(t), fromDays, tripBook(later), Trips.days(later))
+  edits.cuts.add(cut)
+  afterTripEdit("${d.dayNumber}일차부터 새 여행으로 나눴어요. 합치려면 뒤 여행 첫날의 '앞 여행과 합치기'를 눌러요")
+ }
+
+ private fun mergeWithPrevious(t: Trip) {
+  val cut = t.cutAt ?: return
+  val previous = trips.filter { it.baseKey == t.baseKey && (it.cutAt ?: Long.MIN_VALUE) < cut }.maxByOrNull { it.cutAt ?: Long.MIN_VALUE }
+  if (previous != null) {
+   val merged = Trip(previous.key, (previous.photos + t.photos).sortedWith(compareBy<PhotoPoint> { it.date }.thenBy { it.id }), previous.lat, previous.lng, previous.abroad)
+   moveBookData(tripBook(t), Trips.days(t), tripBook(previous), Trips.days(merged))
+  }
+  edits.cuts.remove(cut)
+  afterTripEdit("앞 여행과 합쳤어요", previous?.key)
+ }
+
+ private fun hideTrip(t: Trip) {
+  edits.hidden.add(t.key)
+  afterTripEdit("여행을 목록에서 숨겼어요. 사진은 그대로예요. 홈 맨 아래에서 되살릴 수 있어요")
+ }
+
+ private fun setCover(t: Trip, p: PhotoPoint) {
+  pickingCover = false
+  edits.covers[t.key] = p.id
+  afterTripEdit("대표사진을 바꿨어요", t.key)
+ }
+
+ private fun openTitleEditor(t: Trip) {
+  var dialog: android.app.Dialog? = null
+  dialog = windowDialog("여행 제목") { body ->
+   val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(12)) }
+   col.addView(Y2k.text(this, "대표사진 아래와 책 표지에 이 제목이 들어가요. 비워 두면 장소 이름이 나와요.", 12f, Y2k.MUTED, true).apply { setPadding(0, 0, 0, dp(10)) })
+   val et = android.widget.EditText(this).apply {
+    setText(t.title ?: ""); textSize = 18f; typeface = Y2k.regular; setTextColor(ink); setHintTextColor(Y2k.MUTED); hint = tripTitle(t.copy(title = null))
+    background = Y2k.frame(Color.WHITE, ink, 2, 0); setPadding(dp(10), dp(10), dp(10), dp(10)); maxLines = 2
+    inputType = android.text.InputType.TYPE_CLASS_TEXT
+   }
+   col.addView(et, LinearLayout.LayoutParams(-1, -2))
+   col.addView(Y2k.button(this, "저장", true, 15f) {
+    val v = et.text.toString().trim()
+    if (v.isEmpty()) edits.titles.remove(t.key) else edits.titles[t.key] = v
+    dialog?.dismiss(); afterTripEdit("제목을 저장했어요", t.key)
+   }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+   body.addView(android.widget.ScrollView(this).apply { addView(col) }, FrameLayout.LayoutParams(-1, -1))
+  }
+  dialog.show()
+ }
+
+ private fun openHiddenList() {
+  var dialog: android.app.Dialog? = null
+  dialog = windowDialog("숨긴 여행") { body ->
+   val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(12)) }
+   col.addView(Y2k.text(this, "숨겨도 사진은 지워지지 않아요. 되살리면 목록에 다시 나와요.", 12f, Y2k.MUTED, true).apply { setPadding(0, 0, 0, dp(10)) })
+   hiddenTrips.forEach { h ->
+    val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
+    row.addView(Y2k.text(this, "${tripTitle(h)}\n${dateRange(h.start, h.end)} · ${"%,d".format(h.photos.size)}장", 13f, ink, true), LinearLayout.LayoutParams(0, -2, 1f))
+    row.addView(Y2k.button(this, "되살리기", true, 12f) {
+     edits.hidden.remove(h.key); saveEdits(); dialog?.dismiss(); rebuild()
+     Toast.makeText(this, "여행을 되살렸어요", Toast.LENGTH_SHORT).show()
+    })
+    col.addView(row)
+   }
+   body.addView(android.widget.ScrollView(this).apply { addView(col) }, FrameLayout.LayoutParams(-1, -1))
+  }
+  dialog.show()
  }
 
  private fun stopName(s: TripStop): String {
@@ -826,7 +943,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun bookPages(t: Trip, days: List<TripDay>, plan: TripPlan): List<BookPage> {
   val book = tripBook(t)
   val dayFmt = SimpleDateFormat("M월 d일 (E)", Locale.KOREA)
-  val cover = t.photos.filter { it.id in book.stars }.minByOrNull { it.date } ?: t.cover
+  val cover = (if (t.coverId != null) t.cover else null) ?: t.photos.filter { it.id in book.stars }.minByOrNull { it.date } ?: t.cover
   return Book.pages(tripTitle(t), dateRange(t.start, t.end), "${Trips.dayCount(t)}일", cover, days,
    { d -> "DAY ${d.dayNumber} · ${dayFmt.format(Date(d.dayStart))}" },
    { d -> stopNames((plan.dayRoutes[d.dayNumber] ?: emptyList()).map { plan.stops[it] }).filter { !it.startsWith("이름 찾는") && !it.startsWith("이동 중") }.joinToString(" · ") },
@@ -1059,6 +1176,16 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   val o = JSONObject(); decisions.forEach { (k, v) -> o.put(k, v) }
   openFileOutput("trip_decisions.json", MODE_PRIVATE).bufferedWriter().use { it.write(o.toString()) }
  }
+ private fun loadEdits() {
+  try {
+   val e = TripEdits.fromJson(openFileInput("trip_edits.json").bufferedReader().use { it.readText() })
+   edits.cuts.addAll(e.cuts); edits.hidden.addAll(e.hidden); edits.titles.putAll(e.titles); edits.covers.putAll(e.covers)
+  } catch (_: Exception) { }
+ }
+ private fun saveEdits() {
+  try { openFileOutput("trip_edits.json", MODE_PRIVATE).bufferedWriter().use { it.write(edits.toJson()) } }
+  catch (_: Exception) { Toast.makeText(this, "저장 실패", Toast.LENGTH_SHORT).show() }
+ }
  private val bookStore = mutableMapOf<String, TripBook>()
  private fun tripBook(t: Trip) = bookStore.getOrPut(t.key) { TripBook() }
  private fun loadBook() {
@@ -1100,7 +1227,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private fun exportBackup(uri: Uri) {
   try {
    val backup = JSONObject().put("app", "travel-footprints").put("version", 1)
-   listOf("points.json", "trip_decisions.json", "places.json", "book.json").forEach { name ->
+   listOf("points.json", "trip_decisions.json", "places.json", "book.json", "trip_edits.json").forEach { name ->
     val text = try { openFileInput(name).bufferedReader().use { it.readText() } } catch (_: Exception) { null }
     if (text != null) backup.put(name, text)
    }
@@ -1113,11 +1240,11 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    val backup = JSONObject(contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: throw IllegalStateException("파일 열기 실패"))
    if (backup.optString("app") != "travel-footprints" || !backup.has("points.json")) throw IllegalArgumentException("여행 발자국 백업 파일이 아니에요")
    JSONArray(backup.getString("points.json"))
-   listOf("points.json", "trip_decisions.json", "places.json", "book.json").forEach { name ->
+   listOf("points.json", "trip_decisions.json", "places.json", "book.json", "trip_edits.json").forEach { name ->
     if (backup.has(name)) openFileOutput(name, MODE_PRIVATE).bufferedWriter().use { it.write(backup.getString(name)) }
    }
-   points.clear(); decisions.clear(); placeNames.clear(); bookStore.clear()
-   loadDecisions(); loadPlaceNames(); loadBook(); loadCache()
+   points.clear(); decisions.clear(); placeNames.clear(); bookStore.clear(); edits.cuts.clear(); edits.hidden.clear(); edits.titles.clear(); edits.covers.clear()
+   loadDecisions(); loadPlaceNames(); loadBook(); loadEdits(); loadCache()
    Toast.makeText(this, "백업 불러오기 완료", Toast.LENGTH_LONG).show()
   } catch (e: Exception) { Toast.makeText(this, "불러오기 실패: ${e.message}", Toast.LENGTH_LONG).show() }
  }
