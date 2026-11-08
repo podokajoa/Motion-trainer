@@ -85,6 +85,12 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
  private var hiddenTrips = emptyList<Trip>()
  private val edits = TripEdits()
  private var pickingCover = false
+ // shared-element opening: the card photo grows into the album cover and shrinks back when closing
+ private var sharedFrom: android.graphics.Rect? = null
+ private var sharedBitmap: Bitmap? = null
+ private var sharedOverlay: ImageView? = null
+ private var sharedAnim: android.animation.ValueAnimator? = null
+ private var coverImage: ImageView? = null
  private var asks = emptyList<TravelCandidate>()
  private val decisions = mutableMapOf<String, Boolean>()
  private val placeNames = mutableMapOf<String, String>()
@@ -172,7 +178,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
    override fun handleOnBackPressed() {
     when {
-     albumPanel.visibility == View.VISIBLE -> closeTrip()
+     albumPanel.visibility == View.VISIBLE -> closeTripAnimated()
      mapWindow.visibility == View.VISIBLE -> showTab(false)
      else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed() }
     }
@@ -367,7 +373,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
    badge.text = "${Trips.dayCount(t)}일"
    sub.text = "${dateRange(t.start, t.start)} · ${"%,d".format(t.photos.size)}장"
    loadThumb(image, t.cover.uri, size)
-   box.setOnClickListener { openTrip(t) }
+   box.setOnClickListener { openTrip(t, image) }
   }
  }
 
@@ -415,9 +421,10 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   class Photo(val p: PhotoPoint, val index: Int) : AlbumRow()
  }
 
- private fun openTrip(t: Trip) {
+ private fun openTrip(t: Trip, from: ImageView? = null) {
   openTrip = t
   pickingCover = false
+  coverImage = null
   val days = Trips.days(t)
   val plan = Trips.plan(days)
   requestPlaces(plan.stops.map { it.lat to it.lng })
@@ -427,7 +434,7 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   val ordered = days.flatMap { it.photos }
   val dayPositions = rows.withIndex().filter { it.value is AlbumRow.Day }.map { it.index }
 
-  val w = Y2k.window(this, "${tripTitle(t)}.${PhotoYears.yearOf(t.start) ?: ""}", onBack = { closeTrip() }, onClose = { closeTrip() })
+  val w = Y2k.window(this, "${tripTitle(t)}.${PhotoYears.yearOf(t.start) ?: ""}", onBack = { closeTripAnimated() }, onClose = { closeTripAnimated() })
   val inset = FrameLayout(this).apply { background = Y2k.frame(Y2k.PAPER, ink, 2, 0); setPadding(dp(2), dp(2), dp(2), dp(2)) }
   val list = RecyclerView(this).apply { clipToPadding = false; setPadding(0, 0, 0, dp(8)) }
   val grid = GridLayoutManager(this, 3)
@@ -473,14 +480,89 @@ class MainActivity : ComponentActivity(), OnMapReadyCallback {
   albumPanel.addView(Y2k.SkyView(this), FrameLayout.LayoutParams(-1, -1))
   albumPanel.addView(w.root, FrameLayout.LayoutParams(-1, -1).apply { setMargins(dp(8), dp(8), dp(8), dp(4)) })
   albumPanel.visibility = View.VISIBLE
+  sharedAnim?.cancel(); sharedOverlay?.let { (it.parent as? ViewGroup)?.removeView(it) }; sharedOverlay = null
+  sharedFrom = null; sharedBitmap = null
+  val fromBmp = (from?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+  if (from != null && fromBmp != null && from.width > 0 && from.isAttachedToWindow) {
+   val parent = albumPanel.parent as ViewGroup
+   val a = rectInParent(from, parent)
+   sharedFrom = a; sharedBitmap = fromBmp
+   albumPanel.alpha = 0f
+   // the cover row appears after the list has been laid out, so wait a few frames for it
+   fun go(tries: Int) {
+    val ci = coverImage
+    if (ci != null && ci.isAttachedToWindow && ci.width > 0) {
+     ci.alpha = 0f
+     flyPhoto(fromBmp, a, rectInParent(ci, parent), true) { ci.alpha = 1f; albumPanel.alpha = 1f }
+    } else if (tries < 12 && albumPanel.visibility == View.VISIBLE) albumPanel.postDelayed({ go(tries + 1) }, 16)
+    else albumPanel.alpha = 1f
+   }
+   albumPanel.post { go(0) }
+  } else albumPanel.alpha = 1f
  }
 
- private fun closeTrip() { albumPanel.visibility = View.GONE; albumPanel.removeAllViews(); openTrip = null; albumRefresh = null }
+ private fun rectInParent(v: View, parent: View): android.graphics.Rect {
+  val a = IntArray(2); val b = IntArray(2)
+  v.getLocationInWindow(a); parent.getLocationInWindow(b)
+  return android.graphics.Rect(a[0] - b[0], a[1] - b[1], a[0] - b[0] + v.width, a[1] - b[1] + v.height)
+ }
+
+ /** Moves a copy of the photo from rect [a] to rect [b] while the album panel fades in (or out). */
+ private fun flyPhoto(bmp: Bitmap, a: android.graphics.Rect, b: android.graphics.Rect, fadeIn: Boolean, onEnd: () -> Unit) {
+  val parent = albumPanel.parent as ViewGroup
+  sharedAnim?.cancel(); sharedOverlay?.let { parent.removeView(it) }
+  val ov = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setImageBitmap(bmp); setBackgroundColor(ink) }
+  parent.addView(ov, FrameLayout.LayoutParams(a.width(), a.height()).apply { leftMargin = a.left; topMargin = a.top })
+  sharedOverlay = ov
+  var cancelled = false
+  val anim = android.animation.ValueAnimator.ofFloat(0f, 1f)
+  anim.duration = 320
+  anim.interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+  anim.addUpdateListener {
+   val f = it.animatedValue as Float
+   fun mix(x: Int, y: Int) = (x + (y - x) * f).toInt()
+   val lp = ov.layoutParams as FrameLayout.LayoutParams
+   lp.leftMargin = mix(a.left, b.left); lp.topMargin = mix(a.top, b.top); lp.width = mix(a.width(), b.width()); lp.height = mix(a.height(), b.height())
+   ov.layoutParams = lp
+   albumPanel.alpha = if (fadeIn) min(1f, f * 1.8f) else max(0f, 1f - f * 1.3f)
+  }
+  anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+   override fun onAnimationCancel(an: android.animation.Animator) { cancelled = true }
+   override fun onAnimationEnd(an: android.animation.Animator) {
+    if (cancelled) return
+    parent.removeView(ov); if (sharedOverlay === ov) sharedOverlay = null
+    sharedAnim = null
+    onEnd()
+   }
+  })
+  sharedAnim = anim
+  anim.start()
+ }
+
+ /** Back / close from the album: the cover photo shrinks back into its card when that is possible. */
+ private fun closeTripAnimated() {
+  val bmp = sharedBitmap; val a = sharedFrom; val ci = coverImage
+  if (bmp == null || a == null || ci == null || !ci.isAttachedToWindow || ci.width == 0 || sharedAnim != null) { closeTrip(); return }
+  val parent = albumPanel.parent as ViewGroup
+  val b = rectInParent(ci, parent)
+  if (b.bottom <= 0 || b.top >= parent.height) { closeTrip(); return }
+  ci.alpha = 0f
+  flyPhoto(bmp, b, a, false) { closeTrip() }
+ }
+
+ private fun closeTrip() {
+  sharedAnim?.cancel(); sharedAnim = null
+  sharedOverlay?.let { (it.parent as? ViewGroup)?.removeView(it) }; sharedOverlay = null
+  sharedFrom = null; sharedBitmap = null; coverImage = null
+  albumPanel.alpha = 1f
+  albumPanel.visibility = View.GONE; albumPanel.removeAllViews(); openTrip = null; albumRefresh = null
+ }
 
  private fun albumCover(t: Trip, days: List<TripDay>, plan: TripPlan, jump: (Int) -> Unit): View = LinearLayout(this).apply {
   orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(2), dp(2), dp(4))
   val top = FrameLayout(context)
   val img = photoBox().apply { background = Y2k.frame(ink, ink, 0, 0); setPadding(0, dp(2), 0, dp(2)) }
+  coverImage = img
   loadThumb(img, t.cover.uri, resources.displayMetrics.widthPixels)
   top.addView(img, FrameLayout.LayoutParams(-1, -1))
   top.addView(Y2k.text(context, dateRange(t.start, t.end), 12f, Color.WHITE, true).apply { setBackgroundColor(ink); setPadding(dp(8), dp(4), dp(8), dp(4)) },

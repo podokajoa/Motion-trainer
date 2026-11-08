@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 // 출시용(-PstoreBuild=true)은 새 앱 ID를 쓴다. 미나 폰의 기존 앱(com.example...)은 기본 빌드가 그대로 유지한다.
 val storeBuild = project.hasProperty("storeBuild")
 android { namespace = "com.example.travelfootprints"; compileSdk = 35
- defaultConfig { applicationId = if (storeBuild) "kr.travelfootprints.app" else "com.example.travelfootprints"; minSdk = 29; targetSdk = 35; versionCode = 29; versionName = "0.29"; manifestPlaceholders["appLabel"] = "여행 발자국"; ndk { abiFilters += listOf("arm64-v8a","armeabi-v7a") } }
+ defaultConfig { applicationId = if (storeBuild) "kr.travelfootprints.app" else "com.example.travelfootprints"; minSdk = 29; targetSdk = 35; versionCode = 30; versionName = "0.30"; manifestPlaceholders["appLabel"] = "여행 발자국"; ndk { abiFilters += listOf("arm64-v8a","armeabi-v7a") } }
  // CI에서는 집 PC의 debug.keystore를 명시적으로 지정한다(TF_DEBUG_KEYSTORE). 없으면 기본 debug 키.
  System.getenv("TF_DEBUG_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { path ->
   signingConfigs.getByName("debug") { storeFile = file(path); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
