@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>제목 쏙</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f4f5f7">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2129; --ink2:#5f6673; --line:#e2e5ea; --acc:#2f6fed; --acc2:#e8efff; --red:#e5484d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; font-size:16px; }
+  main { max-width:820px; margin:0 auto; padding:18px 16px 110px; }
+  h1 { font-size:24px; margin:4px 0 2px; letter-spacing:-.02em; }
+  .sub { color:var(--ink2); font-size:14px; margin:0 0 16px; line-height:1.5; }
+  button { font:inherit; color:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 12px; }
+  button.pri { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
+  button.ghost { background:transparent; border-color:transparent; color:var(--ink2); padding:6px 8px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .drop { display:block; border:2px dashed #c6ccd6; border-radius:16px; background:#fff; padding:26px 16px; text-align:center; cursor:pointer; }
+  .drop.over { border-color:var(--acc); background:var(--acc2); }
+  .drop b { display:block; font-size:18px; margin-bottom:6px; }
+  .drop span { color:var(--ink2); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin:16px 0; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .between { justify-content:space-between; }
+  .muted { color:var(--ink2); font-size:13px; line-height:1.5; }
+  details.set { margin:14px 0 0; }
+  details.set summary { cursor:pointer; color:var(--ink2); font-size:14px; }
+  .opts { display:grid; grid-template-columns:auto 1fr; gap:10px 12px; align-items:center; margin-top:12px; font-size:14px; }
+  .opts input[type=range] { width:100%; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; padding:6px 12px; }
+  .seg button.on { background:var(--acc); color:#fff; }
+  .stage { position:relative; margin-top:10px; border-radius:10px; overflow:hidden; background:#ddd; touch-action:none; }
+  .stage canvas { display:block; width:100%; height:auto; }
+  .tip { font-size:13px; color:var(--ink2); margin:8px 0 0; line-height:1.5; }
+  .pick-on .stage { outline:3px solid var(--acc); }
+  .results { margin-top:14px; display:grid; gap:12px; }
+  .res { border:1px solid var(--line); border-radius:12px; padding:10px; background:#fafbfc; }
+  .res .imgwrap { background:#fff; border:1px solid var(--line); border-radius:6px; overflow:auto; }
+  .res img { display:block; max-width:100%; height:auto; }
+  .res .row { margin-top:8px; }
+  .res textarea { width:100%; font:inherit; font-size:15px; border:1px solid var(--line); border-radius:8px; padding:8px; margin-top:8px; resize:vertical; }
+  .num { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--acc); color:#fff; font-size:12px; font-weight:700; }
+  .bar { position:fixed; left:0; right:0; bottom:0; background:rgba(255,255,255,.96); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:none; backdrop-filter:blur(6px); }
+  .bar.show { display:block; }
+  .bar .in { max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:center; justify-content:space-between; }
+  .toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:#1d2129; color:#fff; padding:10px 16px; border-radius:20px; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; text-align:center; }
+  .toast.show { opacity:.95; }
+  .how { font-size:13px; color:var(--ink2); line-height:1.6; margin:18px 0 0; }
+  .how b { color:var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>제목 쏙</h1>
+  <p class="sub">검색 결과 캡처를 넣으면 기사 제목만 하나씩 잘라서 <b>흰 바탕에 검은 글씨</b> 이미지로 만들어 줘요. 이미지는 이 기기 안에서만 처리돼요.</p>
+
+  <label class="drop" id="drop">
+    <b>캡처 이미지 넣기</b>
+    <span>눌러서 고르기 · 여러 장 가능 · PC에선 끌어다 놓거나 Ctrl+V</span>
+    <input type="file" id="file" accept="image/*" multiple hidden>
+  </label>
+
+  <details class="set" id="setBox">
+    <summary>글씨 모양 조절</summary>
+    <div class="opts">
+      <span>크기</span>
+      <div class="seg" id="scaleSeg"><button data-v="0">자동</button><button data-v="1">1배</button><button data-v="2">2배</button><button data-v="3">3배</button><button data-v="4">4배</button></div>
+      <span>굵기</span>
+      <input type="range" id="weight" min="0" max="100" value="50">
+      <span>선명도</span>
+      <input type="range" id="sharp" min="0" max="100" value="70">
+      <span>여백</span>
+      <input type="range" id="margin" min="0" max="100" value="40">
+      <span>제목 색만</span>
+      <label class="row" style="gap:6px"><input type="checkbox" id="onlyColor" checked> 제목 색이 아닌 글씨(요약·날짜)는 지우기</label>
+    </div>
+  </details>
+
+  <div id="list"></div>
+
+  <div class="how">
+    <b>왜 선명할까?</b> 사진을 새로 그리거나(생성형 AI) 그냥 늘리면 글자 가장자리가 번져요. 여기서는 원본 픽셀에서 "글자가 얼마나 칠해졌는지"만 뽑아 부드럽게 키운 다음, 가장자리를 다시 또렷하게 세워서 흰 바탕에 검게 찍어요.
+    그래도 원본 글씨가 너무 작으면 한계가 있어서, 그럴 땐 <b>글자로 다시 쓰기</b>를 누르면 글자를 읽어서 깨끗한 글꼴로 새로 써 줘요 (오타는 고쳐서 쓰면 돼요).
+  </div>
+</main>
+
+<div class="bar" id="bar"><div class="in">
+  <span class="muted" id="barInfo"></span>
+  <div class="row"><button id="clearAll" class="ghost">비우기</button><button id="saveAll" class="pri">전부 저장</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ───────── 설정 ─────────
+const OPT = { scale:0, weight:50, sharp:70, margin:40, onlyColor:true };
+try { Object.assign(OPT, JSON.parse(localStorage.getItem("headline-opt") || "{}")); } catch (e) {}
+function saveOpt(){ try { localStorage.setItem("headline-opt", JSON.stringify(OPT)); } catch (e) {} }
+
+const $ = s => document.querySelector(s);
+const docs = []; // 넣은 캡처들
+let uid = 0;
+
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove("show"),2200); }
+
+// ───────── 색 계산 ─────────
+// 배경색: 가장 많이 나오는 색
+function findBackground(D, W, H){
+  const hist = new Map(); const step = Math.max(1, Math.floor(Math.sqrt(W*H/250000)));
+  for (let y=0; y<H; y+=step) for (let x=0; x<W; x+=step){
+    const i=(y*W+x)*4; const k=(D[i]>>3)<<10 | (D[i+1]>>3)<<5 | (D[i+2]>>3);
+    hist.set(k,(hist.get(k)||0)+1);
+  }
+  let best=0, bk=0; for (const [k,v] of hist) if (v>best){best=v;bk=k;}
+  let r=0,g=0,b=0,n=0;
+  for (let y=0; y<H; y+=step) for (let x=0; x<W; x+=step){
+    const i=(y*W+x)*4; const k=(D[i]>>3)<<10 | (D[i+1]>>3)<<5 | (D[i+2]>>3);
+    if (k===bk){ r+=D[i]; g+=D[i+1]; b+=D[i+2]; n++; }
+  }
+  return [r/n, g/n, b/n];
+}
+// 링크(제목) 색: 파랑~보라 계열 중 배경에서 가장 먼 색
+function findTitleColors(D, W, H, bg){
+  const cand = [];
+  const step = Math.max(1, Math.floor(Math.sqrt(W*H/400000)));
+  for (let y=0; y<H; y+=step) for (let x=0; x<W; x+=step){
+    const i=(y*W+x)*4, r=D[i], g=D[i+1], b=D[i+2];
+    const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+    if (b===mx && b-r>28 && b-g>28 && mx-mn>55){
+      const d=Math.hypot(r-bg[0], g-bg[1], b-bg[2]);
+      if (d>60) cand.push([d,r,g,b]);
+    }
+  }
+  // 안 본 기사(파랑)와 이미 본 기사(보라)를 따로 모으기
+  const groups=[cand.filter(c=>c[1]-c[2] < 30), cand.filter(c=>c[1]-c[2] >= 30)];
+  const out=[];
+  for (const g of groups){
+    if (g.length < 30) continue;
+    g.sort((a,b)=>b[0]-a[0]);
+    const top = g.slice(0, Math.max(10, Math.floor(g.length*0.25)));
+    const c=[0,0,0]; for (const t of top){ c[0]+=t[1]; c[1]+=t[2]; c[2]+=t[3]; }
+    out.push(c.map(v=>v/top.length));
+  }
+  return out;
+}
+// 픽셀 하나가 "제목 글자로 얼마나 칠해졌는지" (0~1)
+function makeInk(bg, tc, onlyColor, strict){
+  const cut = strict ? 0.12 : 0.18, half = cut/2;
+  const vx=tc[0]-bg[0], vy=tc[1]-bg[1], vz=tc[2]-bg[2];
+  const vv=vx*vx+vy*vy+vz*vz || 1, vlen=Math.sqrt(vv);
+  return (r,g,b) => {
+    const dx=r-bg[0], dy=g-bg[1], dz=b-bg[2];
+    let t=(dx*vx+dy*vy+dz*vz)/vv;
+    if (t<=0) return 0; if (t>1) t=1;
+    if (onlyColor){
+      const px=dx-t*vx, py=dy-t*vy, pz=dz-t*vz;
+      const perp=Math.sqrt(px*px+py*py+pz*pz)/vlen/Math.max(t,0.08); // 제목 색에서 벗어난 정도(색 방향 차이)
+      if (perp>cut) return 0;
+      if (perp>half) t*= (cut-perp)/half;
+    }
+    return t;
+  };
+}
+
+// ───────── 제목 찾기 ─────────
+function detect(doc){
+  const segs=[];
+  for (const tc of doc.tcs) findLines(doc, tc, segs);
+  return pickTitles(segs);
+}
+function findLines(doc, tc, segs){
+  const {W,H,D,bg} = doc;
+  const ink = makeInk(bg, tc, true, true);
+  const mask = new Uint8Array(W*H);
+  const rowCnt = new Uint32Array(H);
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+    const i=(y*W+x)*4;
+    if (ink(D[i],D[i+1],D[i+2])>0.45){ mask[y*W+x]=1; rowCnt[y]++; }
+  }
+  // 1) 글줄(가로 띠) 찾기
+  const runs=[]; let s=-1, gap=0;
+  for (let y=0;y<=H;y++){
+    const on = y<H && rowCnt[y]>=2;
+    if (on){ if (s<0) s=y; gap=0; }
+    else if (s>=0){ gap++; if (gap>2 || y===H){ runs.push([s, y-gap]); s=-1; gap=0; } }
+  }
+  // 2) 띠 안에서 멀리 떨어진 덩어리는 나누기
+  for (const [y0,y1] of runs){
+    const h=y1-y0+1; const col=new Uint32Array(W);
+    for (let y=y0;y<=y1;y++) for (let x=0;x<W;x++) if (mask[y*W+x]) col[x]++;
+    let xs=-1, last=-1;
+    const maxGap=Math.max(6, Math.round(h*1.6));
+    for (let x=0;x<=W;x++){
+      const on = x<W && col[x]>0;
+      if (on){ if (xs<0) xs=x; last=x; }
+      else if (xs>=0 && (x===W || x-last>maxGap)){ const g=tighten(mask,W,xs,last,y0,y1); g.tc=tc; segs.push(g); xs=-1; }
+    }
+  }
+}
+function pickTitles(segs){
+  // 3) 제목 크기 글씨만 남기기 (요약 속 작은 파란 글씨, 아이콘 빼기)
+  const good = segs.filter(g => g.w >= g.h*3 && g.fill > 0.06); // 글자 테두리 색번짐만 있는 줄은 빼기
+  if (!good.length) return [];
+  const hs = good.map(g=>g.h).sort((a,b)=>a-b);
+  const ref = hs[Math.floor((hs.length-1)*0.85)];
+  let lines = good.filter(g => g.h >= ref*0.7 && g.h <= ref*1.8).sort((a,b)=>a.y0-b.y0||a.x0-b.x0);
+  // 4) 두 줄짜리 제목은 하나로 합치기
+  const out=[];
+  for (const g of lines){
+    const p=out[out.length-1];
+    if (p && p.tc===g.tc && g.y0 - p.y1 < Math.max(p.lh, g.h)*0.9 && Math.abs(g.x0-p.x0) < g.h*1.5){
+      p.x0=Math.min(p.x0,g.x0); p.x1=Math.max(p.x1,g.x1); p.y1=g.y1; p.lines++;
+    } else out.push({x0:g.x0, x1:g.x1, y0:g.y0, y1:g.y1, lh:g.h, lines:1, tc:g.tc});
+  }
+  // 겹치는 상자는 하나만
+  const keep=[];
+  for (const b of out){ if (!keep.some(k=> Math.max(0,Math.min(k.x1,b.x1)-Math.max(k.x0,b.x0)) * Math.max(0,Math.min(k.y1,b.y1)-Math.max(k.y0,b.y0)) > 0.5*(b.x1-b.x0)*(b.y1-b.y0))) keep.push(b); }
+  return keep.map(b => ({ x:b.x0, y:b.y0, w:b.x1-b.x0+1, h:b.y1-b.y0+1, lh:b.lh, tc:b.tc, auto:true }));
+}
+function tighten(mask,W,x0,x1,y0,y1){
+  let a=y1, b=y0, n=0;
+  for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++) if (mask[y*W+x]){ n++; if (y<a) a=y; if (y>b) b=y; }
+  const w=x1-x0+1, h=b-a+1;
+  return {x0,x1,y0:a,y1:b,w,h,fill:n/(w*h)};
+}
+
+// ───────── 잘라서 흰 바탕 검은 글씨로 ─────────
+function median(arr){ const s=arr.slice().sort((a,b)=>a-b); return s[s.length>>1]; }
+function render(doc, box){
+  const {W,D} = doc; const tc = box.tc || doc.tcs[0];
+  const lh = box.lh || Math.min(box.h, 40);
+  const pad = Math.round(lh*0.12)+1;   // 글자가 잘리지 않게 살짝 더
+  const x0=Math.max(0,box.x-pad), y0=Math.max(0,box.y-pad);
+  const x1=Math.min(doc.W-1,box.x+box.w-1+pad), y1=Math.min(doc.H-1,box.y+box.h-1+pad);
+  const w=x1-x0+1, h=y1-y0+1;
+  // 이 조각의 배경색: 가장자리 픽셀의 중앙값
+  const R=[],G=[],B=[];
+  for (let x=x0;x<=x1;x++) for (const y of [y0,y1]){ const i=(y*W+x)*4; R.push(D[i]);G.push(D[i+1]);B.push(D[i+2]); }
+  for (let y=y0;y<=y1;y++) for (const x of [x0,x1]){ const i=(y*W+x)*4; R.push(D[i]);G.push(D[i+1]);B.push(D[i+2]); }
+  const bg=[median(R),median(G),median(B)];
+  // 직접 그린 상자는 그 안에서 배경과 가장 다른 색을 글자색으로
+  let col = tc;
+  if (!box.auto || !col){ let best=-1; for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++){ const i=(y*W+x)*4; const d=Math.hypot(D[i]-bg[0],D[i+1]-bg[1],D[i+2]-bg[2]); if (d>best){best=d; col=[D[i],D[i+1],D[i+2]];} } }
+  const ink = makeInk(bg, col, OPT.onlyColor && !!box.auto);
+  const A = new Float32Array(w*h);
+  const vals=[];
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+    const i=((y0+y)*W+(x0+x))*4; const a=ink(D[i],D[i+1],D[i+2]); A[y*w+x]=a; if (a>0.3) vals.push(a);
+  }
+  // 가장 진한 획을 1로 맞추기
+  if (vals.length){ vals.sort((a,b)=>a-b); const top=vals[Math.floor(vals.length*0.9)] || 1; if (top>0.2) for (let i=0;i<A.length;i++) A[i]=Math.min(1,A[i]/top); }
+  // 키우기(바이큐빅) → 가장자리 다시 세우기
+  const S=scaleFor(lh);
+  const big = bicubic(A, w, h, S);
+  const bw=w*S, bh=h*S;
+  const th = 0.62 - OPT.weight/100*0.34;            // 굵기: 기준선을 내릴수록 굵어짐
+  const soft = 0.30 - OPT.sharp/100*0.27;            // 선명도: 경계 폭
+  const m = Math.round(lh*S*(OPT.margin/100)*0.9);   // 흰 여백
+  const cv=document.createElement("canvas"); cv.width=bw+m*2; cv.height=bh+m*2;
+  const ctx=cv.getContext("2d");
+  ctx.fillStyle="#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+  const img=ctx.createImageData(bw,bh); const O=img.data;
+  const lo=th-soft, hi=th+soft;
+  for (let i=0;i<big.length;i++){
+    let t=(big[i]-lo)/(hi-lo); t=t<0?0:t>1?1:t; t=t*t*(3-2*t);
+    const v=Math.round(255*(1-t)); const j=i*4; O[j]=O[j+1]=O[j+2]=v; O[j+3]=255;
+  }
+  ctx.putImageData(img,m,m);
+  return cv;
+}
+// 자동: 글줄 높이가 약 90px이 되게 (작은 캡처는 크게, 큰 캡처는 그대로)
+function scaleFor(lh){ return OPT.scale || clamp(Math.round(90/lh),1,4); }
+function cubicW(t){ t=Math.abs(t); return t<1 ? 1.5*t*t*t-2.5*t*t+1 : t<2 ? -0.5*t*t*t+2.5*t*t-4*t+2 : 0; }
+function bicubic(A,w,h,S){
+  const bw=w*S, bh=h*S;
+  const wts=[]; for (let k=0;k<S;k++){ const f=(k+0.5)/S-0.5; const base=Math.floor(f); const fr=f-base; wts.push([base,[cubicW(1+fr),cubicW(fr),cubicW(1-fr),cubicW(2-fr)]]); }
+  const T=new Float32Array(bw*h);
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) for (let k=0;k<S;k++){
+    const [b,ws]=wts[k]; let s=0;
+    for (let j=0;j<4;j++){ const xx=Math.min(w-1,Math.max(0,x+b-1+j)); s+=A[y*w+xx]*ws[j]; }
+    T[y*bw+x*S+k]=s;
+  }
+  const O=new Float32Array(bw*bh);
+  for (let y=0;y<h;y++) for (let k=0;k<S;k++){
+    const [b,ws]=wts[k]; const oy=y*S+k;
+    for (let x=0;x<bw;x++){ let s=0; for (let j=0;j<4;j++){ const yy=Math.min(h-1,Math.max(0,y+b-1+j)); s+=T[yy*bw+x]*ws[j]; } O[oy*bw+x]=s; }
+  }
+  return O;
+}
+
+// ───────── 이미지 넣기 ─────────
+async function addFiles(files){
+  for (const f of files){ if (f && f.type.startsWith("image/")) await addImage(f); }
+}
+function loadImg(file){
+  return new Promise((res,rej)=>{ const url=URL.createObjectURL(file); const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url; });
+}
+async function addImage(file){
+  let im; try { im = await loadImg(file); } catch(e){ toast("이미지를 열 수 없어요"); return; }
+  const W=im.naturalWidth, H=im.naturalHeight;
+  const c=document.createElement("canvas"); c.width=W; c.height=H;
+  const cx=c.getContext("2d",{willReadFrequently:true}); cx.drawImage(im,0,0);
+  const D=cx.getImageData(0,0,W,H).data;
+  const doc={ id:++uid, name:(file.name||"캡처").replace(/\.[^.]+$/,""), im, W, H, D, bg:findBackground(D,W,H), tcs:[], boxes:[], sel:-1, ocr:{} };
+  doc.tcs=findTitleColors(D,W,H,doc.bg);
+  doc.boxes=detect(doc);
+  docs.push(doc);
+  buildCard(doc);
+  if (!doc.boxes.length) toast("파란 제목을 못 찾았어요. ‘제목 색 찍기’로 제목 글자를 한 번 눌러 줘요");
+}
+
+// ───────── 화면 ─────────
+function buildCard(doc){
+  const el=document.createElement("section"); el.className="card"; el.id="doc"+doc.id;
+  el.innerHTML=`
+    <div class="row between"><b class="cnt"></b>
+      <div class="row"><button class="pick">제목 색 찍기</button><button class="redetect ghost">다시 찾기</button><button class="del ghost">✕</button></div></div>
+    <div class="stage"><canvas></canvas></div>
+    <p class="tip">빈 곳을 끌면 상자 추가 · 상자를 누르면 선택(끌어서 옮기기, 모서리 끌어서 크기 조절) · 빨간 ✕로 빼기</p>
+    <div class="results"></div>`;
+  $("#list").prepend(el);
+  doc.el=el; doc.cv=el.querySelector("canvas"); doc.cv.width=doc.W; doc.cv.height=doc.H;
+  el.querySelector(".del").onclick=()=>{ docs.splice(docs.indexOf(doc),1); el.remove(); updateBar(); };
+  el.querySelector(".redetect").onclick=()=>{ if(!doc.tcs.length){toast("먼저 ‘제목 색 찍기’를 해 줘요");return;} doc.boxes=detect(doc); doc.sel=-1; doc.ocr={}; refresh(doc); };
+  el.querySelector(".pick").onclick=()=>{ doc.picking=!doc.picking; el.classList.toggle("pick-on",doc.picking); if(doc.picking) toast("제목 글자 위를 한 번 눌러 줘요"); };
+  bindStage(doc);
+  refresh(doc);
+}
+function sortBoxes(doc){ const s=doc.boxes[doc.sel]; doc.boxes.sort((a,b)=>a.y-b.y||a.x-b.x); doc.sel=s?doc.boxes.indexOf(s):-1; }
+function drawStage(doc){
+  const c=doc.cv.getContext("2d"); c.drawImage(doc.im,0,0);
+  const k=doc.W/Math.max(1,doc.cv.clientWidth||doc.W); // 화면 1px 당 이미지 px
+  doc.k=k;
+  doc.boxes.forEach((b,i)=>{
+    const on=i===doc.sel;
+    const o=3*k;
+    c.fillStyle=on?"rgba(47,111,237,.18)":"rgba(255,214,0,.10)"; c.fillRect(b.x-o,b.y-o,b.w+o*2,b.h+o*2);
+    c.lineWidth=Math.max(1.5,2*k); c.strokeStyle=on?"#2f6fed":"#ffcc00"; c.strokeRect(b.x-o,b.y-o,b.w+o*2,b.h+o*2);
+    const r=Math.max(9,11*k);
+    c.fillStyle=on?"#2f6fed":"#ffcc00"; c.beginPath(); c.arc(b.x-r*0.2, b.y-r*0.2, r, 0, 7); c.fill();
+    c.fillStyle=on?"#fff":"#000"; c.font=`bold ${Math.round(r*1.2)}px system-ui,sans-serif`; c.textAlign="center"; c.textBaseline="middle"; c.fillText(String(i+1), b.x-r*0.2, b.y-r*0.15);
+    const xr=xBtn(doc,b);
+    c.fillStyle="#e5484d"; c.beginPath(); c.arc(xr.x,xr.y,xr.r,0,7); c.fill();
+    c.strokeStyle="#fff"; c.lineWidth=Math.max(1.5,2*k); const q=xr.r*0.45;
+    c.beginPath(); c.moveTo(xr.x-q,xr.y-q); c.lineTo(xr.x+q,xr.y+q); c.moveTo(xr.x+q,xr.y-q); c.lineTo(xr.x-q,xr.y+q); c.stroke();
+  });
+}
+function xBtn(doc,b){ const r=Math.max(9,11*(doc.k||1)); return {x:Math.min(doc.W-r,b.x+b.w+r*0.2), y:Math.max(r,b.y-r*0.2), r}; }
+function refresh(doc){
+  sortBoxes(doc);
+  drawStage(doc);
+  doc.el.querySelector(".cnt").textContent = doc.boxes.length ? `제목 ${doc.boxes.length}개` : "제목을 못 찾았어요";
+  const wrap=doc.el.querySelector(".results"); wrap.innerHTML="";
+  doc.out=[];
+  doc.boxes.forEach((b,i)=>{
+    const cv=render(doc,b); const item={cv, box:b, idx:i+1};
+    doc.out.push(item);
+    const r=document.createElement("div"); r.className="res";
+    const key=boxKey(b);
+    r.innerHTML=`<div class="row" style="margin:0 0 8px"><span class="num">${i+1}</span><span class="muted">${cv.width}×${cv.height}</span></div>
+      <div class="imgwrap"></div>
+      <div class="row"><button class="save pri">저장</button><button class="copy">복사</button><button class="ocrb">글자로 다시 쓰기</button></div>`;
+    const img=new Image(); img.src=cv.toDataURL("image/png"); img.alt=`제목 ${i+1}`; r.querySelector(".imgwrap").appendChild(img);
+    r.querySelector(".save").onclick=()=>saveOne(doc,item);
+    r.querySelector(".copy").onclick=()=>copyOne(item);
+    r.querySelector(".ocrb").onclick=()=>startOcr(doc,item,r,key);
+    if (doc.ocr[key]!=null) showOcr(doc,item,r,key);
+    wrap.appendChild(r);
+  });
+  updateBar();
+}
+function boxKey(b){ return [b.x,b.y,b.w,b.h].join(","); }
+function updateBar(){
+  const n=docs.reduce((s,d)=>s+(d.out?d.out.length:0),0);
+  $("#bar").classList.toggle("show", docs.length>0);
+  $("#barInfo").textContent = n ? `제목 ${n}개` : "";
+  $("#saveAll").disabled = !n;
+}
+
+// ───────── 상자 고치기 (터치/마우스) ─────────
+function bindStage(doc){
+  const cv=doc.cv; let drag=null;
+  const pos=e=>{ const r=cv.getBoundingClientRect(); return { x:(e.clientX-r.left)*doc.W/r.width, y:(e.clientY-r.top)*doc.H/r.height }; };
+  cv.addEventListener("pointerdown",e=>{
+    const p=pos(e); const k=doc.W/cv.getBoundingClientRect().width; doc.k=k;
+    if (doc.picking){ pickColor(doc,p); return; }
+    // ✕ 버튼
+    for (let i=doc.boxes.length-1;i>=0;i--){ const xr=xBtn(doc,doc.boxes[i]); if (Math.hypot(p.x-xr.x,p.y-xr.y)<=xr.r*1.4){ doc.boxes.splice(i,1); doc.sel=-1; refresh(doc); return; } }
+    const edge=14*k;
+    const s=doc.boxes[doc.sel];
+    if (s){
+      const L=Math.abs(p.x-s.x)<edge, R=Math.abs(p.x-(s.x+s.w))<edge, T=Math.abs(p.y-s.y)<edge, B=Math.abs(p.y-(s.y+s.h))<edge;
+      const inY=p.y>s.y-edge&&p.y<s.y+s.h+edge, inX=p.x>s.x-edge&&p.x<s.x+s.w+edge;
+      if ((L||R)&&inY || (T||B)&&inX){ drag={mode:"resize",L:L&&inY,R:R&&inY,T:T&&inX,B:B&&inX,b:s,o:{...s},p}; cv.setPointerCapture(e.pointerId); return; }
+    }
+    for (let i=doc.boxes.length-1;i>=0;i--){ const b=doc.boxes[i];
+      if (p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){ doc.sel=i; drag={mode:"move",b,o:{...b},p,moved:false}; cv.setPointerCapture(e.pointerId); drawStage(doc); return; } }
+    doc.sel=-1; drag={mode:"new",p,b:null}; cv.setPointerCapture(e.pointerId); drawStage(doc);
+  });
+  cv.addEventListener("pointermove",e=>{
+    if (!drag) return; const p=pos(e); const dx=p.x-drag.p.x, dy=p.y-drag.p.y;
+    if (drag.mode==="move"){ if (Math.abs(dx)+Math.abs(dy)>3*doc.k) drag.moved=true; drag.b.x=clamp(drag.o.x+dx,0,doc.W-drag.b.w); drag.b.y=clamp(drag.o.y+dy,0,doc.H-drag.b.h); }
+    else if (drag.mode==="resize"){ const b=drag.b,o=drag.o;
+      if (drag.L){ b.x=clamp(o.x+dx,0,o.x+o.w-6); b.w=o.x+o.w-b.x; } if (drag.R){ b.w=clamp(o.w+dx,6,doc.W-o.x); }
+      if (drag.T){ b.y=clamp(o.y+dy,0,o.y+o.h-6); b.h=o.y+o.h-b.y; } if (drag.B){ b.h=clamp(o.h+dy,6,doc.H-o.y); } }
+    else if (drag.mode==="new"){
+      if (!drag.b && Math.abs(dx)+Math.abs(dy)>8*doc.k){ drag.b={x:0,y:0,w:1,h:1}; doc.boxes.push(drag.b); doc.sel=doc.boxes.length-1; }
+      if (drag.b){ drag.b.x=Math.min(drag.p.x,p.x); drag.b.y=Math.min(drag.p.y,p.y); drag.b.w=Math.abs(dx); drag.b.h=Math.abs(dy); }
+    }
+    drawStage(doc);
+  });
+  const end=()=>{
+    if (!drag) return; const d=drag; drag=null;
+    if (d.b){ const b=d.b; b.x=Math.round(b.x); b.y=Math.round(b.y); b.w=Math.max(4,Math.round(b.w)); b.h=Math.max(4,Math.round(b.h)); b.lh=guessLineH(b); }
+    if (d.mode==="new" && d.b && (d.b.w<8||d.b.h<6)){ doc.boxes.splice(doc.boxes.indexOf(d.b),1); doc.sel=-1; }
+    if (d.mode==="move" && !d.moved){ drawStage(doc); return; }
+    if (d.mode==="new" && !d.b){ drawStage(doc); return; }
+    refresh(doc);
+  };
+  cv.addEventListener("pointerup",end); cv.addEventListener("pointercancel",end);
+  window.addEventListener("resize",()=>drawStage(doc));
+}
+function guessLineH(b){ return b.lh && b.h>=b.lh*0.8 ? b.lh : Math.min(b.h, 60); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function pickColor(doc,p){
+  // 누른 곳 근처에서 배경과 가장 다른 색 = 제목 글자 색
+  const r=Math.round(8*doc.k), {W,H,D,bg}=doc; let best=-1, col=null;
+  for (let y=Math.max(0,Math.round(p.y)-r); y<=Math.min(H-1,Math.round(p.y)+r); y++)
+    for (let x=Math.max(0,Math.round(p.x)-r); x<=Math.min(W-1,Math.round(p.x)+r); x++){
+      const i=(y*W+x)*4; const d=Math.hypot(D[i]-bg[0],D[i+1]-bg[1],D[i+2]-bg[2]); if (d>best){best=d; col=[D[i],D[i+1],D[i+2]];}
+    }
+  doc.picking=false; doc.el.classList.remove("pick-on");
+  if (!col || best<40){ toast("배경만 눌렸어요. 글자 위를 다시 눌러 줘요"); return; }
+  const before=doc.boxes.length;
+  if (!doc.tcs.some(t=>Math.hypot(t[0]-col[0],t[1]-col[1],t[2]-col[2])<40)) doc.tcs.push(col); doc.boxes=detect(doc); doc.sel=-1; doc.ocr={}; refresh(doc);
+  toast(doc.boxes.length ? `제목 ${doc.boxes.length}개를 찾았어요` + (doc.boxes.length>before?"":" (새로 찾은 건 없어요)") : "이 색으로는 못 찾았어요. 빈 곳을 끌어서 직접 상자를 그려 줘요");
+}
+
+// ───────── 글자로 다시 쓰기 (OCR) ─────────
+let ocrWorker=null, ocrLoading=null, ocrQueue=Promise.resolve();
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+async function getOcr(){
+  if (ocrWorker) return ocrWorker;
+  if (!ocrLoading) ocrLoading=(async()=>{
+    if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    const w = await Tesseract.createWorker("kor+eng", 1);
+    await w.setParameters({ tessedit_pageseg_mode:"6", preserve_interword_spaces:"1" });
+    ocrWorker=w; return w;
+  })().catch(e=>{ ocrLoading=null; throw e; });
+  return ocrLoading;
+}
+async function startOcr(doc,item,r,key){
+  const btn=r.querySelector(".ocrb"); btn.disabled=true; btn.textContent="글자 읽는 중…";
+  try {
+    if (!ocrWorker) toast("처음 한 번은 글자 사전을 받느라 조금 걸려요");
+    const w=await getOcr();
+    const oneLine = item.box.h < (item.box.lh||item.box.h)*1.5;
+    const { data } = await (ocrQueue = ocrQueue.catch(()=>{}).then(async()=>{
+      await w.setParameters({ tessedit_pageseg_mode: oneLine ? "7" : "6" }); // 한 줄 / 여러 줄
+      return w.recognize(item.cv);
+    }));
+    doc.ocr[key]=cleanOcr(data.text);
+    showOcr(doc,item,r,key);
+  } catch(e){ console.error(e); toast("글자 읽기에 실패했어요. 인터넷 연결을 확인해 줘요"); btn.disabled=false; btn.textContent="글자로 다시 쓰기"; }
+}
+function cleanOcr(t){
+  return t.split("\n").map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean).join("\n")
+    .replace(/[.·]*…[.·…]*|\.{3,}/g,"…");
+}
+function showOcr(doc,item,r,key){
+  const btn=r.querySelector(".ocrb"); btn.disabled=false; btn.textContent="원래 글씨로";
+  let ta=r.querySelector("textarea"); if (!ta){ ta=document.createElement("textarea"); ta.rows=2; r.appendChild(ta); }
+  ta.value=doc.ocr[key];
+  const tip=document.createElement("div"); tip.className="muted"; tip.style.marginTop="4px"; tip.textContent="읽은 글자예요. 틀린 글자는 여기서 고치면 바로 바뀌어요.";
+  if (!r.querySelector(".ocrtip")){ tip.classList.add("ocrtip"); r.appendChild(tip); }
+  const orig=item.orig || (item.orig=item.cv);
+  const draw=()=>{ doc.ocr[key]=ta.value; item.cv=textImage(ta.value, item.box, doc); const img=r.querySelector(".imgwrap img"); img.src=item.cv.toDataURL("image/png"); r.querySelector(".muted").textContent=`${item.cv.width}×${item.cv.height} · 새로 쓴 글씨`; };
+  ta.oninput=draw; draw();
+  btn.onclick=()=>{ delete doc.ocr[key]; item.cv=orig; refresh(doc); };
+}
+function textImage(text, box, doc){
+  const lh0=box.lh||Math.min(box.h,40), S=scaleFor(lh0), lh=lh0*S;
+  const lines=(text||" ").split("\n");
+  const fs=Math.round(lh*0.98);
+  const font=`${OPT.weight>60?800:OPT.weight>30?700:500} ${fs}px "Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif`;
+  const m=Math.round(lh*(OPT.margin/100)*0.9)+Math.round(lh*0.15);
+  const c=document.createElement("canvas"); const x=c.getContext("2d"); x.font=font;
+  const w=Math.ceil(Math.max(...lines.map(l=>x.measureText(l).width)));
+  const gap=Math.round(fs*1.35);
+  c.width=w+m*2; c.height=gap*(lines.length-1)+Math.round(fs*1.25)+m*2;
+  x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height);
+  x.font=font; x.fillStyle="#000"; x.textBaseline="top";
+  lines.forEach((l,i)=>x.fillText(l,m,m+i*gap+Math.round(fs*0.08)));
+  return c;
+}
+
+// ───────── 저장 / 복사 ─────────
+function fileName(doc,item){
+  const key=boxKey(item.box); const t=(doc.ocr[key]||"").split("\n").join(" ").replace(/[\\/:*?"<>|]/g,"").trim().slice(0,40);
+  return `${t || ("제목-"+doc.name)}-${String(item.idx).padStart(2,"0")}.png`;
+}
+const toBlob=cv=>new Promise(r=>cv.toBlob(r,"image/png"));
+async function saveOne(doc,item){ downloadBlob(await toBlob(item.cv), fileName(doc,item)); }
+function downloadBlob(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+async function copyOne(item){
+  try { await navigator.clipboard.write([new ClipboardItem({"image/png": toBlob(item.cv)})]); toast("복사했어요. 붙여넣기 하면 돼요"); }
+  catch(e){ toast("이 브라우저에선 복사가 안 돼요. 저장을 눌러 줘요"); }
+}
+$("#saveAll").onclick=async()=>{
+  const all=[]; for (const d of docs) for (const it of (d.out||[])) all.push({blob:await toBlob(it.cv), name:fileName(d,it)});
+  if (!all.length) return;
+  const files=all.map(a=>new File([a.blob],a.name,{type:"image/png"}));
+  const mobile=/Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (mobile && navigator.canShare && navigator.canShare({files})){
+    try { await navigator.share({files}); return; } catch(e){ if (e.name==="AbortError") return; }
+  }
+  for (const a of all){ downloadBlob(a.blob,a.name); await new Promise(r=>setTimeout(r,250)); }
+  toast(`${all.length}개 저장했어요`);
+};
+$("#clearAll").onclick=()=>{ docs.length=0; $("#list").innerHTML=""; updateBar(); };
+
+// ───────── 입력 ─────────
+$("#file").onchange=e=>{ addFiles([...e.target.files]); e.target.value=""; };
+const drop=$("#drop");
+["dragenter","dragover"].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); drop.classList.remove("over"); }));
+document.addEventListener("drop",e=>addFiles([...(e.dataTransfer?.files||[])]));
+document.addEventListener("paste",e=>{ const fs=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith("image/")).map(i=>i.getAsFile()); if (fs.length){ e.preventDefault(); addFiles(fs); } });
+
+// 설정
+function syncOpts(){
+  document.querySelectorAll("#scaleSeg button").forEach(b=>b.classList.toggle("on", +b.dataset.v===OPT.scale));
+  $("#weight").value=OPT.weight; $("#sharp").value=OPT.sharp; $("#margin").value=OPT.margin; $("#onlyColor").checked=OPT.onlyColor;
+}
+let rt=0; function rerenderAll(){ clearTimeout(rt); rt=setTimeout(()=>docs.forEach(refresh),120); saveOpt(); }
+document.querySelectorAll("#scaleSeg button").forEach(b=>b.onclick=()=>{ OPT.scale=+b.dataset.v; syncOpts(); rerenderAll(); });
+["weight","sharp","margin"].forEach(id=>$("#"+id).addEventListener("input",e=>{ OPT[id]=+e.target.value; rerenderAll(); }));
+$("#onlyColor").onchange=e=>{ OPT.onlyColor=e.target.checked; rerenderAll(); };
+syncOpts();
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
