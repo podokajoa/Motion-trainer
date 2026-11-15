@@ -8,6 +8,8 @@ const GG_ARR = "https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArriv
 const GG_STN = "https://apis.data.go.kr/6410000/busstationservice/v2/getBusStationListv2";
 
 const list = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
+// 결과가 비었을 때 공공 API가 돌려준 원본을 짧게 보여 줘서 원인을 찾기 쉽게 해요 (키는 포함되지 않아요)
+const brief = j => JSON.stringify(j).slice(0, 300);
 const num = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
 
 function cors(req) {
@@ -65,12 +67,14 @@ export default {
         if (city === "seoul") {
           if (!env.SEOUL_KEY) return json(req, { error: "SEOUL_KEY가 설정되지 않았어요" }, 500);
           const j = await getJson(`${SEOUL}/getStationByName?serviceKey=${encodeURIComponent(env.SEOUL_KEY)}&stSrch=${encodeURIComponent(q)}&resultType=json`);
-          return json(req, { stops: parseSeoulStops(j) });
+          const stops = parseSeoulStops(j);
+          return json(req, stops.length ? { stops } : { stops, info: brief(j) });
         }
         if (city === "gg") {
           if (!env.GG_KEY) return json(req, { error: "GG_KEY가 설정되지 않았어요" }, 500);
           const j = await getJson(`${GG_STN}?serviceKey=${encodeURIComponent(env.GG_KEY)}&keyword=${encodeURIComponent(q)}&format=json`);
-          return json(req, { stops: parseGgStops(j) });
+          const stops = parseGgStops(j);
+          return json(req, stops.length ? { stops } : { stops, info: brief(j) });
         }
       }
       if (u.pathname === "/arrive") {
