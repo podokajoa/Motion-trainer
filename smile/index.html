@@ -36,6 +36,8 @@
   .cue { position:absolute; left:3vmin; right:3vmin; bottom:3vmin; background:rgba(0,0,0,.72); border-radius:3vmin; padding:2.4vmin 3vmin; font-size:max(22px,7.5vmin); font-weight:800; text-align:center; line-height:1.2; pointer-events:none; }
   .cue small { display:block; font-size:max(14px,3.8vmin); font-weight:500; color:var(--muted); margin-top:1vmin; }
   #exit { display:none; position:absolute; right:3vmin; bottom:calc(3vmin + 28vmin); font-size:max(14px,3.6vmin); padding:1.4vmin 3vmin; opacity:.85; }
+  /* 프라이버시 모드: 얼굴 영상은 숨기고 입 선과 점만 */
+  body.private video { opacity:0; }
   /* 연습 모드: 전체화면, 큰 글씨 */
   body.practice main > :not(.stage) { display:none; }
   body.practice main { padding:0; max-width:none; }
@@ -88,6 +90,10 @@
   <div class="controls">
     <button id="start" class="primary">연습 시작</button>
     <button id="voice">음성: 켜짐</button>
+    <button id="privacy">프라이버시 모드: 꺼짐</button>
+  </div>
+  <div class="tips" id="privacyTip" style="display:none">
+    <b>프라이버시 모드</b>: 얼굴 영상은 화면에 나오지 않고, 검은 화면에 입 모양 선과 점만 보여요. 연습 기록용 얼굴 사진도 저장하지 않아요.
   </div>
   <div class="tips" id="refBox">
     <b>참고 미소 사진 (선택)</b><br>
@@ -316,13 +322,19 @@ function fromFrame(F, [qx, qy]) {
   return [F.ox + x * c - y * n, F.oy + x * n + y * c];
 }
 let overlayMode = store.get("overlay") || "both"; // both | line | off
+let privacyOn = store.get("privacy") === "on";
+function applyPrivacy() {
+  document.body.classList.toggle("private", privacyOn);
+  $("privacy").textContent = "프라이버시 모드: " + (privacyOn ? "켜짐" : "꺼짐");
+  $("privacyTip").style.display = privacyOn ? "block" : "none";
+}
 let REF_IMG = null;
 function loadRefImg() { REF_IMG = null; if (REF?.mouthImg) { const i = new Image(); i.onload = () => REF_IMG = i; i.src = REF.mouthImg; } }
 function drawOverlay(lm) {
   if (overlayMode === "off" || !refOn || !REF?.lips) return;
   const F = mouthFrame(lm, W, H), lw = Math.max(2, W / 260);
   const path = (pts, k = 1) => { ctx.beginPath(); pts.forEach((q, n) => { const [x, y] = fromFrame(F, [q[0] * k, q[1] * k]); n ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); };
-  if (overlayMode === "both" && REF_IMG) {
+  if (overlayMode === "both" && REF_IMG && !privacyOn) {
     ctx.save(); path(REF.lips.out, 1.3); ctx.clip();
     ctx.translate(F.ox, F.oy); ctx.rotate(F.ang); ctx.scale(F.s / 100, F.s / 100);
     ctx.globalAlpha = 0.45; ctx.drawImage(REF_IMG, -120, -80); ctx.restore();
@@ -454,7 +466,7 @@ function step(lm, blend, t) {
   if (m.eyeSmile > 0.3 && ok) c.eye = true;
   if (ok && r.pretty > c.pretty) c.pretty = r.pretty;
   if (r.score >= mode.target * 0.6 && !r.issues.some(i => i.gate)) S.maxUp = Math.max(S.maxUp || 0, (m.upL + m.upR) / 2);
-  if (ok && r.pretty > (S.bestShot?.score ?? -1) && t - (S.lastShotAt || 0) > 400) { S.lastShotAt = t; S.bestShot = { score: r.pretty, img: snapshot(lm), up: Math.round((m.upL + m.upR) / 2) }; }
+  if (ok && r.pretty > (S.bestShot?.score ?? -1) && t - (S.lastShotAt || 0) > 400) { S.lastShotAt = t; S.bestShot = { score: r.pretty, img: privacyOn ? "" : snapshot(lm), up: Math.round((m.upL + m.upR) / 2) }; }
   m.arrows = { L: shown.some(i => i.k === "tiltL" || i.k === "corner" && m.upL <= m.upR || i.k === "stretch" && m.upL <= m.upR),
                R: shown.some(i => i.k === "tiltR" || i.k === "corner" && m.upR < m.upL || i.k === "stretch" && m.upR < m.upL) };
 
@@ -608,6 +620,10 @@ function bestCard(title, b, extra) {
 }
 function showBest() {
   const b = S.bestShot; if (!b) return;
+  if (!b.img) { // 프라이버시 모드: 점수만 보여주고 기존 최고 미소 사진은 건드리지 않음
+    $("bestNow").innerHTML = `<div class="best"><div><b>오늘 가장 예쁜 미소 ${b.score}점</b><br>프라이버시 모드라 얼굴 사진은 저장하지 않았어요.</div></div>`;
+    return;
+  }
   let ever = null; try { ever = JSON.parse(store.get("bestSmile") || "null"); } catch {}
   const isRecord = !ever || b.score > ever.score;
   if (isRecord) store.set("bestSmile", JSON.stringify({ ...b, t: Date.now() }));
@@ -658,6 +674,8 @@ $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐");
 $("voice").onclick = () => { voiceOn = !voiceOn; store.set("voice", voiceOn ? "on" : "off"); $("voice").textContent = "음성: " + (voiceOn ? "켜짐" : "꺼짐"); };
 $("refFile").onchange = e => { const f = e.target.files[0]; if (f) analyzeRef(f); e.target.value = ""; };
 $("refToggle").onclick = () => { refOn = !refOn; store.set("refOn", refOn ? "on" : "off"); renderRef(); };
+$("privacy").onclick = () => { privacyOn = !privacyOn; store.set("privacy", privacyOn ? "on" : "off"); applyPrivacy(); };
+applyPrivacy();
 $("overlay").onclick = () => { overlayMode = { both: "line", line: "off", off: "both" }[overlayMode]; store.set("overlay", overlayMode); renderRef(); };
 $("refDel").onclick = () => { REF = null; REF_IMG = null; store.set("refSmile", "null"); renderRef(); };
 renderRef(); loadRefImg();
