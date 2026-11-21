@@ -322,7 +322,7 @@ function fromFrame(F, [qx, qy]) {
   return [F.ox + x * c - y * n, F.oy + x * n + y * c];
 }
 let overlayMode = store.get("overlay") || "both"; // both | line | off
-let privacyOn = store.get("privacy") === "on";
+let privacyOn = store.get("privacy") !== "off"; // 기본은 켜짐 (끄기를 직접 누른 경우만 꺼짐)
 function applyPrivacy() {
   document.body.classList.toggle("private", privacyOn);
   $("privacy").textContent = "프라이버시 모드: " + (privacyOn ? "켜짐" : "꺼짐");
