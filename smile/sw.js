@@ -1,5 +1,5 @@
 // 앱 화면은 네트워크 우선(업데이트 반영), 라이브러리와 인식 모델은 캐시 우선(오프라인 실행)
-const CACHE = "smile-trainer-v6";
+const CACHE = "smile-trainer-v7";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -20,7 +20,8 @@ self.addEventListener("fetch", e => {
       return res;
     })));
   } else if (url.origin === location.origin) {
-    e.respondWith(fetch(e.request).then(res => {
+    // 브라우저 HTTP 캐시(GitHub Pages는 최대 10분)가 아니라 항상 서버에 새 버전이 있는지 확인
+    e.respondWith(fetch(e.request, { cache: "no-cache" }).then(res => {
       const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy));
       return res;
     }).catch(() => caches.match(e.request)));
