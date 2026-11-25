@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.text.LineBreakConfig
+import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -41,6 +43,8 @@ fun Context.text(s: CharSequence, sp: Float, color: Int = C.INK, bold: Boolean =
         if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         includeFontPadding = false
         setLineSpacing(0f, 1.2f)
+        // 한국어가 단어 중간("읽었/어요")에서 끊기지 않게 어절 단위로 줄바꿈
+        if (Build.VERSION.SDK_INT >= 33) lineBreakWordStyle = LineBreakConfig.LINE_BREAK_WORD_STYLE_PHRASE
     }
 
 fun round(color: Int, radius: Float, stroke: Int? = null, strokeW: Int = 0) = GradientDrawable().apply {
@@ -89,7 +93,11 @@ fun Context.blockView(
         gravity = Gravity.CENTER_HORIZONTAL
 
         addView(text("오늘 $app", 20f, C.NIGHT_SUB, bold = true), lp())
-        addView(text(Rules.fmt(minutes), 76f, Color.WHITE, bold = true).apply { tag = "minutes" }, lp(top = dp(12)))
+        // 숫자는 항상 한 줄. 길어지면(1시간 12분) 글자가 줄어든다.
+        addView(text(Rules.fmt(minutes), 76f, Color.WHITE, bold = true).apply {
+            tag = "minutes"; maxLines = 1
+            setAutoSizeTextTypeUniformWithConfiguration(36, 76, 2, TypedValue.COMPLEX_UNIT_SP)
+        }, lp(h = dp(96), top = dp(12)))
         addView(text(overText(minutes, limitMin), 18f, C.NIGHT_RED, bold = true).apply { tag = "over" }, lp(top = dp(12)))
 
         addView(View(context), LinearLayout.LayoutParams(1, 0, 1f))

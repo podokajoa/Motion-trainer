@@ -46,10 +46,19 @@ class Overlays(private val ctx: Context) {
 
     fun hideBubble() { bubble?.let { remove(it) }; bubble = null }
 
+    /** 카드는 또렷하게(불투명) 띄우고, 카드를 누르면 바로 닫힌다. 카드 밖 터치는 아래 앱으로 간다. */
     fun showBanner(v: View) {
         if (!canDraw()) return
         banner?.let { remove(it) }
-        try { wm.addView(v, passThrough(Gravity.TOP or Gravity.CENTER_HORIZONTAL, ctx.dp(110))); banner = v } catch (e: Exception) { return }
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = ctx.dp(110) }
+        v.setOnClickListener { if (banner === v) { remove(v); banner = null } }
+        try { wm.addView(v, p); banner = v } catch (e: Exception) { return }
         h.postDelayed({ if (banner === v) { remove(v); banner = null } }, 6000)
     }
 

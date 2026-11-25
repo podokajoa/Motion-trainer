@@ -314,7 +314,7 @@ class MainActivity : Activity() {
             compoundDrawablePadding = dp(8)
             alpha = 0.8f
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(36) })
-        frame.addView(bannerView("유튜브", 20, 30, Level.OK).apply { alpha = 0.8f },
+        frame.addView(bannerView("유튜브", 20, 30, Level.OK),
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(110) })
         setContentView(frame)
         window.statusBarColor = Color.parseColor("#2A2F36")
