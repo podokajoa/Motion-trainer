@@ -37,7 +37,7 @@ fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
 fun Context.text(s: CharSequence, sp: Float, color: Int = C.INK, bold: Boolean = false): TextView =
     TextView(this).apply {
-        text = s
+        text = keepWords(s)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
         setTextColor(color)
         if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -46,6 +46,20 @@ fun Context.text(s: CharSequence, sp: Float, color: Int = C.INK, bold: Boolean =
         // 한국어가 단어 중간("읽었/어요")에서 끊기지 않게 어절 단위로 줄바꿈
         if (Build.VERSION.SDK_INT >= 33) lineBreakWordStyle = LineBreakConfig.LINE_BREAK_WORD_STYLE_PHRASE
     }
+
+/**
+ * 언어 설정과 상관없이 한국어가 어절 중간("읽었/어요")에서 끊기지 않도록
+ * 띄어쓰기 없는 글자 사이에 '줄바꿈 금지' 표시(U+2060)를 넣는다. 화면에는 보이지 않는다.
+ */
+fun keepWords(s: CharSequence): CharSequence {
+    if (s !is String || s.length < 2) return s
+    val b = StringBuilder(s.length * 2)
+    for (i in s.indices) {
+        if (i > 0 && !s[i].isWhitespace() && !s[i - 1].isWhitespace()) b.append('\u2060')
+        b.append(s[i])
+    }
+    return b.toString()
+}
 
 fun round(color: Int, radius: Float, stroke: Int? = null, strokeW: Int = 0) = GradientDrawable().apply {
     setColor(color); cornerRadius = radius
