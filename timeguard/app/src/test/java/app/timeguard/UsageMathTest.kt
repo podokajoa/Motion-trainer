@@ -85,3 +85,14 @@ class RoastTest {
         assertFalse(small.any { it.contains("쪽") || it.contains("5분만") || it.contains("1년") })
     }
 }
+
+class PenaltyTest {
+    @Test fun blackoutEverySixSeconds() {
+        assertFalse(Rules.blackoutDue(5_999, 0))
+        assertTrue(Rules.blackoutDue(6_000, 0))
+        // 1분에 10번
+        var last = -6_000L; var n = 0
+        for (t in 0L..59_999L step 2_000L) if (Rules.blackoutDue(t, last)) { last = t; n++ }
+        assertEquals(10, n)
+    }
+}

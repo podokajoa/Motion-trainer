@@ -41,6 +41,7 @@ class WatchService : Service() {
     private var lastNotif = 0L
     private var day: DayState? = null
     private var running = false
+    private var lastBlackout = 0L
 
     private val loop = object : Runnable {
         override fun run() {
@@ -134,7 +135,7 @@ class WatchService : Service() {
             getSystemService(NotificationManager::class.java).notify(ID_RUN, runningNotification("오늘 $summary"))
         }
 
-        if (w == null) { overlays.hideBubble(); overlays.hideBlock(); return }
+        if (w == null) { overlays.hideBubble(); overlays.hideBlock(); overlays.hideBlackout(); return }
 
         val total = a.totalNow(w.pkg, now)
         val snooze = d.snooze[w.pkg] ?: 0
@@ -164,6 +165,10 @@ class WatchService : Service() {
                         Store.saveDay(this, d)
                         overlays.hideBlock()
                     })
+            }
+            if (Store.penaltyOn(this) && Rules.blackoutDue(now, lastBlackout)) {
+                lastBlackout = now
+                overlays.flashBlackout(1500)
             }
             overlays.currentBlock()?.let { v ->
                 v.findViewWithTag<TextView>("minutes")?.text = Rules.fmt(dec.minutes)

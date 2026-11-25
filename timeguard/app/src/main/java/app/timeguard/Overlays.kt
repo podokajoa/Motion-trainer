@@ -81,11 +81,31 @@ class Overlays(private val ctx: Context) {
         hideBubble()
     }
 
+    private var blackout: View? = null
+    fun isBlackout() = blackout != null
+
+    /** 화면이 꺼진 것처럼 잠깐 새까맣게 덮는다. 켜져 있는 동안 터치는 막힌다. */
+    fun flashBlackout(ms: Long) {
+        if (!canDraw() || blackout != null) return
+        val v = View(ctx).apply { setBackgroundColor(android.graphics.Color.BLACK) }
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.OPAQUE,
+        )
+        try { wm.addView(v, p); blackout = v } catch (e: Exception) { return }
+        h.postDelayed({ hideBlackout() }, ms)
+    }
+
+    fun hideBlackout() { blackout?.let { remove(it) }; blackout = null }
+
     fun currentBlock(): View? = block
 
     fun hideBlock() { block?.let { remove(it) }; block = null; blockPkg = null; blockKey = "" }
 
-    fun hideAll() { hideBubble(); hideBlock(); banner?.let { remove(it) }; banner = null }
+    fun hideAll() { hideBlackout(); hideBubble(); hideBlock(); banner?.let { remove(it) }; banner = null }
 
     private fun remove(v: View) { try { wm.removeView(v) } catch (e: Exception) { } }
 }

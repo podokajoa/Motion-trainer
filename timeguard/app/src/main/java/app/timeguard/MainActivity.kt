@@ -104,6 +104,7 @@ class MainActivity : Activity() {
         root.addView(button("+ 지켜볼 앱 추가", Color.WHITE, C.INK, C.INK) { if (demo == null) pickApp() }, lp(top = dp(16)))
 
         root.addView(optionRow(), lp(top = dp(28)))
+        root.addView(penaltyRow(), lp(top = dp(18)))
         if (demo == null && !ignoringBattery()) root.addView(batteryRow(), lp(top = dp(12)))
         root.addView(text("사용 기록과 설정은 이 폰에만 저장돼요.", 13f, C.SUB), lp(top = dp(24)))
     }
@@ -191,6 +192,20 @@ class MainActivity : Activity() {
         addView(Switch(context).apply {
             isChecked = demo != null || Store.bubbleOn(context)
             setOnCheckedChangeListener { _, on -> if (demo == null) Store.setBubble(context, on) }
+        })
+    }
+
+    private fun penaltyRow(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text("벌칙 모드", 16f, C.INK, bold = true))
+            addView(text("제한 넘기면 화면이 6초마다 잠깐 까맣게 꺼져요. 그 앱을 나가면 멈춰요.", 14f, C.SUB), lp(top = dp(4)))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(Switch(context).apply {
+            isChecked = demo == null && Store.penaltyOn(context)
+            setOnCheckedChangeListener { _, on -> if (demo == null) Store.setPenalty(context, on) }
         })
     }
 

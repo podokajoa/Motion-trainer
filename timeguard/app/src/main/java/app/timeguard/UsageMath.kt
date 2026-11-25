@@ -75,6 +75,9 @@ object Rules {
         else -> Level.OK
     }
 
+    /** 벌칙 모드: 마지막 암전 뒤 periodMs가 지났으면 다음 암전 시간 */
+    fun blackoutDue(now: Long, last: Long, periodMs: Long = 6_000): Boolean = now - last >= periodMs
+
     fun fmt(min: Long): String {
         val h = min / 60; val m = min % 60
         return when {

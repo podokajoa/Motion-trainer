@@ -50,6 +50,10 @@ object Store {
     fun bubbleOn(c: Context) = p(c).getBoolean("bubble", true)
     fun setBubble(c: Context, on: Boolean) = p(c).edit().putBoolean("bubble", on).apply()
 
+    /** 벌칙 모드: 제한을 넘기면 6초마다 화면이 잠깐 까맣게 꺼진다. 기본은 꺼짐. */
+    fun penaltyOn(c: Context) = p(c).getBoolean("penalty", false)
+    fun setPenalty(c: Context, on: Boolean) = p(c).edit().putBoolean("penalty", on).apply()
+
     fun day(c: Context, now: Long): DayState {
         val today = dateKey(now)
         return try {
