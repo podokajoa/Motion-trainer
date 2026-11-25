@@ -290,34 +290,49 @@ class MainActivity : Activity() {
     }
 
     private fun showDemoBlock() {
-        val v = blockView("유튜브", 72, 60, "책 읽을 시간이에요",
-            Roast.line("유튜브", 72, 2, intent.getIntExtra("seed", 1)), 2, onStop = {}, onSnooze = {})
-        setContentView(FrameLayout(this).apply { addView(v) })
-        window.statusBarColor = C.NIGHT
-        window.navigationBarColor = C.NIGHT
+        val frame = FrameLayout(this)
+        frame.addView(fakeVideoScreen())
+        frame.addView(blockView("유튜브", 72, 60, "책 읽을 시간이에요",
+            Roast.line("유튜브", 72, 2, intent.getIntExtra("seed", 1)), 2, onStop = {}, onSnooze = {}))
+        setContentView(frame)
+        window.statusBarColor = Color.BLACK
         window.decorView.systemUiVisibility = 0
     }
 
-    /** 다른 앱을 쓰는 중에 위에 뜨는 작은 표시와 알림 카드 모양 확인용 */
-    private fun showDemoAlert() {
-        val fake = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#2A2F36"))
-            setPadding(dp(16), dp(120), dp(16), dp(16))
-            repeat(6) { addView(View(context).apply { background = round(Color.parseColor("#3A4048"), dp(12).toFloat()) }, lp(h = dp(110), top = dp(14))) }
+    /** 캡처용 가짜 '영상 보는 중' 화면(특정 앱 모양이 아닌 일반적인 배치) */
+    private fun fakeVideoScreen(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundColor(Color.parseColor("#F2F2F2"))
+        addView(FrameLayout(context).apply {
+            setBackgroundColor(Color.parseColor("#3B4A5C"))
+            addView(text("▶", 48f, Color.parseColor("#CCFFFFFF")), FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        }, lp(h = dp(230)))
+        addView(View(context).apply { background = round(Color.parseColor("#D9D9D9"), dp(6).toFloat()) }, lp(h = dp(22), top = dp(16)).apply { leftMargin = dp(16); rightMargin = dp(60) })
+        addView(View(context).apply { background = round(Color.parseColor("#E4E4E4"), dp(6).toFloat()) }, lp(h = dp(14), top = dp(10)).apply { leftMargin = dp(16); rightMargin = dp(140) })
+        repeat(4) {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(View(context).apply { background = round(Color.parseColor("#CFCFCF"), dp(8).toFloat()) }, LinearLayout.LayoutParams(dp(150), dp(86)))
+                addView(View(context).apply { background = round(Color.parseColor("#E0E0E0"), dp(6).toFloat()) }, LinearLayout.LayoutParams(0, dp(16), 1f).apply { leftMargin = dp(12); topMargin = dp(6) })
+            }, lp(top = dp(18)).apply { leftMargin = dp(16); rightMargin = dp(16) })
         }
+    }
+
+    /** 다른 앱을 쓰는 중에 위에 뜨는 작은 표시와 알림창 모양 확인용 */
+    private fun showDemoAlert() {
         val frame = FrameLayout(this)
-        frame.addView(fake)
+        frame.addView(fakeVideoScreen())
         frame.addView(bubbleView().apply {
             text = bubbleText("유튜브", 21, 30)
             setCompoundDrawablesRelativeWithIntrinsicBounds(round(C.GREEN, dp(5).toFloat()).apply { setSize(dp(10), dp(10)) }, null, null, null)
             compoundDrawablePadding = dp(8)
             alpha = 0.8f
-        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(36) })
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(250) })
         frame.addView(bannerView("유튜브", 20, 30, Level.OK),
-            FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(110) })
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP).apply { topMargin = dp(8); leftMargin = dp(12); rightMargin = dp(12) })
         setContentView(frame)
-        window.statusBarColor = Color.parseColor("#2A2F36")
+        window.statusBarColor = Color.BLACK
         window.decorView.systemUiVisibility = 0
     }
 }

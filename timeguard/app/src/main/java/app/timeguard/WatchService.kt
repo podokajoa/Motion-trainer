@@ -98,11 +98,12 @@ class WatchService : Service() {
         getSystemService(NotificationManager::class.java).notify(ID_ALERT, n)
     }
 
-    private fun buzz() {
+    /** strong=true는 재난문자처럼 길게 세 번, 아니면 카톡 알림처럼 짧게 두 번 */
+    private fun buzz(strong: Boolean) {
+        val pattern = if (strong) longArrayOf(0, 600, 200, 600, 200, 600) else longArrayOf(0, 200, 120, 200)
         try {
             @Suppress("DEPRECATION")
-            (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)
-                .vibrate(VibrationEffect.createOneShot(350, VibrationEffect.DEFAULT_AMPLITUDE))
+            (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).vibrate(VibrationEffect.createWaveform(pattern, -1))
         } catch (e: Exception) { }
     }
 
@@ -151,6 +152,7 @@ class WatchService : Service() {
                 return
             }
             val seed = (now / 60_000).toInt()
+            if (overlays.currentBlock() == null || overlays.blockPkg != w.pkg) buzz(strong = true)
             // 화면을 처음 띄울 때 문장을 정하고, 그 뒤엔 숫자만 새로 그린다.
             overlays.showBlock(w.pkg, "$count") {
                 blockView(name, dec.minutes, w.limitMin, w.message,
@@ -174,7 +176,7 @@ class WatchService : Service() {
         val step = dec.announceStep
         if (step != null) {
             d.announced[w.pkg] = step; Store.saveDay(this, d)
-            buzz()
+            buzz(strong = false)
             if (overlays.canDraw()) overlays.showBanner(bannerView(name, dec.minutes, w.limitMin, level))
             else alertNotification("$name ${Rules.fmt(dec.minutes)} 지났어요",
                 if (w.limitMin > 0) "제한까지 ${Rules.fmt((w.limitMin - dec.minutes).coerceAtLeast(0))} 남음" else "오늘 ${Rules.fmt(dec.minutes)}째")

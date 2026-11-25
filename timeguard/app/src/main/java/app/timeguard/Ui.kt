@@ -10,6 +10,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -95,35 +96,57 @@ fun Context.bar(fraction: Float, color: Int): View {
 fun lp(w: Int = LinearLayout.LayoutParams.MATCH_PARENT, h: Int = LinearLayout.LayoutParams.WRAP_CONTENT, top: Int = 0) =
     LinearLayout.LayoutParams(w, h).apply { topMargin = top }
 
-/** 제한을 넘었을 때 덮는 화면. 주인공은 '오늘 쓴 시간' 숫자 하나. */
+/**
+ * 제한을 넘었을 때 보던 앱 위에 뜨는 경고창(재난문자처럼).
+ * 뒤 화면은 살짝 어둡게만 해서 '지금 보던 걸 멈추라'는 느낌이 들게 하고, 버튼을 눌러야 닫힌다.
+ */
 fun Context.blockView(
     app: String, minutes: Long, limitMin: Int, message: String, roast: String, snoozeCount: Int,
     onStop: () -> Unit, onSnooze: () -> Unit,
 ): View {
-    return LinearLayout(this).apply {
+    val card = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(C.NIGHT)
-        setPadding(dp(28), dp(72), dp(28), dp(40))
-        gravity = Gravity.CENTER_HORIZONTAL
+        background = round(Color.WHITE, dp(22).toFloat())
+        clipToOutline = true
+        elevation = dp(16).toFloat()
 
-        addView(text("오늘 $app", 20f, C.NIGHT_SUB, bold = true), lp())
-        // 숫자는 항상 한 줄. 길어지면(1시간 12분) 글자가 줄어든다.
-        addView(text(Rules.fmt(minutes), 76f, Color.WHITE, bold = true).apply {
-            tag = "minutes"; maxLines = 1
-            setAutoSizeTextTypeUniformWithConfiguration(36, 76, 2, TypedValue.COMPLEX_UNIT_SP)
-        }, lp(h = dp(96), top = dp(12)))
-        addView(text(overText(minutes, limitMin), 18f, C.NIGHT_RED, bold = true).apply { tag = "over" }, lp(top = dp(12)))
+        // 빨간 머리띠: 경고라는 걸 글을 읽기 전에 색으로 먼저 알린다
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(C.RED)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            addView(text("⚠ 시간 초과", 16f, Color.WHITE, bold = true),
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(text("시간 지킴이", 13f, Color.parseColor("#FFE3E0")))
+        }, lp())
 
-        addView(View(context), LinearLayout.LayoutParams(1, 0, 1f))
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(18), dp(22), dp(20))
+            addView(text("오늘 $app", 16f, C.SUB, bold = true), lp())
+            addView(text(Rules.fmt(minutes), 40f, C.RED, bold = true).apply {
+                tag = "minutes"; maxLines = 1
+                setAutoSizeTextTypeUniformWithConfiguration(24, 40, 2, TypedValue.COMPLEX_UNIT_SP)
+            }, lp(h = dp(52), top = dp(4)))
+            addView(text(overText(minutes, limitMin), 15f, C.SUB).apply { tag = "over" }, lp(top = dp(2)))
+            addView(View(context).apply { setBackgroundColor(C.LINE) }, lp(h = dp(1), top = dp(16)))
+            addView(text(roast, 20f, C.INK, bold = true), lp(top = dp(16)))
+            if (message.isNotBlank()) addView(text(message, 16f, C.SUB), lp(top = dp(10)))
 
-        addView(text(roast, 24f, Color.WHITE, bold = true), lp())
-        if (message.isNotBlank()) addView(text(message, 18f, C.NIGHT_SUB), lp(top = dp(14)))
-
-        addView(View(context), LinearLayout.LayoutParams(1, 0, 1f))
-
-        addView(button("그만할게", Color.WHITE, C.NIGHT) { onStop() }, lp(top = 0))
-        addView(button(if (snoozeCount > 0) "5분만 더 (오늘 ${snoozeCount}번 미룸)" else "5분만 더",
-            C.NIGHT, C.NIGHT_SUB) { onSnooze() }, lp(top = dp(8)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(button(if (snoozeCount > 0) "5분만 더 (${snoozeCount}번째)" else "5분만 더", Color.WHITE, C.SUB, C.LINE) { onSnooze() },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) })
+                addView(button("그만할게", C.RED, Color.WHITE) { onStop() },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f))
+            }, lp(top = dp(20)))
+        }, lp())
+    }
+    return FrameLayout(this).apply {
+        setBackgroundColor(Color.parseColor("#66000000")) // 뒤 화면은 보이되 한 톤 어둡게
+        addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+            .apply { leftMargin = dp(18); rightMargin = dp(18) })
     }
 }
 
@@ -142,17 +165,23 @@ fun Context.bubbleView(): TextView = text("", 15f, Color.WHITE, bold = true).app
 fun bubbleText(app: String, minutes: Long, limitMin: Int): String =
     if (limitMin > 0) "$app ${Rules.fmt(minutes)} / ${Rules.fmt(limitMin.toLong())}" else "$app ${Rules.fmt(minutes)}째"
 
-/** 정해 둔 간격마다 잠깐 뜨는 알림 카드 */
+/** 정해 둔 간격마다 카톡 알림처럼 위에서 잠깐 뜨는 알림창 */
 fun Context.bannerView(app: String, minutes: Long, limitMin: Int, level: Level): View =
     LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        background = round(Color.WHITE, dp(22).toFloat(), C.of(level), dp(3))
-        setPadding(dp(24), dp(20), dp(24), dp(20))
-        elevation = dp(8).toFloat()
-        addView(text(app, 16f, C.SUB, bold = true), lp())
-        addView(text("${Rules.fmt(minutes)} 지났어요", 32f, C.of(level), bold = true), lp(top = dp(6)))
-        if (limitMin > 0) {
-            val left = (limitMin - minutes).coerceAtLeast(0)
-            addView(text("제한까지 ${Rules.fmt(left)} 남음", 16f, C.INK), lp(top = dp(8)))
-        }
+        orientation = LinearLayout.HORIZONTAL
+        background = round(Color.WHITE, dp(18).toFloat())
+        clipToOutline = true
+        elevation = dp(10).toFloat()
+        // 왼쪽 색 띠: 초록 여유 / 주황 거의 다 씀
+        addView(View(context).apply { setBackgroundColor(C.of(level)) }, LinearLayout.LayoutParams(dp(6), LinearLayout.LayoutParams.MATCH_PARENT))
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(18), dp(14))
+            addView(text("⏱ 시간 지킴이 · 지금", 13f, C.SUB), lp())
+            addView(text("$app ${Rules.fmt(minutes)} 지났어요", 19f, C.INK, bold = true), lp(top = dp(6)))
+            if (limitMin > 0) {
+                val left = (limitMin - minutes).coerceAtLeast(0)
+                addView(text("제한까지 ${Rules.fmt(left)} 남음", 15f, C.of(level), bold = true), lp(top = dp(4)))
+            }
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
     }

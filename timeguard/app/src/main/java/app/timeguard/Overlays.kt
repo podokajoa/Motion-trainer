@@ -56,7 +56,10 @@ class Overlays(private val ctx: Context) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = ctx.dp(110) }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = ctx.dp(32)
+            width = ctx.resources.displayMetrics.widthPixels - ctx.dp(24)
+        }
         v.setOnClickListener { if (banner === v) { remove(v); banner = null } }
         try { wm.addView(v, p); banner = v } catch (e: Exception) { return }
         h.postDelayed({ if (banner === v) { remove(v); banner = null } }, 6000)
@@ -72,7 +75,7 @@ class Overlays(private val ctx: Context) {
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.OPAQUE,
+            PixelFormat.TRANSLUCENT,
         )
         try { wm.addView(v, p); block = v; blockPkg = pkg; blockKey = key } catch (e: Exception) { }
         hideBubble()
